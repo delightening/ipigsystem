@@ -1564,7 +1564,7 @@ R32-A8f 條目過時：原以為「等 vet/QA 加變數」blocked，2026-05-10 �
 | # | 項目 | 說明 | 狀態 |
 |---|------|------|------|
 | R76-1 | **GPS 半徑 200→750（A，立即解卡）** | 室內 GPS 飄移實測 325~415m；因 IP 閘失效、GPS 是唯一有效閘，放寬半徑吸收室內飄移。`.env` line 70 + `docker compose up -d --no-deps api`，已驗證 live（容器 env=750、healthy）。**trade-off**：750m 偏鬆、為唯一關卡，待 R76-3 後可收回 | [x] |
-| R76-2 | **打卡失敗寫 audit log（B-now）** | 422 失敗原本只進 tracing log（`attendance.rs` warn）、不進 user_activity_logs，查證需翻 container log。改：`clock_in/out` 失敗時呼叫 `AuditService::log_activity_oneshot`（`event_category=HR`、`event_type=ATTENDANCE_CLOCK_{IN,OUT}_DENIED`、含 reason/IP）。**刻意不用 `log_security_event`**（標 is_suspicious 會撞 R67 自動停權）。`validate_clock_location` 重構為 `clock_location_denial_reason`(回 reason) + `clock_location_business_rule`(422)，原 422-not-403 迴歸測試保留。分支 `fix/attendance-clock-denied-audit`（off main）；cargo check/clippy/unit tests 綠，PR 審核中 | [ ] |
+| R76-2 | **打卡失敗寫 audit log（B-now）** | 422 失敗原本只進 tracing log（`attendance.rs` warn）、不進 user_activity_logs，查證需翻 container log。改：`clock_in/out` 失敗時呼叫 `AuditService::log_activity_oneshot`（`event_category=HR`、`event_type=ATTENDANCE_CLOCK_{IN,OUT}_DENIED`、含 reason/IP）。**刻意不用 `log_security_event`**（標 is_suspicious 會撞 R67 自動停權）。`validate_clock_location` 重構為 `clock_location_denial_reason`(回 reason) + `clock_location_business_rule`(422)，原 422-not-403 迴歸測試保留。分支 `fix/attendance-clock-denied-audit`（off main）；cargo check/clippy/unit tests 綠 | [x] 2026-06-25 已合併（**#795**，commit `83435703`）；2026-07-31 台帳對帳時發現此列漏標 |
 | R76-3 | **HiNet 固定 IP → 救活 IP 閘 → GPS 半徑收回（B-later）** | 向中華電信申辦辦公室固定 IP（商用，月費數百元）→ 填 `ALLOWED_CLOCK_IP_RANGES` → 在場員工靠 IP 過關、GPS 半徑收回 ~300m 當外勤備援。**blocked**：須使用者對外辦理；到位後僅改設定。同時把現行失效的 `10.0.4.0/24` 改註解標明已失效（避免誤導） | [ ] |
 
 ---
@@ -1640,7 +1640,7 @@ R32-A8f 條目過時：原以為「等 vet/QA 加變數」blocked，2026-05-10 �
 | R81-6 | **架構文件對齊 prod + Guest Demo 架構文件** | ARCHITECTURE.md 更新（部署圖/技術堆疊/目錄）+ 新增 §7 部門/模組歸屬；新增 `GUEST_DEMO_ARCHITECTURE.md`；校正 `01_ARCHITECTURE_OVERVIEW.md` 版本事實。 | [x] |
 | R81-7 | **邀請管理是否 guest 唯讀展示** | 目前刻意隱藏（`GUEST_HIDDEN_CHILD_IDS`，寫入流程）；使用者主動提起才啟動（移除隱藏 + 補邀請列表假資料）。 | [ ] |
 | R81-8 | **Guest demo interceptor 支援 query param 過濾** | 現 interceptor 去除 query→demo 選人/日期過濾不生效；若要「選人真過濾」需在頁面層或 interceptor 加 client-side filter。backlog。 | [ ] |
-| R81-9 | **殘留「請購單」誤導字眼正名** | ErpWidgets i18n 已改（#916）；殘留 `permissions.rs:501` 註解「可建立請購單」、`zh-TW.json:212` 採購人員角色描述、`docker-compose.yml` print-pdf「WeasyPrint」過時註解（實為 Playwright/Chromium）。純文件/註解，backlog。 | [ ] |
+| R81-9 | **殘留「請購單」誤導字眼正名** | ErpWidgets i18n 已改（#916）；殘留 `permissions.rs:501` 註解「可建立請購單」、`zh-TW.json:212` 採購人員角色描述、`docker-compose.yml` print-pdf「WeasyPrint」過時註解（實為 Playwright/Chromium）。純文件/註解（原列 backlog，2026-07-31 完成）。 | [x] 2026-07-31：`permissions.rs` 兩處註解改為「採購退貨」並註明 `DocType::PR` ＝ Purchase Return（權限字串 `erp.pr.create` 本身不改——改動要連 DB seed 一起遷移）、`zh-TW.json` 採購人員描述改「採購與退貨流程」、`docker-compose.yml` 兩處 WeasyPrint 註解改 Playwright/Chromium；另同步修正 `02_CORE_DOMAIN_MODEL.md` 與 `SYSTEM_RELATIONSHIPS.md` 把 PR 誤植為「請購單」以及「PR ──→ PO」的流程圖。 |
 
 ---
 
@@ -1742,7 +1742,7 @@ R32-A8f 條目過時：原以為「等 vet/QA 加變數」blocked，2026-05-10 �
 | # | 項目 | 說明 | 狀態 |
 |---|------|------|------|
 | R86-1 | **加班核准 SoD 缺口（合規）** | `approve_overtime`（`services/hr/overtime.rs:540-586`）只比對 status，**無「不可自審」也無「兩關不得同人」檢查**。清單過濾（`:227-228`）有擋自審且註解宣稱「與 approve_overtime handler 一致」——**該宣稱不實**，直接打 API 即可核准自己的加班。prod 實測：17 筆兩關 approver 皆同一帳號（間隔約 0.3 秒）。請假模組已有正解可照抄（`leave.rs:258` 自審絕不放寬 + `:267` has_prior_approval + `:285-289` 無人可簽才代批）。使用者裁示：自審絕不放寬、加代批機制、負責人不送加班單。既有 17 筆不回滾、另寫說明。 | [x] 2026-07-28 已修並部署（**#1077**：不可自審 + 終審關 SoD + 無其他合格終審者才放寬代批；`backend/tests/hr_overtime_sod.rs` 三例；api 映像 2026-07-29 22:44 GMT+8 重建） |
-| R86-2 | **加班補登可重複執行且不可逆** | `overtime_records` 只有 `pkey(id)`、無防重唯一鍵；`create_overtime` 無重複檢查。`docs/ops/overtime-backfill-template.js:193` 卻教人「中斷就重跑」→ 補休餘額翻倍且無沖銷路徑。**2026-07-31 使用者裁定**：DB 唯一索引 + service 檢查雙層防重，唯一鍵取 `(user_id, overtime_date, start_time, end_time)` 且排除 rejected/voided；另加「作廢已核准加班單」通道（ADMIN 單簽 + 理由必填、不得作廢自己的單、補休已被使用則擋下）。 | [ ] 實作完成待 PR 合併（migration 142 + `void_overtime` + 後端 7 例整合測試 + 前端 6 例單元測試 + 範本說明更新） |
+| R86-2 | **加班補登可重複執行且不可逆** | `overtime_records` 只有 `pkey(id)`、無防重唯一鍵；`create_overtime` 無重複檢查。`docs/ops/overtime-backfill-template.js:193` 卻教人「中斷就重跑」→ 補休餘額翻倍且無沖銷路徑。**2026-07-31 使用者裁定**：DB 唯一索引 + service 檢查雙層防重，唯一鍵取 `(user_id, overtime_date, start_time, end_time)` 且排除 rejected/voided；另加「作廢已核准加班單」通道（ADMIN 單簽 + 理由必填、不得作廢自己的單、補休已被使用則擋下）。 | [x] 2026-07-31 已合併並部署 prod（**#1093**，migration 142 於 api 啟動時套用、`_sqlx_migrations` 已達 142；唯一索引與 voided 欄位皆已驗；路由 `POST /hr/overtime/:id/void` 回 401 對照亂路徑 404）。⚠️ 業務流程本身尚未在 prod 實測（需真實帳號登入，同 R84-16 性質） |
 | R86-3 | **`animalSpeciesLabel` 蓋掉 `breed_other`** | `lib/animalSpecies.ts:22` 讓 `species_name` 優先，選「其他」品種時表單**強制**填的自由文字（如「藏香豬」）永遠顯示不出來。#1052 引入的回歸，改動前 5 個顯示點皆正確。修法：`breed === 'other' && breed_other` 時優先回傳自由文字。 | [x] 2026-07-28 已修並部署（**#1076**） |
 | R86-4 | **GLP 品種更正核准後畫面不變** | `field_correction.rs:303-318` 只 `UPDATE breed`、不動 `species_id`，而顯示端已改為優先讀 `species_name` → 走完整套申請與核准流程的欄位更正**在 UI 上完全失效**。 | [ ] |
 | R86-5 | **`PUT /animals/:id` 的 `species_id` 繞過所有驗證** | `update.rs:153` 直接 `COALESCE($11, species_id)`，不驗存在／啟用／葉節點、也不重推 `breed`（`requests.rs:84`）。可寫入停用或非葉節點物種，並造出 `species_id` 與 `breed` 矛盾的列。同 struct 上方註解卻寫「breed 建立後不可更改」。 | [ ] |
@@ -1751,7 +1751,7 @@ R32-A8f 條目過時：原以為「等 vet/QA 加變數」blocked，2026-05-10 �
 | R86-8 | **`pens` 缺 `(zone_id, code)` 唯一約束** | prod 實有兩個 `S01`（羊舍區 active / 羊１ inactive）。`pen_location` 以 code 字串關聯，兩個實體欄位會撞同一字串；#1058 已於查詢端以 `LATERAL LIMIT 1` 迴避，根治需清理重複資料後於 schema 層加約束（schema=必問）。 | [ ] |
 | R86-9 | **成員路徑參數綁定無 DB-backed 測試** | #1048 修的是「有佔位符沒 bind → 500」，但新測試只涵蓋 `list()`；`get_my_protocols` 的三個單元測試是 DB-free 字串比對。同類 bug 若發生在成員側，CI 抓不到，後果是一般成員在 /protocols 按篩選整頁 500。 | [ ] |
 | R86-10 | **AI 路徑未達「單一真相源」** | `repositories/ai.rs:264-297` 等 7 處 JOIN animals 仍不濾 `deleted_at`：AI 動物清單已排除軟刪豬，但觀察紀錄查詢仍回它們的 14 筆。 | [ ] |
-| R86-11 | **`requests.rs:51` 註解與實作不符** | 註解寫「兩者皆未提供則回 422」，實際為 **400**（`error.rs:115` + 測試 assert 400）。 | [ ] |
+| R86-11 | **`requests.rs:51` 註解與實作不符** | 註解寫「兩者皆未提供則回 422」，實際為 **400**（`error.rs:115` + 測試 assert 400）。 | [x] 2026-07-31：註解改為 400 並註明來源（`SpeciesLink::resolve` 回 `AppError::Validation`，`error.rs:115` 對應 `BAD_REQUEST`） |
 | R86-12 | **`.claude/skills/` 未納版控** | `protocol-import-backfill/SKILL.md` 等只存在於開發機（未被 gitignore，只是從未 add），無版控備份與 review 軌跡；該檔記載「查重必做」與 256/257/258 重複事故教訓。使用者裁示暫不納管，列此備忘。（`docs/ops/legacy-sync-sop.md` 已於 PR #1059 納管。）| [ ] |
 | R86-13 | **828 出生日期疑似輸入錯誤** | 4 隻山羊中 828 為 `2025-01-01`，其餘三隻與交接文件皆為 `2025-01-30`。`birth_date` 建立後不可直接改，需走動物欄位修正申請流程。 | [ ] |
 

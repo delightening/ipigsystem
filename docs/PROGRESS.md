@@ -200,6 +200,13 @@ v1.0 / v1.1 里程碑。詳見 [TODO.md](TODO.md)（待辦與優先級）、[IMP
 - ✅ **已知副作用併記**：規則 1/5 比對的是整條指令的**文字**而非實際動作，故「只是提到」觸發字串的正當指令也會被擋——連腳本自己的 pipe-test 載荷都會被自己擋下。§10 補上正確驗證方式，並重申被擋時不改寫指令規避。
 - ✅ **DISPATCH §8 兩條 context 紀律**（依據 arXiv:2607.25431 CodeNib）：主對話連做 ≥5 次試錯型搜尋仍未定位 → 改派 `Explore` 並附「已排除」摘要；狀態摘要只寫一次不反覆重寫（反覆改寫會持續讓 prompt cache 失效）。論文實測一次性改寫比 grep/read 基線省 50–87% trajectory token 且不損定位正確率。
 
+### 2026-07-31d 台帳更新改走 integration/docs-ledger 長期分支（制度變更）
+
+- ✅ **問題**：`docs/PROGRESS.md` §9 的最上方與 `docs/TODO.md` 的台帳列是天然熱點——每支 PR 都往同一位置插入，git 必然衝突。2026-07-31 一天內 #1094 / #1095 / #1096 連撞三次，而衝突內容全是「兩則都保留、按時間排序」這種零判斷的機械工作。
+- ✅ **裁定（使用者）**：台帳編輯集中到固定的長期分支 `integration/docs-ledger`，功能 PR 不再夾帶 §9／TODO 編輯；衝突只在這一支解一次。分支所有 session 共寫（`PARALLEL_SESSIONS.md` §3「只有建立者能 commit」的唯一例外）、**禁止 force-push**（會吃掉別的 session 尚未合併的條目）、合回 main 後不刪。
+- ✅ **落地**：`DOCS_PROTOCOL.md` 新增專節（放什麼／不放什麼／寫入時機／多 session 共寫指令序列／代價）、`PARALLEL_SESSIONS.md` §3 熱點檔清單改指向該節、`CLAUDE.md` §文件記錄 加一句路由。三份制度檔依 `MAINTENANCE.md` §1 先備份至 `docs/agents/backup/*.2026-07-31.bak`。
+- ⚠️ **已知代價**：功能 PR 先落地、台帳條目後合，中間有空窗期台帳會落後於 code。因此條目必須寫 PR 編號且不跨日累積——否則就是在製造今天剛修過的那種台帳漂移（R76-2 漂了 5 週、R86-2 漂了半天）。
+
 ### 2026-07-31c 動物轉讓不再借用 `transferred` 當中間態（issue #180）
 
 - ✅ **問題**：`initiate_transfer` 一發起就把 `animals.status` 設成 `'transferred'`，但動物在整段簽核（發起 → 獸醫評估 → 指定計畫 → PI 同意，實務可跨數日）**仍待在原欄**。衍生三件事：`pens.current_count` 排除 `transferred` 故流程期間立刻少算 1（PR #179 靠 initiate／complete／reject 三處補償性 recalc 硬壓）、前端得把「已轉讓」特判成「轉讓申請中」、駁回時還要回滾動物狀態。
@@ -208,6 +215,11 @@ v1.0 / v1.1 里程碑。詳見 [TODO.md](TODO.md)（待辦與優先級）、[IMP
 - ✅ **待轉讓的新表示法**：`AnimalListItem.pending_transfer_status`（LATERAL join `animal_transfers` 未結案列），動物列表在狀態徽章旁另掛一枚「轉讓中」chip；`AnimalStatus::is_terminal` 納入 `Transferred`，`can_transition_to` 移除 `Transferred → InExperiment` 回路。
 - ✅ **不需要 migration**：prod 實測 `animals` 無任何 `transferred`、`animal_transfers` **0 筆**（轉讓功能上線至今未被使用），無資料需遷移；DB enum `animal_status` 亦不動（PG 無法 DROP enum 值，且該值在新語意下仍在用）。
 - ✅ **驗證**：新增 `backend/tests/api_animal_transfer_no_intermediate_status.rs`（5 case：發起不動狀態與頭數、待轉讓由列表欄位呈現、internal 完成進新計畫且頭數不變、external 完成落終態且頭數減 1、駁回 no-op 且可重新發起）；`cargo test --lib` 666 綠、clippy `-D warnings` 0 warning、前端 tsc / eslint 綠。
+### 2026-07-31c Quick wins：PR 單據正名（R81-9）、動物建立錯誤碼註解（R86-11）、台帳四筆對帳
+
+- ✅ **R81-9「請購單」正名**：`DocType::PR` 在 code 裡是**採購退貨**（Purchase Return）——出庫走 `stock/ledger.rs` 的 `process_return_out`、過帳為 `accounting.rs::post_pr` 的「借應付帳款／貸存貨」。但多處把它寫成「請購單」，而本系統**沒有請購流程**。修正 `startup/permissions.rs` 兩處註解（權限字串 `erp.pr.create` 本身不改，改動要連 DB seed 一起遷移，已於註解說明）、`zh-TW.json` 採購人員角色描述、`docker-compose.yml` 兩處過時的「WeasyPrint」註解（print-pdf 已於 R45 換成 Playwright/Chromium，`Dockerfile` 用 `mcr.microsoft.com/playwright/python`）。同步修正兩份 spec：`02_CORE_DOMAIN_MODEL.md` 的 `PR - Purchase Requisition（請購單）`、`SYSTEM_RELATIONSHIPS.md` 的流程圖「PR（請購單）──→ PO」與單據表列——這兩處是**錯誤的架構敘述**，會誤導後續開發以為系統有請購→採購的前置流程。
+- ✅ **R86-11 錯誤碼註解對齊實作**：`models/animal/requests.rs` 註解寫「兩者皆未提供則回 422」，實際 `SpeciesLink::resolve` 回 `AppError::Validation`，而 `error.rs:115` 對應 `BAD_REQUEST`＝**400**。改為 400 並註明推導來源，避免下次有人照註解寫 client 端錯誤處理。
+- ✅ **台帳對帳四筆**：(a) **R76-2** 打卡失敗寫 audit 早於 2026-06-25 由 **#795**（`83435703`）合併，台帳仍停在「PR 審核中 `[ ]`」→ 補標 `[x]`；(b) **R86-2** 已隨 #1093 合併並部署 prod（`_sqlx_migrations` 已達 142、唯一索引與 voided 欄位皆驗過），台帳仍寫「待 PR 合併」→ 補標 `[x]`，並註明業務流程尚未在 prod 實測；(c) **R81-9** 與 (d) **R86-11** 為本輪完成，各自標 `[x]` 並記錄實際改了哪些檔。
 
 ### 2026-07-31b 補登中間 JSON 一律不進版控（R85-7 改變做法）
 

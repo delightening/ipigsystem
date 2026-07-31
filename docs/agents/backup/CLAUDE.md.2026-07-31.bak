@@ -128,6 +128,4 @@ React 元件檔 ≤300 行｜JSX return ≤80 行｜單一 useEffect/handler ≤
 # 文件記錄（完成任務後）
 
 完成 TODO 項目：TODO.md 標 `[x]` → PROGRESS.md §9 加條目 → 涉及設計決策才動 DESIGN.md。
-**這兩份台帳的編輯不放進功能 PR**，一律走共用長期分支 `integration/docs-ledger`
-（2026-07-31 裁定：§9 頂端是天然熱點，同日連撞三次；該分支所有 session 共寫、**禁止 force-push**、
-合回 main 後不刪）。格式與完整流程：`docs/agents/DOCS_PROTOCOL.md`。
+格式細節：`docs/agents/DOCS_PROTOCOL.md`。

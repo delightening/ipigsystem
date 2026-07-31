@@ -36,14 +36,13 @@
 ## 3. 分支歸屬（衝突只在 git 解）
 
 - **只有建立分支的 session 能 commit / rebase / force-push 該分支**。看到別人的分支需要 rebase → 回報，不代做。
-  - **唯一例外：`integration/docs-ledger`**（台帳專用長期分支，所有 session 共寫，見下）。
 - 不得 checkout 別的 session 正在用的分支（git 本身會拒絕；硬繞過就是在破壞隔離）。
 - 跨分支整合只走 **PR + git merge/rebase**，由分支擁有者解衝突。不得為了「先幫他解掉」而直接改別人的分支。
-- **`docs/PROGRESS.md` §9 與 `docs/TODO.md` 台帳一律走 `integration/docs-ledger`**（2026-07-31 使用者裁定，起因：同日 #1094/#1095/#1096 連撞三次同一個位置）。功能 PR 不夾帶台帳編輯；該分支共寫、**禁止 force-push**、合回 main 後不刪。完整規則見 `DOCS_PROTOCOL.md`「台帳更新走 integration/docs-ledger 長期分支」。
-- 其餘已知熱點檔（仍會衝突，屬正常）：
-  - `frontend/src/locales/{zh-TW,en}.json` —— 多數能自動合併。
+- 已知熱點檔（一定會衝突，屬正常）：
+  - `docs/PROGRESS.md` §9 頂端 —— 兩邊各插一則 `###` 條目。**解法是保留兩則按時間排序，不是二選一。**
+  - `docs/TODO.md`、`frontend/src/locales/{zh-TW,en}.json` —— locale JSON 多數能自動合併。
   - 同一功能區的元件（例：`AuditAlertDetailDialog.tsx`）。
-- N ≥ 6 支 PR 同改同區塊 → 比照上述，另開 `integration/<代號>` 長期分支，一次解一次衝突。
+- N ≥ 6 支 PR 同改同區塊 → 改走 `integration/<代號>` 長期分支，一次解一次衝突。
 - 事前試算衝突（唯讀，不動任何分支）：`git merge-tree --write-tree --name-only <A> <B>`，exit 1 即有衝突。
 
 ## 4. 共用 cargo target（磁碟是硬約束）
@@ -131,14 +130,8 @@
 
 ## 10. 強制機制（hook，2026-07-30 起）
 
-> ⚠️ **2026-08-03 實測：本節描述的掛載並不存在。** `~/.claude/settings.json` 全檔沒有 `hooks` 區塊
-> （只有 `permissions` / `statusLine` / `enabledPlugins` 等），腳本雖在版控內但從未被呼叫，
-> 下表六條**一條都沒在執行**。當日即因此直接 Edit 了主 checkout 的檔案而未被攔下。
-> 掛回去要改使用者全域 `settings.json` ＝ `MAINTENANCE.md` §1 的必問項，需使用者授權。
-> **在掛上去之前，本節是規格，不是保證**——不要因為「有 hook 擋著」而放鬆自我檢查。
-
-設計上規則不只靠自願遵守。守衛腳本 `.claude/hooks/guard-parallel-sessions.sh`（進版控、可 review）
-應掛在 **`~/.claude/settings.json` 的 `PreToolUse`**（matcher `Bash` 與 `Write|Edit`），擋下：
+規則不再只靠自願遵守。守衛腳本 `.claude/hooks/guard-parallel-sessions.sh`（進版控、可 review）
+掛在 **`~/.claude/settings.json` 的 `PreToolUse`**（matcher `Bash` 與 `Write|Edit`），會擋下：
 
 | 擋 | 對應條文 |
 |---|---|
@@ -148,17 +141,9 @@
 | prod compose 的 `build` / `up` 而 `.deploy.lock` 不存在或握在別人手上 | §6 |
 | `cd` 進主 checkout 後跑 `git commit/checkout/switch/reset/stash/rebase/merge/cherry-pick/apply/restore` | §2 |
 | 指令或 Write/Edit 路徑出現別的 session 的 `wt-<其他短碼>` | §2 |
-| Write/Edit 路徑落在主 checkout `ipig_system/` 內（反斜線／正斜線都比對） | §2（2026-08-03 補：上一條只比對「別人的 `wt-`」，主 checkout 自己不在任何檢查範圍） |
 
 **刻意放行**（都經 pipe-test 驗證）：主 checkout 的唯讀 git 查詢與 `git pull --ff-only`、
 `up -d db-test`、自己持鎖時的部署、在自己 `wt-<sid>` 內的任何 git 操作。
-
-**已知副作用（2026-08-03 掛載當日實測）**：規則 1 與規則 5 比對的是**整條指令的文字**，
-不是它實際會執行的動作。所以「只是提到」觸發字串的正當指令也會被擋——例如指令中出現
-別的 session 的 `wt-<短碼>`，或字串裡帶了被禁的 compose 旗標。
-**連這支腳本自己的 pipe-test 載荷都會被自己擋下**（測試 JSON 裡就含那些字串），
-因此要驗證腳本請在自己的 `wt-<sid>` 內跑、或改用不含觸發字串的等價檢查。
-被擋下時**不要改寫指令去規避**——那正是這條規則存在的理由。
 
 掛在**使用者全域**而非專案 `.claude/settings.json`，原因有二：後者被 `.gitignore:70` 排除版控
 （尊重既有決定，不反轉），且以 worktree 為 cwd 的 session 不會有那份檔案、等於漏掉最需要管的對象。

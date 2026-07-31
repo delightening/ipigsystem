@@ -26,35 +26,6 @@
 3. **DESIGN.md Decisions Log**：僅涉及設計/架構決策時新增。
 4. 不在 TODO.md 變更紀錄區新增條目（該區已封存）。
 
-⚠️ **上述 1–2 的編輯不放進功能 PR**，改走 `integration/docs-ledger` 長期分支（見下節）。
-
-## 台帳更新走 `integration/docs-ledger` 長期分支（2026-07-31 使用者裁定）
-
-**為什麼**：`docs/PROGRESS.md` §9 的**最上方**與 `docs/TODO.md` 的台帳列是天然熱點——每支 PR 都往同一個位置插入，git 必然衝突。2026-07-31 一天之內 #1094 / #1095 / #1096 連撞三次，而衝突內容全是「兩則都保留、按時間排序」這種零判斷的機械工作。集中到一支分支，衝突只解一次。
-
-| 項目 | 規則 |
-|---|---|
-| 分支名 | `integration/docs-ledger`（固定，不隨輪次改名；合回 main 後**不刪分支**，下次接著用） |
-| 放什麼 | 只放 `docs/PROGRESS.md` §9 條目、`docs/TODO.md` 的狀態標記／校正紀錄／新增待辦列 |
-| **不**放什麼 | 功能程式碼、migration、module spec（`docs/spec/**` 跟著功能 PR）、`DESIGN.md`（跟著 UI PR） |
-| 功能 PR | **不夾帶** §9／台帳編輯；PR 內文照常寫清楚做了什麼，台帳條目另外補 |
-| 寫入時機 | 功能 PR **merge 之後**（條目要寫得出 PR 編號與落地事實，否則會記成「預計」） |
-| 合回 main | 當日結束前，或累積 ≥3 筆時，開/更新一支 PR 合回 main |
-
-**多 session 共用此分支——這是 `PARALLEL_SESSIONS.md` §3「只有建立分支的 session 能 commit」的唯一例外**：
-
-```bash
-git fetch origin
-git checkout integration/docs-ledger
-git pull --rebase origin integration/docs-ledger   # 先吃掉別的 session 的條目
-# 編輯 PROGRESS.md §9 / TODO.md
-git commit && git push          # 一般 push；被拒就再 pull --rebase 一次
-```
-
-- 🚫 **禁止對此分支 force-push**——它是共用的，force-push 會吃掉別的 session 尚未合併的條目。
-- 🚫 不要在此分支放功能程式碼；一旦混入，它就從「零風險文件合併」變成需要完整 CI 的變更。
-- ⚠️ **代價要知道**：功能 PR 先落地、台帳條目後合，中間有空窗期台帳會落後於 code。因此條目**必須寫 PR 編號**，且不要跨日累積——否則就是在製造本檔一直在修的那種台帳漂移。
-
 ## TODO.md 撰寫規範
 
 章節順序（固定）：
