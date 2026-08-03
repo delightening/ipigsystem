@@ -4,6 +4,7 @@
 > **維護慣例：** 完成項目標 [x] + 更新待辦統計 + 在 `docs/PROGRESS.md` §9 新增變更紀錄。詳見 `CLAUDE.md`「文件記錄規則」。
 > **封存規則：** 整輪全部 [x]（0 未完成）的輪次移至 `docs/archive/TODO_done.md`；本檔只保留「含未完成項的輪次」+ 待辦統計。詳見 `docs/agents/DOCS_PROTOCOL.md`。
 > **章節排列：** 禁止事項 → 含未完成項的輪次（R 編號不連續，已封存者見 archive）→ 待辦統計
+> ⚠️ **PR 編號（2026-08-03 起）：** 本檔既有的 `#N` 引用（393 個相異編號、897 次提及）一律指**舊 repo** `delightening/ipig_system`——該 repo 已於 2026-08-03 轉為 private 封存（原因：git 歷史含 prod DB 匯出檔，見 R83-6）。本 repo `delightening/ipigsystem` 的 PR 編號自 #1 重新起算，兩者**不通用且會撞號**。引用新 PR 時請寫成 `#N`，引用舊 repo 請寫成 `ipig_system#N`。
 
 ---
 
