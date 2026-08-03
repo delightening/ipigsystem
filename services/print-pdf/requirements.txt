@@ -6,4 +6,4 @@ pydantic==2.13.4
 python-multipart==0.0.31
 openpyxl==3.1.5
 pypdf==6.13.3
-Pillow==12.2.0
+Pillow==12.3.0
