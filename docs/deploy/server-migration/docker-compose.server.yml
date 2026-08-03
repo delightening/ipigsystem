@@ -1,0 +1,81 @@
+# ============================================================
+# iPig System — 自建 Linux 伺服器 Production Overlay
+# ============================================================
+# 2026-07-24 決策：prod 目標從「NAS 直接跑 Docker」（見已棄用的
+# DEPLOYMENT_NAS_DS923.md）改為「獨立 Ubuntu Server 24.04 LTS 主機」，
+# NAS（DS918 + DS923+）只當備份鏈，不跑運算。詳見 migration-sop.md。
+#
+# 本檔刻意設計成「疊加層」而非完整重複的 compose 檔——舊版
+# docker-compose.nas.yml 把所有 service 整份複製一遍，結果四個月沒同步就
+# 跟真正的 docker-compose.yml 脫鉤（還在寫 gotenberg / image-processor 這些
+# 早就砍掉的 service）。這裡只加「新伺服器才需要」的東西，其餘 service 定義
+# 一律以 docker-compose.yml / docker-compose.prod.yml 為準，不重複、不會過期。
+#
+# 使用方式：
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.prod.yml \
+#     -f docs/deploy/server-migration/docker-compose.server.yml \
+#     up -d --no-build --scale watchtower=0
+#
+# 為什麼要 --scale watchtower=0：
+#   docker-compose.prod.yml 裡的 watchtower 是背景自動更新，跟這次遷移決定
+#   的「拿掉自動更新、改手動 build+up -d」衝突（見 migration-sop.md「自動
+#   更新」一節）。用 --scale 而非改 docker-compose.prod.yml 本體，是因為
+#   那份檔案現在筆電 prod 還在用，不該為了新機的決定動到現役設定。
+#
+# 前提：
+#   1. 已 docker login ghcr.io
+#   2. 已依 migration-sop.md 建立 /opt/ipig/repo/secrets 與 /opt/ipig/uploads
+#      （secrets 必須在 repo/ 底下——本檔 secrets: 區塊用 ./secrets/... 相對路徑，
+#      是相對於執行 docker compose 當下的目錄，也就是 /opt/ipig/repo；
+#      資料庫走 Docker named volume，直接落在 RAID1 系統碟上，不用另外指定
+#      路徑——這台機器整顆開機碟就是 RAID1，不需要像 NAS 版那樣手動 bind
+#      mount 到特定 volume 路徑）
+#   3. .env 與 secrets/ 已就位（沿用現有 docker-compose.yml 的 secrets 清單，
+#      不是舊版 nas 檔案裡的 jwt_secret 單一金鑰）
+#   4. Cloudflare Tunnel token 已寫入 secrets/cloudflare_tunnel_token.txt
+# ============================================================
+
+services:
+  # =========================
+  # Cloudflare Tunnel（對外唯一入口）
+  # 舊版 tunnel 是綁筆電跑；換機器要在 Cloudflare Dashboard 重新確認
+  # connector 連線註冊成功，見 migration-sop.md Step 4d。
+  # =========================
+  cloudflared:
+    # 固定版本而非 :latest（跟 repo 其餘 image 一律釘版/digest 的慣例一致）。
+    # 2026.7.2 是 2026-07-24 查證時 Docker Hub 上的最新版；實際部署前重新
+    # 確認一次，並用 `docker inspect --format='{{index .RepoDigests 0}}' <image>`
+    # 取得當時的 digest 鎖住，避免同標籤未來被重新指向不同內容。
+    image: cloudflare/cloudflared:2026.7.2
+    container_name: ipig-cloudflared
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN_FILE: /run/secrets/cloudflare_tunnel_token
+    secrets:
+      - cloudflare_tunnel_token
+    networks:
+      - frontend
+    depends_on:
+      web:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    restart: unless-stopped
+
+networks:
+  frontend:
+    driver: bridge
+
+secrets:
+  cloudflare_tunnel_token:
+    file: ./secrets/cloudflare_tunnel_token.txt

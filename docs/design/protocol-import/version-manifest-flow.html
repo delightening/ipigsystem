@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>計畫書版本名冊補登 — 流程圖</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1b1f24; --muted:#5b6672;
+    --line:#c9d1da; --accent:#2f6f4f; --accent-soft:#e6f0ea;
+    --p1:#2f6f4f; --p2:#33608f; --p3:#8a5a1c;
+    --chip:#eef2f6; --branch:#b23b3b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12161b; --panel:#1b2128; --ink:#e8edf2; --muted:#9aa7b4;
+      --line:#38424e; --accent:#5fbf8c; --accent-soft:#1e2a24;
+      --p1:#5fbf8c; --p2:#6fa6df; --p3:#d8a25a;
+      --chip:#232b34; --branch:#e0736f;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","Segoe UI",system-ui,-apple-system,sans-serif;
+    line-height:1.55;padding:28px 18px 48px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:1.4rem;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:.9rem;margin:0 0 24px}
+  .phase{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:18px 18px 22px;margin:0 0 14px;position:relative}
+  .phase h2{font-size:1.02rem;margin:0 0 14px;display:flex;align-items:center;gap:9px}
+  .tag{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .p1 .tag{background:var(--p1)} .p2 .tag{background:var(--p2)} .p3 .tag{background:var(--p3)}
+  .flow{display:flex;flex-direction:column;align-items:stretch;gap:0}
+  .box{background:var(--chip);border:1px solid var(--line);border-radius:10px;
+    padding:11px 14px;font-size:.92rem}
+  .box b{font-weight:650}
+  .box small{display:block;color:var(--muted);font-size:.8rem;margin-top:3px}
+  .arrow{align-self:center;color:var(--muted);font-size:1.1rem;line-height:1;margin:6px 0}
+  .decision{border-color:var(--accent);background:var(--accent-soft)}
+  .decision b::before{content:"◆ ";color:var(--accent)}
+  .branch{border-style:dashed;border-color:var(--branch)}
+  .branch small{color:var(--branch)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row .box{flex:1 1 220px}
+  .cross{margin:14px 0;text-align:center;color:var(--muted);font-size:.85rem}
+  .cross span{background:var(--panel);border:1px dashed var(--line);border-radius:20px;padding:5px 14px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:.82rem;margin-top:10px}
+  .legend i{font-style:normal;display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .note{font-size:.82rem;color:var(--muted);margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+  code{background:var(--chip);padding:1px 6px;border-radius:5px;font-size:.85em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>計畫書「版本名冊（manifest）」補登流程</h1>
+  <p class="sub">方案 (Y)：單一超集資料 + 每版一張名冊 · 2026-07-09 設計對齊 · 先不動 code</p>
+
+  <!-- 階段一 -->
+  <div class="phase p1">
+    <h2><span class="tag"></span>階段一　一次性建置版本名冊（manifest）</h2>
+    <div class="flow">
+      <div class="box"><b>盤點各版本欄位</b><small>C(=D) · E · F　實際 3 種結構（C 案 D 案皆印 AD-04-01-01C）</small></div>
+      <div class="arrow">↓</div>
+      <div class="box"><b>定義「超集」</b><small>所有版本欄位的聯集，含 F 已砍掉的孤兒欄位</small></div>
+      <div class="arrow">↓</div>
+      <div class="box"><b>為每版建一張名冊</b><small>名冊 = 共同核心 ∪ 該版專屬欄位（宣告式清單，非程式）</small></div>
+      <div class="arrow">↓</div>
+      <div class="box"><b>登記到計劃書範本版本頁</b><small><code>protocol_template_versions</code>：登記版本、供補登「選版本」下拉帶出</small></div>
+    </div>
+  </div>
+
+  <div class="cross"><span>名冊建好後 ↓ 才進補登</span></div>
+
+  <!-- 階段二 -->
+  <div class="phase p2">
+    <h2><span class="tag"></span>階段二　逐筆補登（可編輯）</h2>
+    <div class="flow">
+      <div class="box"><b>開補登新案 / 已補登舊案</b><small>已補登者：重新選版本，回填 <code>source_form_version</code></small></div>
+      <div class="arrow">↓</div>
+      <div class="box decision"><b>先選版本</b><small>依你已知的「案子 → 版本」對照手動選（不自動偵測）</small></div>
+      <div class="arrow">↓</div>
+      <div class="box"><b>系統依該版名冊只渲染該版欄位</b><small>F 獨有欄不顯示；孤兒欄位歸該版顯示</small></div>
+      <div class="arrow">↓</div>
+      <div class="box"><b>補登 / 編輯資料</b><small>編輯限定在該版名冊欄位範圍內</small></div>
+      <div class="arrow">↓</div>
+      <div class="box"><b>finalize-import</b></div>
+    </div>
+  </div>
+
+  <div class="cross"><span>落地後 ↓ 進入日常</span></div>
+
+  <!-- 階段三 -->
+  <div class="phase p3">
+    <h2><span class="tag"></span>階段三　下游與日後</h2>
+    <div class="row">
+      <div class="box"><b>共同核心欄位（每版都有）</b><small>→ 會計項目 / 豬隻使用數量：不受版本影響，安全</small></div>
+      <div class="box decision"><b>變更申請</b><small>可選：沿用原版　或　升級最新版（預設建議升級）；最新版動態解析 F→G/H/I/J/K</small></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <i><span class="dot" style="background:var(--accent)"></span>◆ 決策節點（手動選版本 / 變更升級）</i>
+    <i>版本可持續擴充：F 之後 G/H/I/J/K，「最新版」動態解析</i>
+  </div>
+
+  <p class="note">
+    實際只有 <b>3 種結構</b>：C 案/D 案皆印 AD-04-01-01C、E、F → 名冊只需 3 張（C/D 共用）。
+    版本演化非單調：<b>C/D→E</b> 加 SD/PI 分離·委託聯絡人·替代 3 平台，減 試驗單位塊·GLP 結果分析·文件歸檔·飼養 SOP·試驗物質 11→5 欄·簽核 3→2 列；
+    <b>E→F</b> 加 替代 8 平台·痛苦症狀 17·緩解措施 4·資料庫 A~L·減量細分·精緻化·PI 職稱·類型 6·重複 4 選項，減 試驗物質類型 9·技術類別 9·註冊機關 5。
+    採 (Y) 後結構性「不適用」不需要——該版沒有的欄位直接不顯示。共同核心每版都含，保護下游會計與豬隻計數。完整記錄見同資料夾 <code>version-manifest-backfill-plan.md</code>。
+  </p>
+</div>
+</body>
+</html>

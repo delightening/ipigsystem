@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>SO 跨倉出貨 UI 預覽 — DocumentLineEditor</title>
+<style>
+  :root {
+    --bg:#f8fafc; --card:#fff; --border:#e2e8f0; --muted:#64748b; --text:#0f172a;
+    --primary:#2563eb; --primary-bg:#eff6ff;
+    /* 倉別色盤（每倉一色，穩定索引） */
+    --wh0:#2563eb; --wh0-bg:#dbeafe;  /* 準備室 藍 */
+    --wh1:#059669; --wh1-bg:#d1fae5;  /* 主倉庫 綠 */
+    --wh2:#d97706; --wh2-bg:#fef3c7;  /* 手術室倉 琥珀 */
+  }
+  * { box-sizing:border-box; margin:0; padding:0; font-family:"Noto Sans TC",system-ui,sans-serif; }
+  body { background:var(--bg); color:var(--text); padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  h2 { font-size:15px; margin:28px 0 8px; border-left:4px solid var(--primary); padding-left:8px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:16px; }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px; }
+  /* ── 寬度控制 ── */
+  .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .controls button { padding:4px 10px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:12px; }
+  .controls button:hover { background:var(--primary-bg); }
+  .controls input[type=range] { width:260px; }
+  #wLabel { font-weight:700; font-size:13px; color:var(--primary); min-width:70px; }
+  #frame { border:2px dashed #cbd5e1; border-radius:8px; overflow:hidden; resize:none; container-type:inline-size; }
+  /* ── 明細表 mock ── */
+  .tbl-wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th,td { border-bottom:1px solid var(--border); padding:8px 10px; text-align:left; white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:12px; background:#f8fafc; }
+  .num { text-align:right; }
+  .sku { color:var(--muted); font-size:11px; }
+  input.mock { border:1px solid var(--border); border-radius:6px; padding:5px 8px; width:80px; text-align:right; font-size:13px; }
+  .shelf-btn { border:1px solid var(--border); border-radius:6px; padding:5px 8px; background:#fff; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:6px; width:100%; }
+  .shelf-btn:hover { border-color:var(--primary); }
+  .dot { width:8px; height:8px; border-radius:2px; flex:none; }
+  .wh-chip { font-size:10px; padding:1px 6px; border-radius:99px; font-weight:600; }
+  .del { color:#dc2626; background:none; border:none; cursor:pointer; font-size:14px; }
+  /* 表格 ≥900 / 卡片 <900（真 container query） */
+  .desktop { display:none; } .cards { display:block; }
+  @container (min-width: 900px) { .desktop { display:block; } .cards { display:none; } }
+  .line-card { border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px; background:#fff; }
+  .line-card .row { display:flex; justify-content:space-between; gap:8px; margin-top:6px; font-size:12px; align-items:center; }
+  .lbl { color:var(--muted); font-size:11px; }
+  /* ── 平面圖挑選器 ── */
+  .picker { border:1px solid var(--border); border-radius:10px; max-width:660px; background:#fff; box-shadow:0 8px 30px rgba(2,6,23,.12); }
+  .picker header { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
+  .picker header select { padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+  .legend { font-size:11px; color:var(--muted); margin-left:auto; }
+  .floor { position:relative; height:300px; margin:14px; background:
+    linear-gradient(#eef2f7 1px, transparent 1px), linear-gradient(90deg,#eef2f7 1px, transparent 1px);
+    background-size:30px 30px; border:1px solid var(--border); border-radius:8px; }
+  .cell { position:absolute; border-radius:6px; border:2px solid transparent; padding:4px 6px; font-size:11px; cursor:pointer;
+    display:flex; flex-direction:column; justify-content:center; color:#fff; transition:transform .08s; }
+  .cell:hover { transform:scale(1.05); border-color:var(--text); z-index:2; }
+  .cell.sel { border-color:var(--text); box-shadow:0 0 0 3px rgba(15,23,42,.25); }
+  .cell .qty { font-size:10px; opacity:.92; }
+  .cell.noqty { opacity:.38; cursor:not-allowed; }
+  .cell.wall { background:#475569; cursor:default; opacity:.9; }
+  .picked { padding:10px 14px; border-top:1px solid var(--border); font-size:13px; display:flex; gap:8px; align-items:center; min-height:44px; }
+  .hint { color:var(--muted); font-size:12px; }
+  .toggle { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:10px; }
+  .toggle button { border:none; background:#fff; padding:6px 14px; font-size:12px; cursor:pointer; }
+  .toggle button.on { background:var(--primary); color:#fff; }
+  .note { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 12px; font-size:12px; margin:10px 0; }
+  .formrow { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:8px; }
+  .formrow .fld { min-width:220px; }
+  .fld label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .fld select { width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:#fff; }
+</style>
+</head>
+<body>
+<h1>SO 跨倉出貨 UI 預覽</h1>
+<p class="sub">DocumentLineEditor（單據明細）＋ 儲位平面圖挑選器提案 · 2026-07-21 · 拖動滑桿驗證斷點；點擊平面圖體驗挑選流程</p>
+
+<h2>0 · 表頭：倉庫改「預設倉庫（選填）」</h2>
+<div class="panel">
+  <div class="formrow">
+    <div class="fld"><label>單據類型</label><select disabled><option>銷貨單</option></select></div>
+    <div class="fld"><label>預設倉庫（選填）</label>
+      <select id="defaultWh"><option value="">全部倉庫（跨倉）</option><option value="0">準備室</option><option value="1">主倉庫</option></select>
+    </div>
+    <div class="fld"><label>銷貨計畫 *</label><select disabled><option>PIG-115006 - TWI2004 …</option></select></div>
+  </div>
+  <p class="hint">選了預設倉庫＝品項搜尋與平面圖預設到該倉（單倉日常操作跟今天一樣）；留空＝跨全倉。不再必填。</p>
+</div>
+
+<h2>1 · 明細表（拖滑桿看 900px 斷點；SO 無單價欄）</h2>
+<div class="controls">
+  <button onclick="setW(375)">375</button><button onclick="setW(600)">600</button>
+  <button onclick="setW(768)">768</button><button onclick="setW(1024)">1024</button>
+  <button onclick="setW(1280)">1280</button>
+  <input type="range" min="340" max="1280" value="1100" id="wSlider" oninput="setW(+this.value)">
+  <span id="wLabel">1100px</span>
+  <span class="hint" id="modeLabel"></span>
+</div>
+<div class="toggle">
+  <button id="tgA" class="on" onclick="setChip(false)">案 A：現狀標籤（倉庫-儲位文字）</button>
+  <button id="tgB" onclick="setChip(true)">案 B：倉別彩色 chip（跨倉時顯示）</button>
+</div>
+<div id="frame" style="width:1100px; max-width:100%;">
+  <div class="panel" style="margin:0; border-radius:0;">
+    <div class="desktop tbl-wrap"><table>
+      <thead><tr><th>項次</th><th>品項</th><th class="num">數量</th><th>單位</th><th>儲位</th><th>效期</th><th>批號</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><b>針筒 50cc</b><div class="sku">CON-CYR-001</div></td>
+          <td class="num"><input class="mock" value="2"></td><td>支</td>
+          <td><button class="shelf-btn" onclick="openPicker(0)"><span class="dot" style="background:var(--wh0)"></span><span class="shelfLabel" data-i="0">準備室 - 治療車</span></button>
+            <span class="wh-chip chipA" data-i="0" style="background:var(--wh0-bg);color:var(--wh0);display:none;">準備室</span></td>
+          <td>2024/03/01</td><td>3F29V</td><td><button class="del">🗑</button></td></tr>
+        <tr><td>2</td><td><b>採血針</b><div class="sku">CON-NEE-011</div></td>
+          <td class="num"><input class="mock" value="40"></td><td>支</td>
+          <td><button class="shelf-btn" onclick="openPicker(1)"><span class="dot" style="background:var(--wh1)"></span><span class="shelfLabel" data-i="1">主倉庫 - A11 架</span></button>
+            <span class="wh-chip chipA" data-i="1" style="background:var(--wh1-bg);color:var(--wh1);display:none;">主倉庫</span></td>
+          <td>2029/12/31</td><td>24L22B</td><td><button class="del">🗑</button></td></tr>
+        <tr><td>3</td><td><b>採血針</b><div class="sku">CON-NEE-011</div></td>
+          <td class="num"><input class="mock" value="10"></td><td>支</td>
+          <td><button class="shelf-btn" onclick="openPicker(2)"><span class="dot" style="background:var(--wh0)"></span><span class="shelfLabel" data-i="2">準備室 - 治療車</span></button>
+            <span class="wh-chip chipA" data-i="2" style="background:var(--wh0-bg);color:var(--wh0);display:none;">準備室</span></td>
+          <td>2029/12/31</td><td>24L22B</td><td><button class="del">🗑</button></td></tr>
+      </tbody>
+    </table>
+    <p class="hint" style="margin-top:8px;">↑ 第 2/3 行示範「同品項跨倉湊數量」（主倉庫 40 + 準備室 10）。儲位按鈕左側色點＝所屬倉。</p>
+    </div>
+    <div class="cards">
+      <div class="line-card"><div class="lbl">項次 #1</div><b>針筒 50cc</b><div class="sku">CON-CYR-001</div>
+        <div class="row"><span class="lbl">數量</span><input class="mock" value="2"></div>
+        <div class="row"><span class="lbl">儲位</span><button class="shelf-btn" style="width:auto" onclick="openPicker(0)"><span class="dot" style="background:var(--wh0)"></span>準備室 - 治療車</button></div>
+        <div class="row"><span class="lbl">效期 / 批號</span><span>2024/03/01 · 3F29V</span></div></div>
+      <div class="line-card"><div class="lbl">項次 #2</div><b>採血針</b><div class="sku">CON-NEE-011</div>
+        <div class="row"><span class="lbl">數量</span><input class="mock" value="40"></div>
+        <div class="row"><span class="lbl">儲位</span><button class="shelf-btn" style="width:auto" onclick="openPicker(1)"><span class="dot" style="background:var(--wh1)"></span>主倉庫 - A11 架</button></div>
+        <div class="row"><span class="lbl">效期 / 批號</span><span>2029/12/31 · 24L22B</span></div></div>
+    </div>
+  </div>
+</div>
+
+<h2>2 · 儲位挑選器提案：倉庫下拉 → 平面圖點選（你的 Q2 構想）</h2>
+<div class="note">重用倉庫佈局頁的平面圖資料（貨架座標/顏色/類型）。格子上顯示<b>該品項在該儲位的現有存量</b>；無存量的格子淡化不可選。點格子＝帶入該行儲位（倉庫自動＝該儲位所屬倉）。批號清單隨之改按該倉過濾。</div>
+<div class="panel" style="display:flex; justify-content:center;">
+  <div class="picker">
+    <header>
+      <b style="font-size:13px;">選擇儲位 — 採血針</b>
+      <select id="pickerWh" onchange="renderFloor()">
+        <option value="0">準備室</option><option value="1" selected>主倉庫</option>
+      </select>
+      <span class="legend">□ 淡化＝此品項無存量 · 深灰＝牆/門</span>
+    </header>
+    <div class="floor" id="floor"></div>
+    <div class="picked" id="picked"><span class="hint">點選上方格子…</span></div>
+  </div>
+</div>
+
+<h2>3 · 斷點數值驗證（Step 3）</h2>
+<div class="panel">
+  <table style="max-width:560px;">
+    <thead><tr><th>模式</th><th>容器寬</th><th>顯示欄寬總和</th><th>溢出?</th></tr></thead>
+    <tbody>
+      <tr><td>PC 表格</td><td>≥ 900px</td><td>SO 1010px</td><td>⚠️ 900–1010 輕微橫捲（既有、裁定不動）</td></tr>
+      <tr><td>卡片</td><td>&lt; 900px</td><td>直排</td><td>✅ 否</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+const frame = document.getElementById('frame');
+function setW(w){ frame.style.width = w+'px'; document.getElementById('wLabel').textContent = w+'px';
+  document.getElementById('wSlider').value = w;
+  document.getElementById('modeLabel').textContent = w>=900 ? '→ 表格版' : '→ 卡片版'; }
+setW(1100);
+function setChip(on){
+  document.getElementById('tgA').classList.toggle('on', !on);
+  document.getElementById('tgB').classList.toggle('on', on);
+  document.querySelectorAll('.chipA').forEach(c=>c.style.display = on?'inline-block':'none');
+}
+/* ── 平面圖資料（模擬倉庫佈局頁的格子；qty=採血針在該儲位存量） ── */
+const floors = {
+  0: [ // 準備室
+    {n:'治療車', x:20,  y:30,  w:120, h:70,  c:'#3b82f6', qty:12},
+    {n:'冷藏櫃', x:170, y:30,  w:90,  h:70,  c:'#6366f1', qty:0},
+    {n:'耗材架', x:20,  y:130, w:150, h:60,  c:'#10b981', qty:3},
+    {n:'牆',    x:0,   y:230, w:600, h:14,  c:'', wall:true},
+  ],
+  1: [ // 主倉庫
+    {n:'A11 架', x:20,  y:24,  w:110, h:64,  c:'#10b981', qty:58},
+    {n:'A12 架', x:150, y:24,  w:110, h:64,  c:'#10b981', qty:0},
+    {n:'B01 區', x:290, y:24,  w:150, h:100, c:'#f59e0b', qty:24},
+    {n:'C 冷藏', x:20,  y:120, w:110, h:80,  c:'#6366f1', qty:0},
+    {n:'門',    x:480, y:240, w:80,  h:14,  c:'', wall:true},
+  ],
+};
+const whNames = {0:'準備室', 1:'主倉庫'};
+let selected = null;
+function renderFloor(){
+  const wh = document.getElementById('pickerWh').value;
+  const el = document.getElementById('floor');
+  el.innerHTML = '';
+  floors[wh].forEach((s,i)=>{
+    const d = document.createElement('div');
+    d.className = 'cell' + (s.wall?' wall':'') + (!s.wall && s.qty===0?' noqty':'');
+    d.style.cssText = `left:${s.x}px; top:${s.y}px; width:${s.w}px; height:${s.h}px; background:${s.c||'#475569'};`;
+    d.innerHTML = s.wall ? '' : `<b>${s.n}</b><span class="qty">${s.qty>0 ? '存量 '+s.qty : '無此品項'}</span>`;
+    if(!s.wall && s.qty>0){
+      d.onclick = ()=>{ selected = {wh, name:s.n};
+        document.querySelectorAll('.cell').forEach(c=>c.classList.remove('sel')); d.classList.add('sel');
+        document.getElementById('picked').innerHTML =
+          `已選：<span class="wh-chip" style="background:var(--wh${wh}-bg);color:var(--wh${wh})">${whNames[wh]}</span> <b>${s.n}</b> <span class="hint">→ 帶入明細行，批號清單改列 ${whNames[wh]} 的批次</span>`;
+      };
+    }
+    el.appendChild(d);
+  });
+}
+renderFloor();
+function openPicker(i){ document.querySelector('.picker').scrollIntoView({behavior:'smooth', block:'center'}); }
+</script>
+</body>
+</html>

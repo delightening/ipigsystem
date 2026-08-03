@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ipig_system 資料庫 ER 圖（introspected from live schema）</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --txt:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif; line-height:1.6; }
+  header { padding:24px 32px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:10; }
+  header h1 { margin:0 0 6px; font-size:20px; }
+  header .meta { color:var(--muted); font-size:13px; }
+  nav { padding:10px 32px; border-bottom:1px solid var(--line); background:#16213a; position:sticky; top:74px; z-index:9; font-size:13px; }
+  nav a { color:var(--accent); text-decoration:none; margin-right:14px; white-space:nowrap; }
+  nav a:hover { text-decoration:underline; }
+  main { padding:24px 32px 80px; max-width:1500px; margin:0 auto; }
+  section { margin-bottom:48px; padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+  h2 { margin-top:0; font-size:18px; border-left:4px solid var(--accent); padding-left:10px; }
+  h2 small, h2 .small { color:var(--muted); font-weight:400; font-size:13px; }
+  .hint { color:var(--muted); font-size:13px; background:#16213a; padding:10px 14px; border-radius:8px; }
+  .stats { display:flex; flex-wrap:wrap; gap:14px; margin:16px 0; }
+  .stat { background:#16213a; border:1px solid var(--line); border-radius:8px; padding:12px 18px; min-width:120px; }
+  .stat b { display:block; font-size:24px; color:var(--accent); }
+  .stat span { color:var(--muted); font-size:12px; }
+  .cross { margin-top:14px; font-size:13px; background:#16213a; padding:10px 14px; border-radius:8px; }
+  .cross h4 { margin:0 0 6px; font-size:13px; color:var(--accent); }
+  .cross ul { margin:0; padding-left:18px; }
+  code { background:#0b1220; padding:1px 5px; border-radius:4px; color:#fbbf24; font-size:12px; }
+  .mermaid { background:#0b1220; border-radius:8px; padding:14px; overflow:auto; }
+  .legend { font-size:12px; color:var(--muted); }
+  a.top { color:var(--muted); font-size:12px; float:right; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ipig_system — 資料庫 ER 圖</h1>
+  <div class="meta">
+    來源：對 <code>backend/migrations</code> 全部 104 個 migration 套用至暫時 PostgreSQL 16 叢集後，
+    introspect <code>pg_catalog</code> / <code>information_schema</code> 真實 schema 與外鍵關係 ·
+    產生日期 2026-06-24 · 非以 regex 猜測
+  </div>
+</header>
+<nav>
+  <a href="#overview">① 總覽</a> <a href="#dom-AUTH">認證 / 權限</a> <a href="#dom-SECURITY">資安 / 稽核</a> <a href="#dom-ANIMAL">動物管理</a> <a href="#dom-AUP">實驗計畫 (AUP)</a> <a href="#dom-VETPATROL">獸醫巡檢</a> <a href="#dom-HR">人資 / 差勤</a> <a href="#dom-ERP">倉儲 / 財會 (ERP)</a> <a href="#dom-EQUIP">儀器設備</a> <a href="#dom-GLP">GLP / QA 品保</a> <a href="#dom-FACILITY">場館設施</a> <a href="#dom-COMMS">通知 / 訊息 / 附件</a> <a href="#dom-AIQA">AI 問答</a> <a href="#dom-CORE">系統核心 / 設定</a>
+</nav>
+<main>
+  <section>
+    <h2>概況</h2>
+    <div class="stats">
+      <div class="stat"><b>166</b><span>業務表（不含分區子表 / _sqlx_migrations）</span></div>
+      <div class="stat"><b>339</b><span>外鍵關聯</span></div>
+      <div class="stat"><b>13</b><span>業務領域</span></div>
+      <div class="stat"><b>160</b><span>無索引 FK 子欄位</span></div>
+      <div class="stat"><b>32</b><span>↳ 業務 JOIN（建議補）</span></div>
+      <div class="stat"><b>128</b><span>↳ 指向 users 審計欄（預設不補）</span></div>
+    </div>
+    <p class=hint>ER 子圖採「鍵欄位視圖」：每個實體只列 <b>PK</b> 與 <b>FK</b> 欄位（非全部欄位），維持可讀性。
+    FK 關係線上標註子欄位名；<code>⚠noidx</code> 表示該 FK 子欄位<b>目前無支援索引</b>。</p>
+  </section>
+<section id="overview">
+<h2>① 領域依賴總覽</h2>
+<p class=hint>方塊 = 業務領域（含表數）。<b>粗實線 ==></b> = 跨域<u>業務 JOIN</u> 外鍵（標 FK 數）；<b>虛線 -.-></b> = 指向 <code>users</code> 的<u>審計欄位</u>（created_by / updated_by 等，聚合計數）。此分流對應效能診斷：業務 JOIN FK 優先補索引，審計欄預設不補。</p>
+<div class="mermaid">flowchart LR
+  AUTH["認證 / 權限<br/><small>13 表</small>"]
+  SECURITY["資安 / 稽核<br/><small>12 表</small>"]
+  ANIMAL["動物管理<br/><small>33 表</small>"]
+  AUP["實驗計畫 (AUP)<br/><small>19 表</small>"]
+  VETPATROL["獸醫巡檢<br/><small>5 表</small>"]
+  HR["人資 / 差勤<br/><small>13 表</small>"]
+  ERP["倉儲 / 財會 (ERP)<br/><small>21 表</small>"]
+  EQUIP["儀器設備<br/><small>9 表</small>"]
+  GLP["GLP / QA 品保<br/><small>23 表</small>"]
+  FACILITY["場館設施<br/><small>5 表</small>"]
+  COMMS["通知 / 訊息 / 附件<br/><small>9 表</small>"]
+  AIQA["AI 問答<br/><small>1 表</small>"]
+  CORE["系統核心 / 設定<br/><small>3 表</small>"]
+  ANIMAL ==>|"1 FK"| AUP
+  ANIMAL ==>|"2 FK"| FACILITY
+  AUP ==>|"2 FK"| COMMS
+  AUP ==>|"3 FK"| GLP
+  AUTH ==>|"1 FK"| AUP
+  COMMS ==>|"1 FK"| AUTH
+  COMMS ==>|"1 FK"| GLP
+  EQUIP ==>|"3 FK"| ERP
+  EQUIP ==>|"6 FK"| GLP
+  ERP ==>|"1 FK"| AUP
+  GLP ==>|"2 FK"| AUP
+  GLP ==>|"1 FK"| ERP
+  GLP ==>|"2 FK"| FACILITY
+  SECURITY ==>|"1 FK"| AUTH
+  VETPATROL ==>|"2 FK"| ANIMAL
+  AIQA -.->|"1 審計欄"| AUTH
+  ANIMAL -.->|"49 審計欄"| AUTH
+  AUP -.->|"29 審計欄"| AUTH
+  COMMS -.->|"8 審計欄"| AUTH
+  CORE -.->|"3 審計欄"| AUTH
+  EQUIP -.->|"8 審計欄"| AUTH
+  ERP -.->|"8 審計欄"| AUTH
+  GLP -.->|"33 審計欄"| AUTH
+  HR -.->|"16 審計欄"| AUTH
+  SECURITY -.->|"11 審計欄"| AUTH
+  VETPATROL -.->|"6 審計欄"| AUTH
+  classDef dom fill:#1e293b,stroke:#475569,stroke-width:1px,color:#e2e8f0;
+  class AUTH,SECURITY,ANIMAL,AUP,VETPATROL,HR,ERP,EQUIP,GLP,FACILITY,COMMS,AIQA,CORE dom;</div>
+</section>
+<section id="dom-AUTH">
+<h2>認證 / 權限 <small>（AUTH · 13 表）</small></h2>
+<div class="mermaid">erDiagram
+  invitation_roles {
+    uuid invitation_id PK
+    uuid role_id PK
+  }
+  invitations {
+    uuid id PK
+    uuid created_user_id FK
+    uuid invited_by FK
+  }
+  password_reset_tokens {
+    uuid id PK
+    uuid user_id FK
+  }
+  permissions {
+    uuid id PK
+  }
+  pi_account_invites {
+    uuid id PK
+    uuid approved_by FK
+    uuid pi_user_id FK
+    uuid protocol_id FK
+    uuid provisioned_by FK
+  }
+  refresh_tokens {
+    uuid id PK
+    uuid user_id FK
+  }
+  role_permissions {
+    uuid role_id PK
+    uuid permission_id PK
+  }
+  roles {
+    uuid id PK
+  }
+  user_aup_profiles {
+    uuid user_id PK
+  }
+  user_mcp_keys {
+    uuid id PK
+    uuid user_id FK
+  }
+  user_preferences {
+    uuid id PK
+    uuid user_id FK
+  }
+  user_roles {
+    uuid user_id PK
+    uuid role_id PK
+    uuid assigned_by FK
+  }
+  users {
+    uuid id PK
+  }
+  invitations ||--o{ invitation_roles : "invitation_id"
+  roles ||--o{ invitation_roles : "role_id"
+  users ||--o{ invitations : "created_user_id ⚠noidx"
+  users ||--o{ invitations : "invited_by ⚠noidx"
+  users ||--o{ password_reset_tokens : "user_id"
+  users ||--o{ pi_account_invites : "approved_by ⚠noidx"
+  users ||--o{ pi_account_invites : "pi_user_id ⚠noidx"
+  users ||--o{ pi_account_invites : "provisioned_by ⚠noidx"
+  users ||--o{ refresh_tokens : "user_id"
+  permissions ||--o{ role_permissions : "permission_id ⚠noidx"
+  roles ||--o{ role_permissions : "role_id"
+  users ||--o{ user_aup_profiles : "user_id"
+  users ||--o{ user_mcp_keys : "user_id"
+  users ||--o{ user_preferences : "user_id"
+  users ||--o{ user_roles : "assigned_by ⚠noidx"
+  roles ||--o{ user_roles : "role_id ⚠noidx"
+  users ||--o{ user_roles : "user_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>實驗計畫 (AUP)</b>：業務 JOIN：pi_account_invites.protocol_id→protocols</li></ul></div>
+</section>
+<section id="dom-SECURITY">
+<h2>資安 / 稽核 <small>（SECURITY · 12 表）</small></h2>
+<div class="mermaid">erDiagram
+  audit_chain_known_breaks {
+    uuid log_id PK
+  }
+  audit_logs {
+    uuid id PK
+    uuid actor_user_id FK
+  }
+  data_retention_policies {
+    uuid id PK
+  }
+  ip_blocklist {
+    uuid id PK
+    uuid blocked_by FK
+    uuid unblocked_by FK
+  }
+  jwt_blacklist {
+    varchar jti PK
+  }
+  login_events {
+    uuid id PK
+    uuid user_id FK
+  }
+  security_alert_config {
+    varchar key PK
+  }
+  security_alerts {
+    uuid id PK
+    uuid login_event_id FK
+    uuid resolved_by FK
+    uuid user_id FK
+  }
+  security_notification_channels {
+    uuid id PK
+  }
+  signature_bridge_sessions {
+    uuid id PK
+    uuid user_id FK
+  }
+  user_activity_aggregates {
+    uuid id PK
+    uuid user_id FK
+  }
+  user_sessions {
+    uuid id PK
+    uuid refresh_token_id FK
+    uuid user_id FK
+  }
+  login_events ||--o{ security_alerts : "login_event_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：業務 JOIN：user_sessions.refresh_token_id→refresh_tokens ；審計欄→users：11 個</li></ul></div>
+</section>
+<section id="dom-ANIMAL">
+<h2>動物管理 <small>（ANIMAL · 33 表）</small></h2>
+<div class="mermaid">erDiagram
+  animal_blood_test_items {
+    uuid id PK
+    uuid blood_test_id FK
+    uuid corrected_by FK
+    uuid superseded_by_id FK
+    uuid template_id FK
+  }
+  animal_blood_tests {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid deleted_by FK
+    uuid locked_by FK
+  }
+  animal_field_correction_requests {
+    uuid id PK
+    uuid animal_id FK
+    uuid requested_by FK
+    uuid reviewed_by FK
+  }
+  animal_import_batches {
+    uuid id PK
+    uuid created_by FK
+  }
+  animal_observations {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid deleted_by FK
+    uuid locked_by FK
+    uuid reviewed_by FK
+  }
+  animal_pathology_reports {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+  }
+  animal_record_attachments {
+    uuid id PK
+  }
+  animal_sacrifices {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid locked_by FK
+  }
+  animal_sources {
+    uuid id PK
+  }
+  animal_sudden_deaths {
+    uuid id PK
+    uuid animal_id FK
+    uuid discovered_by FK
+  }
+  animal_surgeries {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid deleted_by FK
+    uuid locked_by FK
+  }
+  animal_transfers {
+    uuid id PK
+    uuid animal_id FK
+    uuid initiated_by FK
+    uuid rejected_by FK
+  }
+  animal_vaccinations {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid deleted_by FK
+  }
+  animal_vet_advice_records {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid updated_by FK
+  }
+  animal_vet_advices {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid updated_by FK
+  }
+  animal_weights {
+    uuid id PK
+    uuid animal_id FK
+    uuid created_by FK
+    uuid deleted_by FK
+  }
+  animals {
+    uuid id PK
+    uuid created_by FK
+    uuid deleted_by FK
+    uuid experiment_assigned_by FK
+    uuid pen_id FK
+    uuid source_id FK
+    uuid species_id FK
+  }
+  blood_test_panel_items {
+    uuid panel_id PK
+    uuid template_id PK
+  }
+  blood_test_panels {
+    uuid id PK
+  }
+  blood_test_presets {
+    uuid id PK
+  }
+  blood_test_templates {
+    uuid id PK
+  }
+  care_medication_records {
+    uuid id PK
+    uuid deleted_by FK
+    uuid locked_by FK
+  }
+  change_reasons {
+    uuid id PK
+    uuid changed_by FK
+  }
+  euthanasia_appeals {
+    uuid id PK
+    uuid chair_user_id FK
+    uuid order_id FK
+    uuid pi_user_id FK
+  }
+  euthanasia_byproduct_samples {
+    uuid id PK
+    uuid animal_id FK
+    uuid collector_id FK
+    uuid created_by FK
+    uuid euthanasia_id FK
+    uuid requester_user_id FK
+    uuid source_protocol_id FK
+  }
+  euthanasia_orders {
+    uuid id PK
+    uuid animal_id FK
+    uuid executed_by FK
+    uuid pi_user_id FK
+    uuid vet_user_id FK
+  }
+  export_jobs {
+    uuid id PK
+    uuid created_by FK
+  }
+  import_jobs {
+    uuid id PK
+    uuid created_by FK
+  }
+  observation_vet_reads {
+    uuid observation_id PK
+    uuid vet_user_id PK
+  }
+  record_versions {
+    uuid id PK
+    uuid changed_by FK
+  }
+  surgery_vet_reads {
+    uuid surgery_id PK
+    uuid vet_user_id PK
+  }
+  transfer_vet_evaluations {
+    uuid id PK
+    uuid transfer_id FK
+    uuid vet_id FK
+  }
+  vet_recommendations {
+    uuid id PK
+    uuid created_by FK
+  }
+  animal_blood_tests ||--o{ animal_blood_test_items : "blood_test_id"
+  animal_blood_test_items ||--o{ animal_blood_test_items : "superseded_by_id"
+  blood_test_templates ||--o{ animal_blood_test_items : "template_id"
+  animals ||--o{ animal_blood_tests : "animal_id"
+  animals ||--o{ animal_field_correction_requests : "animal_id"
+  animals ||--o{ animal_observations : "animal_id"
+  animals ||--o{ animal_pathology_reports : "animal_id"
+  animals ||--o{ animal_sacrifices : "animal_id"
+  animals ||--o{ animal_sudden_deaths : "animal_id"
+  animals ||--o{ animal_surgeries : "animal_id"
+  animals ||--o{ animal_transfers : "animal_id"
+  animals ||--o{ animal_vaccinations : "animal_id"
+  animals ||--o{ animal_vet_advice_records : "animal_id"
+  animals ||--o{ animal_vet_advices : "animal_id"
+  animals ||--o{ animal_weights : "animal_id"
+  animal_sources ||--o{ animals : "source_id ⚠noidx"
+  blood_test_panels ||--o{ blood_test_panel_items : "panel_id"
+  blood_test_templates ||--o{ blood_test_panel_items : "template_id ⚠noidx"
+  euthanasia_orders ||--o{ euthanasia_appeals : "order_id"
+  animals ||--o{ euthanasia_byproduct_samples : "animal_id"
+  euthanasia_orders ||--o{ euthanasia_byproduct_samples : "euthanasia_id"
+  animals ||--o{ euthanasia_orders : "animal_id"
+  animal_transfers ||--o{ transfer_vet_evaluations : "transfer_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>實驗計畫 (AUP)</b>：業務 JOIN：euthanasia_byproduct_samples.source_protocol_id→protocols</li><li><b>認證 / 權限</b>：審計欄→users：49 個</li><li><b>場館設施</b>：業務 JOIN：animals.pen_id→pens, animals.species_id→species</li></ul></div>
+</section>
+<section id="dom-AUP">
+<h2>實驗計畫 (AUP) <small>（AUP · 19 表）</small></h2>
+<div class="mermaid">erDiagram
+  amendment_review_assignments {
+    uuid id PK
+    uuid amendment_id FK
+    uuid assigned_by FK
+    uuid reviewer_id FK
+  }
+  amendment_status_history {
+    uuid id PK
+    uuid amendment_id FK
+  }
+  amendment_versions {
+    uuid id PK
+    uuid amendment_id FK
+    uuid submitted_by FK
+  }
+  amendments {
+    uuid id PK
+    uuid approved_signature_id FK
+    uuid classified_by FK
+    uuid created_by FK
+    uuid protocol_id FK
+    uuid rejected_signature_id FK
+    uuid submitted_by FK
+  }
+  application_notices {
+    uuid id PK
+    uuid attachment_id FK
+    uuid created_by FK
+  }
+  protocol_activities {
+    uuid id PK
+    uuid actor_id FK
+    uuid protocol_id FK
+  }
+  protocol_ai_reviews {
+    uuid id PK
+    uuid protocol_id FK
+    uuid protocol_version_id FK
+    uuid triggered_by FK
+  }
+  protocol_attachments {
+    uuid id PK
+    uuid protocol_id FK
+    uuid protocol_version_id FK
+    uuid uploaded_by FK
+  }
+  protocol_notice_acknowledgements {
+    uuid id PK
+    uuid notice_attachment_id FK
+    uuid notice_id FK
+    uuid protocol_id FK
+    uuid signature_id FK
+    uuid signer_id FK
+  }
+  protocol_template_versions {
+    uuid id PK
+    uuid created_by FK
+  }
+  protocol_versions {
+    uuid id PK
+    uuid protocol_id FK
+    uuid submitted_by FK
+  }
+  protocols {
+    uuid id PK
+    uuid created_by FK
+    uuid pi_user_id FK
+    uuid study_director_user_id FK
+  }
+  report_history {
+    uuid id PK
+    uuid generated_by FK
+    uuid scheduled_report_id FK
+  }
+  review_assignments {
+    uuid id PK
+    uuid assigned_by FK
+    uuid protocol_id FK
+    uuid reviewer_id FK
+  }
+  review_comments {
+    uuid id PK
+    uuid drafted_by FK
+    uuid parent_comment_id FK
+    uuid protocol_id FK
+    uuid protocol_version_id FK
+    uuid replied_by FK
+    uuid resolved_by FK
+    uuid reviewer_id FK
+  }
+  review_round_history {
+    uuid id PK
+    uuid actor_id FK
+    uuid protocol_id FK
+  }
+  scheduled_reports {
+    uuid id PK
+    uuid created_by FK
+  }
+  user_protocols {
+    uuid user_id PK
+    uuid protocol_id PK
+    uuid granted_by FK
+  }
+  vet_review_assignments {
+    uuid id PK
+    uuid assigned_by FK
+    uuid protocol_id FK
+    uuid vet_id FK
+  }
+  amendments ||--o{ amendment_review_assignments : "amendment_id"
+  amendments ||--o{ amendment_status_history : "amendment_id"
+  amendments ||--o{ amendment_versions : "amendment_id"
+  protocols ||--o{ amendments : "protocol_id"
+  protocols ||--o{ protocol_activities : "protocol_id"
+  protocols ||--o{ protocol_ai_reviews : "protocol_id"
+  protocol_versions ||--o{ protocol_ai_reviews : "protocol_version_id"
+  protocols ||--o{ protocol_attachments : "protocol_id"
+  protocol_versions ||--o{ protocol_attachments : "protocol_version_id"
+  application_notices ||--o{ protocol_notice_acknowledgements : "notice_id"
+  protocols ||--o{ protocol_notice_acknowledgements : "protocol_id"
+  protocols ||--o{ protocol_versions : "protocol_id"
+  scheduled_reports ||--o{ report_history : "scheduled_report_id ⚠noidx"
+  protocols ||--o{ review_assignments : "protocol_id"
+  review_comments ||--o{ review_comments : "parent_comment_id"
+  protocols ||--o{ review_comments : "protocol_id"
+  protocol_versions ||--o{ review_comments : "protocol_version_id"
+  protocols ||--o{ review_round_history : "protocol_id"
+  protocols ||--o{ user_protocols : "protocol_id"
+  protocols ||--o{ vet_review_assignments : "protocol_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：審計欄→users：29 個</li><li><b>通知 / 訊息 / 附件</b>：業務 JOIN：application_notices.attachment_id→attachments, protocol_notice_acknowledgements.notice_attachment_id→attachments</li><li><b>GLP / QA 品保</b>：業務 JOIN：amendments.approved_signature_id→electronic_signatures, amendments.rejected_signature_id→electronic_signatures, protocol_notice_acknowledgements.signature_id→electronic_signatures</li></ul></div>
+</section>
+<section id="dom-VETPATROL">
+<h2>獸醫巡檢 <small>（VETPATROL · 5 表）</small></h2>
+<div class="mermaid">erDiagram
+  vet_patrol_entries {
+    uuid id PK
+    uuid animal_id FK
+    uuid report_id FK
+  }
+  vet_patrol_entry_animals {
+    uuid entry_id PK
+    uuid animal_id PK
+  }
+  vet_patrol_entry_photos {
+    uuid id PK
+    uuid created_by FK
+    uuid entry_id FK
+  }
+  vet_patrol_photos {
+    uuid id PK
+    uuid created_by FK
+    uuid report_id FK
+  }
+  vet_patrol_reports {
+    uuid id PK
+    uuid acknowledged_by_id FK
+    uuid created_by FK
+    uuid follow_up_user_id FK
+    uuid updated_by FK
+  }
+  vet_patrol_reports ||--o{ vet_patrol_entries : "report_id"
+  vet_patrol_entries ||--o{ vet_patrol_entry_animals : "entry_id"
+  vet_patrol_entries ||--o{ vet_patrol_entry_photos : "entry_id"
+  vet_patrol_reports ||--o{ vet_patrol_photos : "report_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>動物管理</b>：業務 JOIN：vet_patrol_entries.animal_id→animals, vet_patrol_entry_animals.animal_id→animals</li><li><b>認證 / 權限</b>：審計欄→users：6 個</li></ul></div>
+</section>
+<section id="dom-HR">
+<h2>人資 / 差勤 <small>（HR · 13 表）</small></h2>
+<div class="mermaid">erDiagram
+  annual_leave_entitlements {
+    uuid id PK
+    uuid created_by FK
+    uuid user_id FK
+  }
+  attendance_records {
+    uuid id PK
+    uuid corrected_by FK
+    uuid user_id FK
+  }
+  calendar_event_sync {
+    uuid id PK
+    uuid leave_request_id FK
+  }
+  calendar_sync_conflicts {
+    uuid id PK
+    uuid calendar_event_sync_id FK
+    uuid leave_request_id FK
+    uuid new_approval_request_id FK
+    uuid resolved_by FK
+  }
+  calendar_sync_history {
+    uuid id PK
+    uuid triggered_by FK
+  }
+  comp_time_balances {
+    uuid id PK
+    uuid overtime_record_id FK
+    uuid user_id FK
+  }
+  departments {
+    uuid id PK
+    uuid manager_id FK
+    uuid parent_id FK
+  }
+  google_calendar_config {
+    uuid id PK
+  }
+  leave_approvals {
+    uuid id PK
+    uuid approver_id FK
+    uuid leave_request_id FK
+  }
+  leave_balance_usage {
+    uuid id PK
+    uuid annual_leave_entitlement_id FK
+    uuid comp_time_balance_id FK
+    uuid leave_request_id FK
+  }
+  leave_requests {
+    uuid id PK
+    uuid annual_leave_source_id FK
+    uuid current_approver_id FK
+    uuid proxy_user_id FK
+    uuid user_id FK
+  }
+  overtime_approvals {
+    uuid id PK
+    uuid approver_id FK
+    uuid overtime_record_id FK
+  }
+  overtime_records {
+    uuid id PK
+    uuid approved_by FK
+    uuid attendance_id FK
+    uuid rejected_by FK
+    uuid user_id FK
+  }
+  leave_requests ||--o{ calendar_event_sync : "leave_request_id"
+  calendar_event_sync ||--o{ calendar_sync_conflicts : "calendar_event_sync_id ⚠noidx"
+  leave_requests ||--o{ calendar_sync_conflicts : "leave_request_id ⚠noidx"
+  leave_requests ||--o{ calendar_sync_conflicts : "new_approval_request_id ⚠noidx"
+  overtime_records ||--o{ comp_time_balances : "overtime_record_id"
+  departments ||--o{ departments : "parent_id"
+  leave_requests ||--o{ leave_approvals : "leave_request_id"
+  annual_leave_entitlements ||--o{ leave_balance_usage : "annual_leave_entitlement_id"
+  comp_time_balances ||--o{ leave_balance_usage : "comp_time_balance_id"
+  leave_requests ||--o{ leave_balance_usage : "leave_request_id"
+  annual_leave_entitlements ||--o{ leave_requests : "annual_leave_source_id"
+  overtime_records ||--o{ overtime_approvals : "overtime_record_id"
+  attendance_records ||--o{ overtime_records : "attendance_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：審計欄→users：16 個</li></ul></div>
+</section>
+<section id="dom-ERP">
+<h2>倉儲 / 財會 (ERP) <small>（ERP · 21 表）</small></h2>
+<div class="mermaid">erDiagram
+  ap_payments {
+    uuid id PK
+    uuid created_by FK
+    uuid journal_entry_id FK
+    uuid partner_id FK
+  }
+  ar_receipts {
+    uuid id PK
+    uuid created_by FK
+    uuid journal_entry_id FK
+    uuid partner_id FK
+  }
+  chart_of_accounts {
+    uuid id PK
+    uuid parent_id FK
+  }
+  document_lines {
+    uuid id PK
+    uuid document_id FK
+    uuid product_id FK
+    uuid storage_location_from_id FK
+    uuid storage_location_id FK
+    uuid storage_location_to_id FK
+  }
+  documents {
+    uuid id PK
+    uuid approved_by FK
+    uuid created_by FK
+    uuid manager_approved_by FK
+    uuid partner_id FK
+    uuid protocol_id FK
+    uuid source_doc_id FK
+    uuid warehouse_from_id FK
+    uuid warehouse_id FK
+    uuid warehouse_to_id FK
+  }
+  expiry_monthly_snapshots {
+    uuid id PK
+    uuid product_id FK
+    uuid warehouse_id FK
+  }
+  inventory_snapshots {
+    uuid warehouse_id PK
+    uuid product_id PK
+  }
+  journal_entries {
+    uuid id PK
+    uuid created_by FK
+  }
+  journal_entry_lines {
+    uuid id PK
+    uuid account_id FK
+    uuid journal_entry_id FK
+  }
+  partners {
+    uuid id PK
+  }
+  product_categories {
+    uuid id PK
+    uuid parent_id FK
+  }
+  product_uom_conversions {
+    uuid id PK
+    uuid product_id FK
+  }
+  products {
+    uuid id PK
+    uuid category_id FK
+    uuid created_by FK
+  }
+  sku_categories {
+    character code PK
+  }
+  sku_sequences {
+    character category_code PK
+    character subcategory_code PK
+  }
+  sku_subcategories {
+    integer id PK
+    character category_code FK
+  }
+  stock_ledger {
+    uuid id PK
+    uuid doc_id FK
+    uuid line_id FK
+    uuid product_id FK
+    uuid storage_location_id FK
+    uuid warehouse_id FK
+  }
+  storage_location_inventory {
+    uuid id PK
+    uuid product_id FK
+    uuid storage_location_id FK
+  }
+  storage_locations {
+    uuid id PK
+    uuid warehouse_id FK
+  }
+  treatment_drug_options {
+    uuid id PK
+    uuid created_by FK
+    uuid erp_product_id FK
+  }
+  warehouses {
+    uuid id PK
+  }
+  journal_entries ||--o{ ap_payments : "journal_entry_id ⚠noidx"
+  partners ||--o{ ap_payments : "partner_id"
+  journal_entries ||--o{ ar_receipts : "journal_entry_id ⚠noidx"
+  partners ||--o{ ar_receipts : "partner_id"
+  chart_of_accounts ||--o{ chart_of_accounts : "parent_id ⚠noidx"
+  documents ||--o{ document_lines : "document_id"
+  products ||--o{ document_lines : "product_id"
+  storage_locations ||--o{ document_lines : "storage_location_from_id"
+  storage_locations ||--o{ document_lines : "storage_location_id"
+  storage_locations ||--o{ document_lines : "storage_location_to_id"
+  partners ||--o{ documents : "partner_id"
+  documents ||--o{ documents : "source_doc_id"
+  warehouses ||--o{ documents : "warehouse_from_id"
+  warehouses ||--o{ documents : "warehouse_id"
+  warehouses ||--o{ documents : "warehouse_to_id"
+  products ||--o{ expiry_monthly_snapshots : "product_id ⚠noidx"
+  warehouses ||--o{ expiry_monthly_snapshots : "warehouse_id ⚠noidx"
+  products ||--o{ inventory_snapshots : "product_id ⚠noidx"
+  warehouses ||--o{ inventory_snapshots : "warehouse_id"
+  chart_of_accounts ||--o{ journal_entry_lines : "account_id ⚠noidx"
+  journal_entries ||--o{ journal_entry_lines : "journal_entry_id"
+  product_categories ||--o{ product_categories : "parent_id"
+  products ||--o{ product_uom_conversions : "product_id"
+  product_categories ||--o{ products : "category_id"
+  sku_categories ||--o{ sku_subcategories : "category_code"
+  documents ||--o{ stock_ledger : "doc_id"
+  document_lines ||--o{ stock_ledger : "line_id"
+  products ||--o{ stock_ledger : "product_id ⚠noidx"
+  storage_locations ||--o{ stock_ledger : "storage_location_id"
+  warehouses ||--o{ stock_ledger : "warehouse_id"
+  products ||--o{ storage_location_inventory : "product_id ⚠noidx"
+  storage_locations ||--o{ storage_location_inventory : "storage_location_id"
+  warehouses ||--o{ storage_locations : "warehouse_id"
+  products ||--o{ treatment_drug_options : "erp_product_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>實驗計畫 (AUP)</b>：業務 JOIN：documents.protocol_id→protocols</li><li><b>認證 / 權限</b>：審計欄→users：8 個</li></ul></div>
+</section>
+<section id="dom-EQUIP">
+<h2>儀器設備 <small>（EQUIP · 9 表）</small></h2>
+<div class="mermaid">erDiagram
+  equipment {
+    uuid id PK
+  }
+  equipment_annual_plans {
+    uuid id PK
+    uuid equipment_id FK
+  }
+  equipment_calibrations {
+    uuid id PK
+    uuid equipment_id FK
+    uuid partner_id FK
+    uuid reference_standard_id FK
+  }
+  equipment_disposals {
+    uuid id PK
+    uuid applicant_signature_id FK
+    uuid applied_by FK
+    uuid approved_by FK
+    uuid approver_signature_id FK
+    uuid equipment_id FK
+  }
+  equipment_idle_requests {
+    uuid id PK
+    uuid applicant_signature_id FK
+    uuid applied_by FK
+    uuid approved_by FK
+    uuid approver_signature_id FK
+    uuid equipment_id FK
+  }
+  equipment_maintenance_records {
+    uuid id PK
+    uuid created_by FK
+    uuid equipment_id FK
+    uuid repair_partner_id FK
+    uuid reviewed_by FK
+    uuid reviewer_signature_id FK
+  }
+  equipment_status_logs {
+    uuid id PK
+    uuid changed_by FK
+    uuid equipment_id FK
+  }
+  equipment_suppliers {
+    uuid id PK
+    uuid equipment_id FK
+    uuid partner_id FK
+  }
+  training_records {
+    uuid id PK
+    uuid user_id FK
+  }
+  equipment ||--o{ equipment_annual_plans : "equipment_id"
+  equipment ||--o{ equipment_calibrations : "equipment_id"
+  equipment ||--o{ equipment_disposals : "equipment_id"
+  equipment ||--o{ equipment_idle_requests : "equipment_id"
+  equipment ||--o{ equipment_maintenance_records : "equipment_id"
+  equipment ||--o{ equipment_status_logs : "equipment_id"
+  equipment ||--o{ equipment_suppliers : "equipment_id"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：審計欄→users：8 個</li><li><b>倉儲 / 財會 (ERP)</b>：業務 JOIN：equipment_calibrations.partner_id→partners, equipment_maintenance_records.repair_partner_id→partners, equipment_suppliers.partner_id→partners</li><li><b>GLP / QA 品保</b>：業務 JOIN：equipment_calibrations.reference_standard_id→reference_standards, equipment_disposals.applicant_signature_id→electronic_signatures, equipment_disposals.approver_signature_id→electronic_signatures, equipment_idle_requests.applicant_signature_id→electronic_signatures, equipment_idle_requests.approver_signature_id→electronic_signatures, equipment_maintenance_records.reviewer_signature_id→electronic_signatures</li></ul></div>
+</section>
+<section id="dom-GLP">
+<h2>GLP / QA 品保 <small>（GLP · 23 表）</small></h2>
+<div class="mermaid">erDiagram
+  change_requests {
+    uuid id PK
+    uuid approved_by FK
+    uuid requested_by FK
+    uuid reviewed_by FK
+    uuid verified_by FK
+  }
+  competency_assessments {
+    uuid id PK
+    uuid assessor_id FK
+    uuid user_id FK
+  }
+  controlled_documents {
+    uuid id PK
+    uuid approved_by FK
+    uuid owner_id FK
+  }
+  document_acknowledgments {
+    uuid id PK
+    uuid document_id FK
+    uuid user_id FK
+  }
+  document_revisions {
+    uuid id PK
+    uuid approved_by FK
+    uuid document_id FK
+    uuid reviewed_by FK
+    uuid revised_by FK
+  }
+  electronic_signatures {
+    uuid id PK
+    uuid invalidated_by FK
+    uuid signer_id FK
+  }
+  environment_monitoring_points {
+    uuid id PK
+    uuid building_id FK
+    uuid zone_id FK
+  }
+  environment_readings {
+    uuid id PK
+    uuid monitoring_point_id FK
+    uuid recorded_by FK
+  }
+  formulation_records {
+    uuid id PK
+    uuid prepared_by FK
+    uuid product_id FK
+    uuid protocol_id FK
+    uuid verified_by FK
+  }
+  management_reviews {
+    uuid id PK
+    uuid chaired_by FK
+  }
+  qa_audit_schedules {
+    uuid id PK
+    uuid created_by FK
+  }
+  qa_capa {
+    uuid id PK
+    uuid assignee_id FK
+    uuid nc_id FK
+  }
+  qa_inspection_items {
+    uuid id PK
+    uuid inspection_id FK
+  }
+  qa_inspections {
+    uuid id PK
+    uuid inspector_id FK
+  }
+  qa_non_conformances {
+    uuid id PK
+    uuid assignee_id FK
+    uuid created_by FK
+    uuid related_inspection_id FK
+  }
+  qa_schedule_items {
+    uuid id PK
+    uuid related_inspection_id FK
+    uuid responsible_person_id FK
+    uuid schedule_id FK
+  }
+  qa_sop_acknowledgments {
+    uuid id PK
+    uuid sop_id FK
+    uuid user_id FK
+  }
+  qa_sop_documents {
+    uuid id PK
+    uuid approved_by FK
+    uuid created_by FK
+    uuid reviewed_by FK
+  }
+  record_annotations {
+    uuid id PK
+    uuid created_by FK
+    uuid signature_id FK
+  }
+  reference_standards {
+    uuid id PK
+    uuid created_by FK
+  }
+  risk_register {
+    uuid id PK
+    uuid owner_id FK
+  }
+  role_training_requirements {
+    uuid id PK
+  }
+  study_final_reports {
+    uuid id PK
+    uuid protocol_id FK
+    uuid qau_signed_by FK
+    uuid signature_id FK
+    uuid signed_by FK
+  }
+  controlled_documents ||--o{ document_acknowledgments : "document_id"
+  controlled_documents ||--o{ document_revisions : "document_id"
+  environment_monitoring_points ||--o{ environment_readings : "monitoring_point_id"
+  qa_non_conformances ||--o{ qa_capa : "nc_id"
+  qa_inspections ||--o{ qa_inspection_items : "inspection_id"
+  qa_inspections ||--o{ qa_non_conformances : "related_inspection_id ⚠noidx"
+  qa_inspections ||--o{ qa_schedule_items : "related_inspection_id ⚠noidx"
+  qa_audit_schedules ||--o{ qa_schedule_items : "schedule_id"
+  qa_sop_documents ||--o{ qa_sop_acknowledgments : "sop_id"
+  electronic_signatures ||--o{ record_annotations : "signature_id ⚠noidx"
+  electronic_signatures ||--o{ study_final_reports : "signature_id ⚠noidx"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>實驗計畫 (AUP)</b>：業務 JOIN：formulation_records.protocol_id→protocols, study_final_reports.protocol_id→protocols</li><li><b>認證 / 權限</b>：審計欄→users：33 個</li><li><b>倉儲 / 財會 (ERP)</b>：業務 JOIN：formulation_records.product_id→products</li><li><b>場館設施</b>：業務 JOIN：environment_monitoring_points.building_id→buildings, environment_monitoring_points.zone_id→zones</li></ul></div>
+</section>
+<section id="dom-FACILITY">
+<h2>場館設施 <small>（FACILITY · 5 表）</small></h2>
+<div class="mermaid">erDiagram
+  buildings {
+    uuid id PK
+    uuid facility_id FK
+  }
+  facilities {
+    uuid id PK
+  }
+  pens {
+    uuid id PK
+    uuid zone_id FK
+  }
+  species {
+    uuid id PK
+    uuid parent_id FK
+  }
+  zones {
+    uuid id PK
+    uuid building_id FK
+  }
+  facilities ||--o{ buildings : "facility_id"
+  zones ||--o{ pens : "zone_id"
+  species ||--o{ species : "parent_id"
+  buildings ||--o{ zones : "building_id"</div>
+
+</section>
+<section id="dom-COMMS">
+<h2>通知 / 訊息 / 附件 <small>（COMMS · 9 表）</small></h2>
+<div class="mermaid">erDiagram
+  attachments {
+    uuid id PK
+    uuid uploaded_by FK
+  }
+  message_attachments {
+    uuid id PK
+    uuid message_id FK
+    uuid uploaded_by FK
+  }
+  message_thread_participants {
+    uuid thread_id PK
+    uuid user_id PK
+  }
+  message_threads {
+    uuid id PK
+    uuid created_by FK
+  }
+  messages {
+    uuid id PK
+    uuid sender_id FK
+    uuid thread_id FK
+  }
+  notification_routing {
+    uuid id PK
+    varchar role_code FK
+  }
+  notification_settings {
+    uuid user_id PK
+  }
+  notifications {
+    uuid id PK
+    uuid user_id FK
+  }
+  pdf_artifacts {
+    uuid id PK
+    uuid attachment_id FK
+    uuid electronic_signature_id FK
+    uuid generated_by FK
+  }
+  messages ||--o{ message_attachments : "message_id"
+  message_threads ||--o{ message_thread_participants : "thread_id"
+  message_threads ||--o{ messages : "thread_id"
+  attachments ||--o{ pdf_artifacts : "attachment_id ⚠noidx"</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：業務 JOIN：notification_routing.role_code→roles ；審計欄→users：8 個</li><li><b>GLP / QA 品保</b>：業務 JOIN：pdf_artifacts.electronic_signature_id→electronic_signatures</li></ul></div>
+</section>
+<section id="dom-AIQA">
+<h2>AI 問答 <small>（AIQA · 1 表）</small></h2>
+<div class="mermaid">erDiagram
+  ai_api_keys {
+    uuid id PK
+    uuid created_by FK
+  }</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：審計欄→users：1 個</li></ul></div>
+</section>
+<section id="dom-CORE">
+<h2>系統核心 / 設定 <small>（CORE · 3 表）</small></h2>
+<div class="mermaid">erDiagram
+  event_outbox {
+    uuid id PK
+    uuid enqueued_by FK
+  }
+  expiry_notification_config {
+    uuid id PK
+    uuid updated_by FK
+  }
+  system_settings {
+    varchar key PK
+    uuid updated_by FK
+  }</div>
+<div class=cross><h4>跨域外鍵（指向其他領域）</h4><ul><li><b>認證 / 權限</b>：審計欄→users：3 個</li></ul></div>
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+  mermaid.initialize({ startOnLoad:true, theme:"dark", er:{ layoutDirection:"LR" }, flowchart:{ curve:"basis" }, securityLevel:"strict", maxTextSize:200000, maxEdges:2000 });
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dialog 寬度盤點清單</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;--accent:#7c3aed;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif;line-height:1.55;}
+  header{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;padding:24px 28px;}
+  header h1{margin:0 0 4px;font-size:20px;} header p{margin:0;opacity:.9;font-size:13px;}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 28px 80px;}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 16px;position:sticky;top:0;background:var(--bg);padding:10px 0;z-index:5;border-bottom:1px solid var(--line);}
+  .bar b{font-size:13px;margin-right:4px;}
+  .f{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 11px;cursor:pointer;user-select:none;}
+  .f.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .f.chg-w{border-color:#0891b2;color:#0891b2;} .f.chg-n{border-color:#d97706;color:#d97706;} .f.chg-0{border-color:#16a34a;color:#16a34a;}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px;}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);}
+  th{background:#f3f4f6;font-weight:600;position:sticky;top:54px;z-index:4;}
+  tr:hover td{background:#faf9ff;}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:#f3f4f6;border-radius:4px;padding:1px 5px;}
+  .tgt{font-weight:700;}
+  .tgt.sm{color:#64748b}.tgt.md{color:#7c3aed}.tgt.lg{color:#2563eb}.tgt.xl{color:#0891b2}.tgt.x2{color:#16a34a}
+  .chg{font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;}
+  .chg.same{background:#dcfce7;color:#166534}.chg.wider{background:#cffafe;color:#155e75}.chg.narrow{background:#fef3c7;color:#92400e}
+  .summary{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:13px;}
+  .summary b{color:var(--accent);}
+  .count{font-size:12px;color:var(--muted);margin:6px 0 0;}
+  details{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;}
+  summary{cursor:pointer;font-weight:600;font-size:13px;}
+  .names{font-size:12px;color:var(--muted);columns:2;margin-top:8px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dialog 寬度盤點 — 現在分別用在哪些對話框</h1>
+  <p>159 個 dialog／~16 種寬度。下表列出「非預設」與會變動的對話框，並標出提案歸入的標準與變化。預設 max-w-lg 的 ~74 個標準表單一律 → md（不變），收於最下方摺疊區。</p>
+</header>
+<div class="wrap">
+
+  <div class="summary">
+    <b>提案 5 標準</b>：sm(448) · md(512，預設) · lg(672) · xl(896) · 2xl(1152)。
+    下表 <span class="chg same">不變</span> = 寬度不動、<span class="chg wider">變寬</span> / <span class="chg narrow">變窄</span> = 遷移時寬度會調整（這些要你特別看一眼）。
+  </div>
+
+  <div class="bar" id="bar">
+    <b>篩選：</b>
+    <span class="f active" data-f="all">全部</span>
+    <span class="f chg-0" data-f="same">只看不變</span>
+    <span class="f chg-w" data-f="wider">只看變寬</span>
+    <span class="f chg-n" data-f="narrow">只看變窄</span>
+    <span class="f" data-t="sm">→sm</span>
+    <span class="f" data-t="md">→md</span>
+    <span class="f" data-t="lg">→lg</span>
+    <span class="f" data-t="xl">→xl</span>
+    <span class="f" data-t="x2">→2xl</span>
+  </div>
+  <p class="count" id="count"></p>
+
+  <table>
+    <thead><tr><th>對話框</th><th>推測用途</th><th>現用寬度</th><th>提案</th><th>變化</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <details>
+    <summary>預設 max-w-lg 的 ~74 個標準表單／確認框（全部 → md，不變）</summary>
+    <div class="names">
+      AmendmentStatusDialog · AmendmentClassifyDialog · WarehouseActionHeader · ConfirmPasswordModal · DocumentsPage · DocumentEditPage · DocumentDetailPage · CalendarSyncSettingsPage · WeightsTab · MyProjectsPage · ReviewersTab · VaccinationsTab · WarehouseLayoutPage · ProductDetailPage · PathologyTab · PartnerFormDialog · CommentsTab · StudyFinalReportPage · RiskRegisterPage · ProductDialogs · BatchAssignDialog · NoticeAcknowledgementCard · ApplicationNoticesTab · EnvironmentMonitoringPage · ChangeControlPage · DocumentControlPage · AnimalFieldCorrectionsPage · ProtocolTemplateVersionsTab · ManagementReviewPage · StatusChangeDialog · CompetencyAssessmentPage · PasswordChangeDialog · FormulationRecordsPage · AiApiKeySection · BuildingTab · DepartmentTab · CreateAiKeyDialog · EquipmentTabContent · FacilityTab · IpBlocklistTab · PenTab · SpeciesTab · TrainingFormDialog · UserCreateDialog · UserDeleteDialog · UserEditDialog · ZoneTab · UserResetPasswordDialog · UserRolesDialog · Ar/ApAgingTab · UnsavedChangesDialog · DataExportImportCard …
+    </div>
+  </details>
+
+</div>
+<script>
+  // current → proposed bucket。chg: same/wider/narrow（以 px 比較）
+  const D=[
+    // ---- 現用 max-w-lg(顯式 28) → md，不變 ----
+    ['DashboardSettingsDialog','儀表板設定','max-w-lg(512)','md','same'],
+    ['WarehouseImportDialog','倉庫匯入','max-w-lg(512)','md','same'],
+    ['RoleSignatureDialog','角色簽章','max-w-lg(512)','md','same'],
+    ['ErpImportDialog','ERP 匯入','max-w-lg(512)','md','same'],
+    ['ByproductSampleDialog','副產物檢體','max-w-lg(512)','md','same'],
+    ['EuthanasiaOrderDialog','安樂死單','max-w-lg(512)','md','same'],
+    ['EuthanasiaPendingPanel','安樂死待辦','max-w-lg(512)','md','same'],
+    ['EuthanasiaChairArbitrationPanel','安樂死主席仲裁','max-w-lg(512)','md','same'],
+    ['EmergencyMedicationDialog','緊急用藥','max-w-lg(512)','md','same'],
+    ['ExportDialog','匯出','max-w-lg(512)','md','same'],
+    ['CreateRoutingDialog','通知路由新增','max-w-lg(512)','md','same'],
+    ['EditRoutingDialog','通知路由編輯','max-w-lg(512)','md','same'],
+    ['CalibrationFormDialog','校正表單','max-w-lg(512)','md','same'],
+    ['DisposalFormDialog','廢棄處置','max-w-lg(512)','md','same'],
+    ['EquipmentFormDialog','設備表單','max-w-lg(512)','md','same'],
+    ['MaintenanceFormDialog','維護表單','max-w-lg(512)','md','same'],
+    ['MaintenanceReviewDialog','維護審核','max-w-lg(512)','md','same'],
+    ['InvitationCreateDialog','邀請建立','max-w-lg(512)','md','same'],
+    ['InvalidateSignatureDialog','作廢簽章','max-w-lg(512)','md','same'],
+    ['BatchCreatePenDialog','批次建欄','max-w-lg(512)','md','same'],
+    ['PartnerImportDialog','夥伴匯入','max-w-lg(512)','md','same'],
+    // ---- 小尺寸 → sm ----
+    ['delete-reason-dialog','刪除原因','sm:max-w-md(448)','sm','same'],
+    ['DuplicateWarningDialog','重複警告','sm:max-w-md(448)','sm','same'],
+    ['RequestCorrectionDialog','要求更正','sm:max-w-md(448)','sm','same'],
+    ['StaffReviewAssistPanel','人員審查輔助','sm:max-w-md(448)','sm','same'],
+    ['McpKeysSection (確認)','MCP 金鑰確認','sm:max-w-sm(384)','sm','wider'],
+    ['TwoFactorSetup (確認)','2FA 確認','max-w-sm(384)','sm','wider'],
+    ['TwoFactorSetup (設定)','2FA 設定','max-w-md(448)','sm','same'],
+    ['HrAnnualLeavePage','年假申請','max-w-md(448)','sm','same'],
+    ['AssignToShelfDialog','指派儲位','max-w-md(448)','sm','same'],
+    ['DrugFormDialog','藥品表單','max-w-md(448)','sm','same'],
+    ['QuickAddDialog','快速新增動物','max-w-md(448)','sm','same'],
+    ['SuddenDeathDialog','猝死單','sm:max-w-[500px]','sm','narrow'],
+    ['CreateOvertimeDialog','加班申請','sm:max-w-[500px]','sm','narrow'],
+    ['CreateLeaveDialog','請假申請','sm:max-w-[500px]','sm','narrow'],
+    ['BloodTestTemplateFormDialog','血檢範本','sm:max-w-[500px]','sm','narrow'],
+    ['BloodTestPresetsPage','血檢預設','sm:max-w-[500px]','sm','narrow'],
+    ['BloodTestPanelFormDialog','血檢套組表單','sm:max-w-[450px]','sm','same'],
+    ['BloodTestPanelsPage (新增)','血檢套組','sm:max-w-[425px]','sm','wider'],
+    // ---- 中大 → lg ----
+    ['AnimalAddDialog','新增動物','max-w-2xl(672)','lg','same'],
+    ['QuickEditAnimalDialog','快速編輯動物','max-w-2xl(672)','lg','same'],
+    ['VetRecommendationDialog','獸醫建議','max-w-2xl(672)','lg','same'],
+    ['ProductSearchDialog','產品搜尋','max-w-2xl(672)','lg','same'],
+    ['SkuPreviewBlock','SKU 預覽','max-w-2xl(672)','lg','same'],
+    ['VersionHistoryDialog','版本歷史','max-w-2xl(672)','lg','same'],
+    ['HistoricalAmendmentDialog','歷史變更','max-w-2xl(672)','lg','same'],
+    ['CorrectBloodTestItemDialog','血檢項更正','max-w-2xl(672)','lg','same'],
+    ['MaintenanceHistoryDialog','維護歷史','max-w-2xl(672)','lg','same'],
+    ['QASchedulePage','QA 排程','max-w-2xl(672)','lg','same'],
+    ['QAInspectionPage','QA 巡檢','max-w-2xl(672)','lg','same'],
+    ['SacrificeFormDialog','犧牲紀錄','max-w-3xl(768)','lg','narrow'],
+    ['ObservationFormDialog','觀察紀錄','max-w-3xl(768)','lg','narrow'],
+    ['BloodTestDetailDialog','血檢明細','max-w-3xl(768)','lg','narrow'],
+    ['BloodTestItemHistoryDialog','血檢項歷史','max-w-3xl(768)','lg','narrow'],
+    ['ActivityLogDetailDialog','活動紀錄明細','max-w-3xl(768)','lg','narrow'],
+    ['VersionsTab','版本分頁','max-w-3xl(768)','lg','narrow'],
+    ['MessagingPage','站內訊息','max-w-[860px]','lg','narrow'],
+    // ---- 寬/多欄 → xl ----
+    ['ImportDialog (匯入體重)','體重批次+手動登錄','max-w-xl→xl','xl','wider'],
+    ['RolesPage (權限矩陣)','角色權限','max-w-4xl(896)','xl','same'],
+    ['AddPersonnelDialog','新增人員','max-w-4xl(896)','xl','same'],
+    ['EditCategoriesDialog','編輯分類','max-w-4xl(896)','xl','same'],
+    ['BloodTestFormDialog','血檢表單','max-w-4xl(896)','xl','same'],
+    ['ProductImportDialog','產品匯入','max-w-4xl(896)','xl','same'],
+    ['PdfExportButtons','PDF 匯出預覽','sm:max-w-4xl(896)','xl','same'],
+    ['VetPatrolReportView','巡場報告檢視','max-w-[900px]','xl','same'],
+    ['VetPatrolReportDialog','巡場報告','max-w-[1100px]','x2','wider'],
+    // ---- 資料密集 → 2xl ----
+    ['ProtocolComparisonDialog','計畫書比對','max-w-5xl(1024)','x2','wider'],
+    ['AuditLogDetailDialog','稽核紀錄明細','max-w-5xl + w-[90vw]','x2','wider'],
+    ['AuditAlertDetailDialog','稽核警示明細','max-w-5xl + w-[90vw]','x2','wider'],
+    ['SurgeryFormDialog','手術表單','w-[90vw] max-w-[1200px]','x2','narrow'],
+  ];
+  const rows=document.getElementById('rows'), count=document.getElementById('count');
+  let fChg='all', fTgt=null;
+  const CHGTXT={same:'不變',wider:'變寬',narrow:'變窄'};
+  function render(){
+    rows.innerHTML='';
+    let n=0;
+    D.forEach(([name,use,cur,tgt,chg])=>{
+      if(fChg!=='all' && chg!==fChg) return;
+      if(fTgt && tgt!==fTgt) return;
+      n++;
+      const tr=document.createElement('tr');
+      const tgtLabel={sm:'sm',md:'md',lg:'lg',xl:'xl',x2:'2xl'}[tgt];
+      tr.innerHTML='<td><b>'+name+'</b></td><td>'+use+'</td><td><code>'+cur+'</code></td>'+
+        '<td class="tgt '+tgt+'">'+tgtLabel+'</td>'+
+        '<td><span class="chg '+chg+'">'+CHGTXT[chg]+'</span></td>';
+      rows.appendChild(tr);
+    });
+    count.textContent='顯示 '+n+' / '+D.length+' 個（另有 ~74 個預設 max-w-lg 標準表單 → md 不變，見下方摺疊）';
+  }
+  document.getElementById('bar').addEventListener('click',e=>{
+    const el=e.target.closest('.f'); if(!el) return;
+    if(el.dataset.f){ fChg=el.dataset.f; fTgt=null; }
+    else if(el.dataset.t){ fTgt = (fTgt===el.dataset.t? null : el.dataset.t); }
+    document.querySelectorAll('.f').forEach(x=>x.classList.remove('active'));
+    if(el.dataset.f) el.classList.add('active');
+    if(fTgt) document.querySelector('.f[data-t="'+fTgt+'"]').classList.add('active');
+    render();
+  });
+  render();
+</script>
+</body>
+</html>

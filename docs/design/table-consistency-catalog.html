@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系統表格清冊 · 視覺一致性稽核</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --ink:#161a1d; --ink2:#3a424a; --mut:#6b7480; --line:#e4e7eb; --bg:#f4f6f8; --card:#fff;
+    --teal:#0e766a; --teal-bg:#e7f3f0;
+    --ok:#15803d; --ok-bg:#e7f6ec; --warn:#b45309; --warn-bg:#fbf1e3; --bad:#c0392b; --bad-bg:#fbeae7;
+  }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.5; }
+  .mono { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .wrap { max-width:1240px; margin:0 auto; padding:0 20px 60px; }
+  /* header */
+  header { background:var(--ink); color:#fff; padding:26px 0 22px; margin-bottom:22px; }
+  header .wrap { padding-bottom:0; }
+  h1 { margin:0 0 4px; font-size:22px; letter-spacing:.01em; }
+  .sub { color:#9aa4ae; font-size:13px; margin:0; }
+  /* summary cards */
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin:18px 0 6px; }
+  .cardstat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; min-width:118px; }
+  .cardstat .n { font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .cardstat .l { font-size:12px; color:var(--mut); margin-top:2px; }
+  .cardstat.ok .n{color:var(--ok);} .cardstat.warn .n{color:var(--warn);} .cardstat.bad .n{color:var(--bad);}
+  /* priority box */
+  .prio { background:#fff; border:1px solid var(--line); border-left:4px solid var(--bad); border-radius:10px; padding:14px 18px; margin:16px 0 8px; }
+  .prio h3 { margin:0 0 8px; font-size:14.5px; }
+  .prio ol { margin:0; padding-left:20px; }
+  .prio li { margin:4px 0; font-size:13px; }
+  .prio b { color:var(--bad); }
+  .tag { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; background:var(--teal-bg); color:var(--teal); }
+  /* filters */
+  .filters { position:sticky; top:0; z-index:5; background:var(--bg); padding:12px 0 10px; margin-top:14px; border-bottom:1px solid var(--line); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .fbtn { border:1px solid var(--line); background:#fff; color:var(--ink2); border-radius:999px; padding:5px 13px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+  .fbtn:hover { border-color:#c4cad0; }
+  .fbtn.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .fbtn.on.ok{background:var(--ok);border-color:var(--ok);} .fbtn.on.warn{background:var(--warn);border-color:var(--warn);} .fbtn.on.bad{background:var(--bad);border-color:var(--bad);}
+  #q { border:1px solid var(--line); border-radius:8px; padding:6px 11px; font-size:13px; font-family:inherit; min-width:160px; margin-left:auto; }
+  .count { font-size:12px; color:var(--mut); }
+  /* table */
+  .tablewrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; margin-top:12px; }
+  table { border-collapse:collapse; width:100%; min-width:960px; font-size:13px; }
+  thead th { position:sticky; top:0; background:#f0f2f4; text-align:left; font-weight:600; color:var(--ink2); font-size:12px;
+    padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; cursor:pointer; user-select:none; }
+  thead th:hover { color:var(--ink); }
+  thead th.nos { cursor:default; }
+  tbody td { padding:8px 12px; border-bottom:1px solid #eef0f2; vertical-align:middle; }
+  tbody tr:hover { background:#f9fafb; }
+  tbody tr.basis { background:var(--teal-bg); }
+  tbody tr.basis:hover { background:#dceee9; }
+  .fname { font-size:12px; color:var(--mut); }
+  .nm { font-weight:600; }
+  .pill { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+  .p-ok{background:var(--ok-bg);color:var(--ok);} .p-warn{background:var(--warn-bg);color:var(--warn);} .p-bad{background:var(--bad-bg);color:var(--bad);} .p-basis{background:var(--teal);color:#fff;}
+  .yes{color:var(--ok);font-weight:700;} .no{color:var(--bad);font-weight:700;} .part{color:var(--warn);font-weight:700;}
+  .cat { font-size:11.5px; color:var(--ink2); background:#eef1f4; border-radius:6px; padding:1px 7px; white-space:nowrap; }
+  .hard { font-size:11px; font-weight:700; padding:1px 7px; border-radius:6px; }
+  .hard.cell{background:var(--bad-bg);color:var(--bad);} .hard.hex{background:var(--bad-bg);color:var(--bad);} .hard.btn{background:var(--warn-bg);color:var(--warn);} .hard.typo{background:var(--warn-bg);color:var(--warn);} .hard.none{color:#c4cad0;}
+  .note { font-size:12px; color:var(--ink2); max-width:340px; }
+  footer { margin-top:26px; font-size:12.5px; color:var(--mut); }
+  footer b{color:var(--ink2);}
+  h2 { font-size:16px; margin:26px 0 6px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>系統表格清冊 · 視覺一致性稽核</h1>
+  <p class="sub">91 張表格 vs 基準「使用者管理 UserTable」。主軸＝整體視覺一致性（手機為另議）。點欄位標題可排序、上方可篩選。</p>
+</div></header>
+
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <div class="prio">
+    <h3>🔧 統一化優先順序（照投報比排）</h3>
+    <ol>
+      <li><b>P0 硬編色 Badge 調色盤</b> ── 一群 GLP/admin 頁共病：<span class="mono">ChangeControl · StudyFinalReport · EnvironmentMonitoring · RiskRegister · ManagementReview · CompetencyAssessment · DocumentControl</span> 用 <span class="mono">bg-green-100/bg-yellow-100/bg-red-100/bg-blue-100</span> 直接塞 Badge className（違反 DESIGN.md）。＋ <span class="mono">InventoryRow</span>(dark:text-orange/amber)、<span class="mono">AnalysisChartTabs</span>(CHART_COLORS hex)。<b>改成 Badge variant / status-* token 即可</b>。</li>
+      <li><b>P1 表頭缺 bg-muted/50 底色</b> ── 最普遍的小落差（~25 張）。最集中的一組＝<span class="mono">facility 家族</span>(Pen/Zone/Species/Facility/Building) 與 4 個 <span class="mono">QA 頁</span>。加一個底色 class 即可。</li>
+      <li><b>P2 空/載入態未用共用元件</b> ── ~20 張自刻（Loader2 / 純文字 / EmptyState），應收斂到共用 <span class="mono">TableSkeleton + TableEmptyRow</span>。</li>
+      <li><b>P3 原生 &lt;table&gt; 明細</b> ── <span class="mono">QASchedule · QANonConformance · SurgeriesTab</span> 的展開列用原生 HTML table，完全脫離設計系統。</li>
+      <li><b>反哺基準</b> ── <span class="mono">BloodTestTab · AttendanceHistory</span> 的 @container 表格/卡片雙視圖、<span class="mono">AuditActivities</span> 的 Badge variant 查表、<span class="mono">StatusBadge</span> 語意元件，比 UserTable 更進階，可反過來升級基準。</li>
+    </ol>
+  </div>
+
+  <div class="filters">
+    <button class="fbtn on" data-lv="all">全部</button>
+    <button class="fbtn ok" data-lv="0">一致</button>
+    <button class="fbtn warn" data-lv="1">小差異</button>
+    <button class="fbtn bad" data-lv="2">明顯不一致</button>
+    <span style="width:1px;height:20px;background:var(--line);margin:0 2px"></span>
+    <button class="fbtn" data-cat="all">全類別</button>
+    <button class="fbtn" data-cat="CRUD">CRUD操作表</button>
+    <button class="fbtn" data-cat="報表">唯讀報表</button>
+    <button class="fbtn" data-cat="明細">明細Tab</button>
+    <button class="fbtn" data-cat="Dialog">Dialog小表</button>
+    <button class="fbtn" data-hard="1">只看硬編色</button>
+    <input id="q" placeholder="搜尋表格名 / 檔名…">
+  </div>
+  <div class="count" id="count" style="margin-top:8px"></div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th data-k="name">表格 ▾</th>
+        <th data-k="area">功能區</th>
+        <th data-k="cat">類別</th>
+        <th data-k="header">表頭底色</th>
+        <th data-k="sort">排序</th>
+        <th data-k="status" class="nos">狀態呈現</th>
+        <th data-k="empty">空/載入態</th>
+        <th data-k="hard">硬編色</th>
+        <th data-k="lv">一致度</th>
+        <th data-k="note" class="nos">備註</th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+
+  <h2>圖例</h2>
+  <footer>
+    <b>表頭底色 / 排序</b>：<span class="yes">✓</span> 有 ｜ <span class="part">◑</span> 部分 ｜ <span class="no">✗</span> 缺。
+    <b>空/載入態</b>：共用＝用 TableSkeleton+TableEmptyRow；自訂＝自刻 Loader2/文字/EmptyState；無＝資料恆有故無空態。
+    <b>硬編色</b>：<span class="hard cell">cell</span> 狀態格違規（真違規） ｜ <span class="hard hex">hex</span> 色碼 ｜ <span class="hard btn">btn</span> 動作按鈕殘留（非表格本體） ｜ <span class="hard typo">typo</span> 疑似壞 class。
+    <b>一致度</b>：<span class="pill p-ok">一致</span> 幾乎對齊基準 ｜ <span class="pill p-warn">小差異</span> 少數落差 ｜ <span class="pill p-bad">明顯不一致</span> 結構性偏離。
+    <br><br>註：分頁除 UserTable / Audit(AuditPagination) 外幾乎全無 —— 報表多用合計列/CSV 匯出取代，屬合理取捨，<b>不列為統一標準</b>。多個「明顯不一致」屬語意合理偏離（矩陣、可編輯輸入表、圖表），已在備註標明。
+  </footer>
+</div>
+
+<script>
+// level 0=一致 1=小差異 2=明顯不一致 ; header/sort: 1=有 0.5=部分 0=缺 ; empty: '共用'/'自訂'/'無'/'半共用'
+const D = [
+ {basis:1,name:'使用者管理',file:'UserTable.tsx',area:'admin',cat:'CRUD',header:1,sort:1,status:'Badge token',empty:'共用',hard:'none',lv:0,note:'★ 基準表格'},
+ // batch1
+ {name:'部門清單',file:'DepartmentTab.tsx',area:'admin',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'完全複製基準 pattern'},
+ {name:'部門成員',file:'DepartmentMembersDialog.tsx',area:'admin',cat:'Dialog',header:1,sort:0,status:'—',empty:'共用',hard:'none',lv:0,note:'Dialog 內表，結構循基準'},
+ {name:'血檢分類',file:'BloodTestPanelsPage.tsx',area:'master',cat:'CRUD',header:1,sort:1,status:'Badge(outline)',empty:'共用',hard:'none',lv:0,note:'狀態用 outline 非 secondary 小分歧'},
+ {name:'血檢常用組合',file:'BloodTestPresetsPage.tsx',area:'master',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'同 Panels 同模'},
+ {name:'品項選擇器',file:'ProductSearchDialog.tsx',area:'documents',cat:'Dialog',header:0,sort:0.5,status:'文字',empty:'自訂',hard:'none',lv:2,note:'多模式選擇器、密度自訂、空態手刻'},
+ {name:'員工特休額度',file:'HrAnnualLeavePage.tsx',area:'hr',cat:'報表',header:0,sort:1,status:'Badge/StatusBadge混',empty:'自訂',hard:'none',lv:1,note:'表頭缺底色、載入用 spinner'},
+ {name:'動物來源',file:'AnimalSourcesPage.tsx',area:'animal',cat:'CRUD',header:1,sort:1,status:'StatusBadge',empty:'共用',hard:'none',lv:0,note:'StatusBadge 等效元件'},
+ {name:'年度校正矩陣',file:'AnnualPlanTabContent.tsx',area:'admin',cat:'報表',header:0,sort:0.5,status:'icon',empty:'自訂',hard:'none',lv:2,note:'月曆矩陣非清單，合理偏離'},
+ {name:'SOP 文件',file:'QASopPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge',empty:'自訂',hard:'cell',lv:2,note:'QA群組：無底色/無排序/手刻空態＋text-green-600'},
+ {name:'稽查排程',file:'QASchedulePage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge',empty:'自訂',hard:'none',lv:2,note:'展開明細用原生 <table>'},
+ {name:'不符合事項NC',file:'QANonConformancePage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge',empty:'自訂',hard:'none',lv:2,note:'CAPA 明細用原生 <table>'},
+ {name:'稽查報告',file:'QAInspectionPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge',empty:'自訂',hard:'none',lv:2,note:'QA群組共病'},
+ {name:'計畫變更申請',file:'AmendmentsTab.tsx',area:'protocol',cat:'明細',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'高度對齊，欄寬用 inline style'},
+ {name:'計畫版本歷史',file:'VersionsTab.tsx',area:'protocol',cat:'明細',header:1,sort:1,status:'—',empty:'自訂',hard:'cell',lv:1,note:'空態手刻＋提示條 border-blue-100'},
+ {name:'血檢明細',file:'BloodTestDetailDialog.tsx',area:'animal',cat:'Dialog',header:0,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'表頭缺底色、載入 spinner'},
+ {name:'血檢編輯',file:'BloodTestFormDialog.tsx',area:'animal',cat:'Dialog',header:0,sort:0,status:'—',empty:'自訂',hard:'none',lv:2,note:'可編輯輸入表，合理偏離'},
+ // batch2
+ {name:'邀請管理',file:'InvitationsPage.tsx',area:'admin',cat:'CRUD',header:1,sort:0,status:'Badge token',empty:'共用',hard:'none',lv:0,note:'唯無排序'},
+ {name:'固定通知',file:'FixedNotificationsSection.tsx',area:'admin',cat:'報表',header:1,sort:0,status:'ChannelBadge',empty:'無',hard:'none',lv:1,note:'純唯讀無排序/空態'},
+ {name:'通知路由規則',file:'RoutingTable.tsx',area:'admin',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'空態自訂 h-24、載入缺'},
+ {name:'計畫書清單',file:'ProtocolListTab.tsx',area:'protocol',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'幾乎完全對齊'},
+ {name:'ERP 小表(儀表板)',file:'ErpWidgets.tsx',area:'dashboard',cat:'報表',header:0,sort:0,status:'Badge/StatusBadge',empty:'自訂',hard:'none',lv:2,note:'卡片內嵌小表、載入 Loader2'},
+ {name:'低庫存彙總',file:'LowStockTotalTable.tsx',area:'inventory',cat:'報表',header:0,sort:0,status:'自訂span',empty:'自訂',hard:'none',lv:2,note:'表頭 bg-muted/30、狀態非 Badge 元件'},
+ {name:'庫存查詢',file:'InventoryPage.tsx',area:'inventory',cat:'報表',header:0,sort:1,status:'—',empty:'自訂',hard:'none',lv:2,note:'bg-muted/30+font-semibold+rounded-xl'},
+ {name:'我的變更申請',file:'MyAmendmentsPage.tsx',area:'amendments',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'齊全，僅無分頁'},
+ {name:'委員投票名冊',file:'AmendmentVoteRoster.tsx',area:'protocol',cat:'明細',header:1,sort:0,status:'Badge',empty:'共用',hard:'none',lv:0,note:'含 @container 卡片'},
+ {name:'PI 帳號開通',file:'PiAccountInvitesTab.tsx',area:'protocol',cat:'CRUD',header:1,sort:0,status:'—',empty:'共用',hard:'none',lv:0,note:'無狀態欄與排序'},
+ {name:'單據明細',file:'DocumentDetailPage.tsx',area:'documents',cat:'明細',header:0,sort:1,status:'Badge(頂部)',empty:'無',hard:'none',lv:1,note:'明細表表頭無底色'},
+ {name:'動物欄位修正審核',file:'AnimalFieldCorrectionsPage.tsx',area:'admin',cat:'CRUD',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'齊全'},
+ {name:'變更控制(ISO)',file:'ChangeControlPage.tsx',area:'admin',cat:'CRUD',header:1,sort:0,status:'Badge硬編',empty:'共用',hard:'cell',lv:2,note:'★ STATUS_COLORS 大量 bg-blue/yellow/green/red-100'},
+ {name:'申請須知版本',file:'ApplicationNoticesTab.tsx',area:'protocol',cat:'CRUD',header:1,sort:0,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'載入用 Loader2'},
+ {name:'我的計畫',file:'MyProjectsPage.tsx',area:'my-projects',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'齊全+@container 卡片'},
+ // batch3
+ {name:'庫存流水',file:'StockLedgerPage.tsx',area:'inventory',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'完全套用共用元件'},
+ {name:'庫存流水報表',file:'StockLedgerReportPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'表格本體標準'},
+ {name:'庫存明細列',file:'InventoryRow.tsx',area:'inventory',cat:'明細',header:0.5,sort:0,status:'手刻span',empty:'無',hard:'cell',lv:2,note:'不用 Badge、dark:text-orange/amber 硬編'},
+ {name:'會計傳票',file:'JournalEntriesTab.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:1,note:'每傳票一卡+內嵌明細，結構特殊'},
+ {name:'教育訓練紀錄',file:'TrainingRecordsTab.tsx',area:'admin',cat:'CRUD',header:0,sort:1,status:'—',empty:'自訂',hard:'none',lv:1,note:'表頭缺底色、spinner+EmptyState'},
+ {name:'動物清單',file:'AnimalListTable.tsx',area:'animal',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'自訂排序表頭、EmptyState、md:table-cell'},
+ {name:'稽核警示',file:'AuditAlertsTab.tsx',area:'admin',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'自訂 SortableHead 但視覺等同'},
+ {name:'稽核日誌',file:'AuditLogTable.tsx',area:'admin',cat:'報表',header:1,sort:1,status:'Badge(className token)',empty:'共用',hard:'none',lv:1,note:'事件 Badge 用 className 帶色；TODO @container'},
+ {name:'研究最終報告',file:'StudyFinalReportPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge硬編',empty:'自訂',hard:'cell',lv:2,note:'★ STATUS_COLORS yellow/green/blue-100'},
+ {name:'環境監控',file:'EnvironmentMonitoringPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge硬編',empty:'自訂',hard:'cell',lv:2,note:'★ 啟用/超標 Badge 硬編 green/red-100'},
+ {name:'體重紀錄',file:'WeightsTab.tsx',area:'animal',cat:'明細',header:1,sort:1,status:'—',empty:'自訂',hard:'btn',lv:1,note:'表格標準+卡片RWD；按鈕 purple/green'},
+ {name:'疫苗/驅蟲紀錄',file:'VaccinationsTab.tsx',area:'animal',cat:'明細',header:1,sort:1,status:'—',empty:'自訂',hard:'btn',lv:1,note:'同上；按鈕 purple'},
+ {name:'疼痛評估',file:'PainAssessmentTab.tsx',area:'animal',cat:'明細',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'唯讀 Tab 中最貼齊基準'},
+ {name:'病理報告附件',file:'PathologyTab.tsx',area:'animal',cat:'明細',header:1,sort:1,status:'—',empty:'自訂',hard:'btn',lv:1,note:'標準+卡片RWD；按鈕 purple/green'},
+ {name:'手術紀錄',file:'SurgeriesTab.tsx',area:'animal',cat:'明細',header:1,sort:0.5,status:'Badge(className)',empty:'自訂',hard:'btn',lv:1,note:'展開列原生<table>；按鈕 purple'},
+ // batch4
+ {name:'登入事件稽核',file:'AuditLoginsTab.tsx',area:'admin',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'完全對齊+AuditPagination'},
+ {name:'使用中 Session',file:'AuditSessionsTab.tsx',area:'admin',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'含強制登出動作'},
+ {name:'操作稽核日誌',file:'AuditActivitiesTab.tsx',area:'admin',cat:'報表',header:1,sort:1,status:'Badge(查表)',empty:'共用',hard:'none',lv:0,note:'Badge variant 查表化，最佳實踐'},
+ {name:'欄舍',file:'PenTab.tsx',area:'admin',cat:'CRUD',header:0,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'facility家族：無底色、Loader2+noData'},
+ {name:'區域',file:'ZoneTab.tsx',area:'admin',cat:'CRUD',header:0,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'facility家族'},
+ {name:'物種',file:'SpeciesTab.tsx',area:'admin',cat:'CRUD',header:0,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'facility家族'},
+ {name:'IP 封鎖清單',file:'IpBlocklistTab.tsx',area:'admin',cat:'CRUD',header:1,sort:0,status:'Badge',empty:'共用',hard:'none',lv:1,note:'bg-muted/50 掛 TableHeader 層'},
+ {name:'設施',file:'FacilityTab.tsx',area:'admin',cat:'CRUD',header:0,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'facility家族'},
+ {name:'建築',file:'BuildingTab.tsx',area:'admin',cat:'CRUD',header:0,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'facility家族'},
+ {name:'AI API 金鑰',file:'AiApiKeySection.tsx',area:'admin',cat:'CRUD',header:0,sort:0.5,status:'Badge+Switch',empty:'自訂',hard:'none',lv:2,note:'載入/空態走頁級元件'},
+ {name:'儲位庫存(3表)',file:'WarehouseDetailTabs.tsx',area:'warehouse',cat:'明細',header:0,sort:1,status:'文字',empty:'自訂',hard:'typo',lv:2,note:'密集佈局、sticky表頭、bg-status-warning-bg0壞class'},
+ {name:'計畫書範本版本',file:'ProtocolTemplateVersionsTab.tsx',area:'protocol',cat:'CRUD',header:1,sort:0,status:'Badge',empty:'半共用',hard:'none',lv:1,note:'表頭對齊但無排序'},
+ {name:'血液檢查紀錄',file:'BloodTestTab.tsx',area:'animal',cat:'明細',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:1,note:'@container 雙視圖(較基準進階)'},
+ {name:'血檢異常值警示',file:'BloodTestAnalysisPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'底色',empty:'無',hard:'none',lv:1,note:'截前20筆非分頁'},
+ {name:'出勤歷史',file:'AttendanceHistoryTab.tsx',area:'hr',cat:'明細',header:0,sort:1,status:'StatusBadge',empty:'共用',hard:'none',lv:1,note:'StatusBadge語意元件+@container雙視圖'},
+ // batch5
+ {name:'風險登記簿',file:'RiskRegisterPage.tsx',area:'admin',cat:'CRUD',header:1,sort:0,status:'Badge硬編',empty:'共用',hard:'cell',lv:2,note:'★ riskScoreColor green/yellow/red-100'},
+ {name:'管理審查',file:'ManagementReviewPage.tsx',area:'admin',cat:'CRUD',header:1,sort:0,status:'Badge硬編',empty:'共用',hard:'cell',lv:2,note:'★ STATUS_COLORS yellow/green/blue-100'},
+ {name:'配製紀錄',file:'FormulationRecordsPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'文字',empty:'自訂',hard:'none',lv:2,note:'GLP群組：無底色、手寫空載入態'},
+ {name:'能力評鑑',file:'CompetencyAssessmentPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge硬編',empty:'自訂',hard:'cell',lv:2,note:'★ RESULT_COLORS green/red/yellow-100'},
+ {name:'文件控制',file:'DocumentControlPage.tsx',area:'admin',cat:'CRUD',header:0,sort:0,status:'Badge硬編',empty:'自訂',hard:'cell',lv:2,note:'★ STATUS_COLORS yellow/green/blue/red-100'},
+ {name:'單據明細編輯',file:'DocumentLineEditor.tsx',area:'documents',cat:'Dialog',header:0,sort:0,status:'—',empty:'自訂',hard:'none',lv:2,note:'可編輯輸入表，合理偏離'},
+ {name:'應付帳款帳齡',file:'ApAgingTab.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'高度一致'},
+ {name:'應收帳款帳齡',file:'ArAgingTab.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'高度一致'},
+ {name:'審查委員',file:'ReviewersTab.tsx',area:'protocol',cat:'明細',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'含 @container 卡片，符合基準'},
+ {name:'附件',file:'AttachmentsTab.tsx',area:'protocol',cat:'明細',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'含 @container 卡片'},
+ {name:'獸醫師建議',file:'VetRecommendationsTab.tsx',area:'animal',cat:'明細',header:1,sort:1,status:'—',empty:'共用',hard:'btn',lv:1,note:'僅按鈕 hover:bg-green-700'},
+ {name:'觀察試驗紀錄',file:'ObservationsTab.tsx',area:'animal',cat:'明細',header:1,sort:0.5,status:'Badge',empty:'自訂',hard:'btn',lv:1,note:'sticky操作欄；按鈕 purple'},
+ {name:'QAU 儀表板(3小表)',file:'QAUDashboardPage.tsx',area:'admin',cat:'報表',header:0,sort:1,status:'—',empty:'自訂',hard:'none',lv:1,note:'表頭無底色、SkeletonPulse手刻'},
+ {name:'產品主檔',file:'ProductTable.tsx',area:'master',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'自訂',hard:'none',lv:1,note:'質感高但空/載入態自成一套'},
+ {name:'日曆衝突',file:'ConflictsTab.tsx',area:'hr',cat:'明細',header:0,sort:1,status:'Badge',empty:'半共用',hard:'none',lv:1,note:'表頭缺底色、載入手寫'},
+ // batch6
+ {name:'全部加班紀錄',file:'AllRecordsTabContent.tsx',area:'hr',cat:'報表',header:0,sort:1,status:'StatusBadge',empty:'自訂',hard:'none',lv:1,note:'表頭缺底色、載入文字'},
+ {name:'單據清單',file:'DocumentTable.tsx',area:'documents',cat:'CRUD',header:1,sort:1,status:'Badge/StatusBadge',empty:'共用',hard:'none',lv:0,note:'標準+card view'},
+ {name:'庫存現況',file:'StockOnHandReportPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'銷貨明細',file:'SalesLinesReportPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'進銷貨彙總',file:'PurchaseSalesSummaryPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'採購明細',file:'PurchaseLinesReportPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'成本摘要',file:'CostSummaryReportPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'試算表',file:'TrialBalanceTab.tsx',area:'reports',cat:'明細',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'損益表',file:'ProfitLossTab.tsx',area:'reports',cat:'明細',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'血檢費用',file:'BloodTestCostReportPage.tsx',area:'reports',cat:'報表',header:1,sort:1,status:'—',empty:'共用',hard:'none',lv:0,note:'一致'},
+ {name:'夥伴清單',file:'PartnerTable.tsx',area:'master',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:1,note:'無 @container/card view'},
+ {name:'血檢範本',file:'BloodTestTemplateTable.tsx',area:'master',cat:'CRUD',header:1,sort:1,status:'Badge',empty:'共用',hard:'none',lv:1,note:'自訂 SortIndicator、分組摺疊'},
+ {name:'計畫人員',file:'PersonnelSection.tsx',area:'protocol',cat:'明細',header:1,sort:0,status:'—',empty:'無',hard:'none',lv:1,note:'靜態內容、dual view'},
+ {name:'審查意見',file:'CommentsTableView.tsx',area:'protocol',cat:'明細',header:1,sort:0.5,status:'Badge',empty:'無',hard:'none',lv:1,note:'巢狀分組、dual view'},
+ {name:'血檢分析(圖+表)',file:'AnalysisChartTabs.tsx',area:'reports',cat:'報表',header:0,sort:1,status:'底色',empty:'無',hard:'hex',lv:2,note:'圖表為主；CHART_COLORS hex 色碼'},
+];
+
+const lvMap = {0:['一致','p-ok'],1:['小差異','p-warn'],2:['明顯不一致','p-bad']};
+const yn = v => v===1?'<span class="yes">✓</span>':v===0.5?'<span class="part">◑</span>':'<span class="no">✗</span>';
+const hardTxt = {none:'—',cell:'cell',hex:'hex',btn:'btn',typo:'typo'};
+let flt={lv:'all',cat:'all',hard:0,q:''}, sortK='lv', sortDir=1;
+
+function render(){
+  let rows = D.filter(d=>{
+    if(flt.lv!=='all' && d.lv!=+flt.lv) return false;
+    if(flt.cat!=='all' && d.cat!==flt.cat) return false;
+    if(flt.hard && (d.hard==='none')) return false;
+    if(flt.q){ const s=(d.name+d.file).toLowerCase(); if(!s.includes(flt.q.toLowerCase())) return false; }
+    return true;
+  });
+  rows.sort((a,b)=>{
+    if(a.basis) return -1; if(b.basis) return 1;
+    let va=a[sortK], vb=b[sortK];
+    if(typeof va==='string'){ return va.localeCompare(vb,'zh')*sortDir; }
+    return (va-vb)*sortDir;
+  });
+  const tb=document.getElementById('tb');
+  tb.innerHTML = rows.map(d=>{
+    const [lt,lc]=lvMap[d.lv];
+    const lvPill = d.basis?'<span class="pill p-basis">基準</span>':`<span class="pill ${lc}">${lt}</span>`;
+    return `<tr class="${d.basis?'basis':''}">
+      <td><div class="nm">${d.name}</div><div class="fname mono">${d.file}</div></td>
+      <td><span class="cat">${d.area}</span></td>
+      <td>${d.cat}</td>
+      <td style="text-align:center">${yn(d.header)}</td>
+      <td style="text-align:center">${yn(d.sort)}</td>
+      <td>${d.status}</td>
+      <td>${d.empty}</td>
+      <td><span class="hard ${d.hard}">${hardTxt[d.hard]}</span></td>
+      <td>${lvPill}</td>
+      <td class="note">${d.note}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('count').textContent = `顯示 ${rows.length} / ${D.length} 張`;
+}
+function cards(){
+  const t=D.length, c0=D.filter(d=>d.lv===0).length, c1=D.filter(d=>d.lv===1).length, c2=D.filter(d=>d.lv===2).length;
+  const hc=D.filter(d=>d.hard==='cell'||d.hard==='hex').length;
+  document.getElementById('cards').innerHTML=`
+    <div class="cardstat"><div class="n">${t}</div><div class="l">表格總數</div></div>
+    <div class="cardstat ok"><div class="n">${c0}</div><div class="l">一致</div></div>
+    <div class="cardstat warn"><div class="n">${c1}</div><div class="l">小差異</div></div>
+    <div class="cardstat bad"><div class="n">${c2}</div><div class="l">明顯不一致</div></div>
+    <div class="cardstat bad"><div class="n">${hc}</div><div class="l">硬編色違規(cell/hex)</div></div>`;
+}
+document.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>{
+  if(b.dataset.lv!==undefined){ flt.lv=b.dataset.lv; document.querySelectorAll('[data-lv]').forEach(x=>x.classList.toggle('on',x===b)); }
+  if(b.dataset.cat!==undefined){ flt.cat=b.dataset.cat; document.querySelectorAll('[data-cat]').forEach(x=>x.classList.toggle('on',x===b)); }
+  if(b.dataset.hard!==undefined){ flt.hard=flt.hard?0:1; b.classList.toggle('on',flt.hard); }
+  render();
+}));
+document.getElementById('q').addEventListener('input',e=>{flt.q=e.target.value;render();});
+document.querySelectorAll('thead th[data-k]:not(.nos)').forEach(th=>th.addEventListener('click',()=>{
+  const k=th.dataset.k; if(sortK===k) sortDir*=-1; else {sortK=k; sortDir=1;} render();
+}));
+cards(); render();
+</script>
+</body>
+</html>

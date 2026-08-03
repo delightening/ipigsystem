@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>量體重 · 順便施打登錄 版面預覽</title>
+<style>
+  :root{
+    --primary: hsl(217 91% 60%);
+    --primary-bg: hsl(217 91% 96%);
+    --border: hsl(214 20% 88%);
+    --muted-fg: hsl(215 16% 47%);
+    --fg: hsl(222 47% 11%);
+    --success: hsl(142 71% 35%);
+    --success-bg: hsl(142 71% 96%);
+    --card: #fff;
+    --bg: hsl(210 40% 98%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--fg);padding:28px;font-size:14px;line-height:1.5}
+  h1{font-size:17px;margin:0 0 4px}
+  .sub{color:var(--muted-fg);font-size:13px;margin:0 0 20px}
+  .panel{max-width:820px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:14px;margin-top:2px}
+  .panel-head .title{font-weight:600}
+  .date-wrap{display:flex;align-items:center;gap:8px}
+  .date-wrap label{font-size:12px;color:var(--muted-fg)}
+  input,select{font:inherit;color:var(--fg)}
+  .field{height:38px;border:1px solid var(--border);border-radius:8px;padding:0 11px;background:#fff;width:100%}
+  .field:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-bg)}
+  .date-input{height:32px;width:160px;border:1px solid var(--border);border-radius:8px;padding:0 10px}
+  .rows{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+
+  .row{border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .row-main{display:flex;align-items:flex-start;gap:12px}
+  .col-ear{flex:1;min-width:0}
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,monospace}
+  .verify{margin-top:6px;display:flex;align-items:center;gap:6px;font-size:12px}
+  .verify.ok{color:var(--success)}
+  .verify .dot{width:14px;height:14px;border-radius:50%;background:var(--success);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px}
+  .verify .muted{color:var(--muted-fg)}
+
+  .add-med{margin-top:8px}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:var(--primary);
+    border:1px dashed var(--primary);background:var(--primary-bg);border-radius:999px;padding:4px 11px;cursor:pointer}
+  .chip.on{border-style:solid;background:var(--primary);color:#fff}
+
+  .history{display:flex;gap:18px;padding-top:2px}
+  .history .cell{min-width:50px;text-align:center}
+  .history .d{font-size:11px;color:var(--muted-fg)}
+  .history .v{font-size:14px;font-weight:600}
+  .history .v.empty{color:hsl(215 16% 75%)}
+
+  .col-weight{width:104px;flex:none}
+  .col-weight .lbl{font-size:10px;color:var(--muted-fg);margin-bottom:2px}
+  .weight-input{text-align:center}
+  .del{width:34px;height:34px;flex:none;border:none;background:transparent;color:var(--muted-fg);border-radius:8px;cursor:pointer;font-size:16px}
+  .del:hover{background:hsl(0 70% 96%);color:hsl(0 70% 50%)}
+
+  /* 施打展開區 */
+  .med{margin-top:12px;border-top:1px dashed var(--border);padding-top:12px}
+  .med-title{font-size:12px;font-weight:600;color:var(--primary);margin-bottom:9px;display:flex;align-items:center;gap:6px}
+  .med-grid{display:grid;grid-template-columns:130px 1fr 84px 90px 120px;gap:9px;align-items:end}
+  .med-grid .g label{display:block;font-size:11px;color:var(--muted-fg);margin-bottom:4px}
+  .drug-box{display:flex;align-items:center;height:38px;border:1px solid var(--border);border-radius:8px;padding:0 10px;color:var(--muted-fg);gap:7px;background:#fff}
+  .pill{width:15px;height:15px;border-radius:50%;border:2px solid var(--primary);flex:none}
+  .med-hint{margin-top:8px;font-size:11px;color:var(--muted-fg)}
+  .legend{max-width:820px;margin:16px auto 0;font-size:12px;color:var(--muted-fg)}
+  .legend b{color:var(--fg)}
+  @media(max-width:680px){.med-grid{grid-template-columns:1fr 1fr}.history{display:none}}
+</style>
+</head>
+<body>
+  <h1>量體重 — 手動逐筆登錄「順便施打」版面預覽</h1>
+  <p class="sub">展開鈕在<b>耳號輸入欄後面</b>；施打欄位往下展開（同耳號、同測量日期）。此為靜態版面示意，非可操作元件。</p>
+
+  <div class="panel">
+    <div class="panel-head">
+      <span class="title">手動逐筆登錄</span>
+      <div class="date-wrap">
+        <label>測量日期</label>
+        <input class="date-input" type="date" value="2026-07-20">
+      </div>
+    </div>
+
+    <div class="rows">
+      <!-- 第 1 列：未展開施打 -->
+      <div class="row">
+        <div class="row-main">
+          <div class="col-ear">
+            <input class="field mono" value="A-1024" readonly>
+            <div class="verify ok">
+              <span class="dot">✓</span><span style="font-weight:600">存在</span>
+              <span class="muted">· 0731 · 蘭嶼豬 · 實驗中｜IACUC-114-01 · A-03</span>
+            </div>
+            <div class="add-med"><span class="chip">＋ 施打</span></div>
+          </div>
+          <div class="history">
+            <div class="cell"><div class="d">7/6</div><div class="v">31.2kg</div></div>
+            <div class="cell"><div class="d">7/13</div><div class="v">33.0kg</div></div>
+            <div class="cell"><div class="d">—</div><div class="v empty">—</div></div>
+          </div>
+          <div class="col-weight">
+            <div class="lbl">今天 (kg)</div>
+            <input class="field weight-input" type="number" value="34.5">
+          </div>
+          <button class="del" title="刪除此列">🗑</button>
+        </div>
+      </div>
+
+      <!-- 第 2 列：已展開施打 -->
+      <div class="row">
+        <div class="row-main">
+          <div class="col-ear">
+            <input class="field mono" value="A-1025" readonly>
+            <div class="verify ok">
+              <span class="dot">✓</span><span style="font-weight:600">存在</span>
+              <span class="muted">· 0732 · 蘭嶼豬 · 實驗中｜IACUC-114-01 · A-03</span>
+            </div>
+            <div class="add-med"><span class="chip on">✕ 施打</span></div>
+          </div>
+          <div class="history">
+            <div class="cell"><div class="d">7/6</div><div class="v">29.8kg</div></div>
+            <div class="cell"><div class="d">7/13</div><div class="v">31.5kg</div></div>
+            <div class="cell"><div class="d">—</div><div class="v empty">—</div></div>
+          </div>
+          <div class="col-weight">
+            <div class="lbl">今天 (kg)</div>
+            <input class="field weight-input" type="number" value="32.9">
+          </div>
+          <button class="del" title="刪除此列">🗑</button>
+        </div>
+
+        <!-- 展開的施打欄位 -->
+        <div class="med">
+          <div class="med-title" style="justify-content:space-between">
+            <span>💉 施打紀錄（量體重順便，選填）</span>
+            <span style="font-size:12px;font-weight:500;color:hsl(0 70% 50%);cursor:pointer">清除施打 ✕</span>
+          </div>
+          <div class="med-grid">
+            <div class="g">
+              <label>藥品類別</label>
+              <select class="field">
+                <option>抗生素</option><option>驅蟲藥</option><option>其他</option>
+              </select>
+            </div>
+            <div class="g">
+              <label>藥品名稱</label>
+              <div class="drug-box"><span class="pill"></span>Amoxicillin</div>
+            </div>
+            <div class="g">
+              <label>劑量</label>
+              <input class="field" value="5" style="text-align:center">
+            </div>
+            <div class="g">
+              <label>單位</label>
+              <select class="field"><option>mg/kg</option><option>mg</option><option>mL</option></select>
+            </div>
+            <div class="g">
+              <label>施打途徑</label>
+              <select class="field">
+                <option>IM 肌肉注射</option><option>IV 靜脈注射</option>
+                <option>SC 皮下注射</option><option>PO 口服</option>
+              </select>
+            </div>
+          </div>
+          <div class="med-hint">※ 填了藥品名稱就必須填劑量（成套）；此列仍必須有有效體重才能送出。<br>
+          ※ 誤按「＋施打」：沒填東西時再點「✕ 施打」收合即可，不會送出施打；已填想反悔按右上「清除施打」一鍵清空。</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <span class="chip" style="border-style:solid;border-color:var(--border);color:var(--fg);background:#fff">＋ 新增一列</span>
+    </div>
+  </div>
+
+  <p class="legend">
+    <b>互動說明：</b>「＋ 施打」在耳號驗證訊息下方 → 點一下展開該列施打欄位、變成「✕ 施打」可收合。
+    施打欄位全為選填；一旦填了藥名則劑量必填。體重仍是送出的必要條件（施打依附體重，不能只送施打）。
+  </p>
+</body>
+</html>

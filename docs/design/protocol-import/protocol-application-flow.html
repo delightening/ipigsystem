@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>計劃書申請審查流程 — 實際業務 vs 系統現況 對照</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --text:#e6e9ef; --muted:#9aa3b2;
+    --real:#4f8cff; --real-bg:#16233f; --real-bd:#27406e;
+    --sys:#36c08a; --sys-bg:#10271f; --sys-bd:#1c4d3a;
+    --ok:#36c08a; --gap:#ff6b6b; --gap-bg:#2a1414; --partial:#caa14a; --partial-bg:#2a2310;
+    --imp:#b48cff; --imp-bg:#1f1733; --imp-bd:#4a3a6e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI","Noto Sans CJK TC",system-ui,sans-serif;line-height:1.5;padding:28px}
+  h1{font-size:21px;margin:0 0 4px}
+  h2.sec{font-size:16px;margin:34px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:20px;font-size:12px;color:var(--muted)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .badge{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;vertical-align:middle}
+  .b-ok{background:#10271f;color:var(--ok);border:1px solid var(--sys-bd)}
+  .b-gap{background:var(--gap-bg);color:var(--gap);border:1px solid #5a2020}
+  .b-partial{background:var(--partial-bg);color:var(--partial);border:1px solid #5a4a1f}
+
+  /* 對照表頭 */
+  .grid{max-width:1080px;margin:0 auto}
+  .ghead{display:grid;grid-template-columns:1fr 56px 1fr;gap:14px;margin-bottom:8px}
+  .ghead .col{font-size:14px;font-weight:600;padding:8px 12px;border-radius:8px;text-align:center}
+  .ghead .real{background:var(--real-bg);border:1px solid var(--real-bd);color:#cfe0ff}
+  .ghead .sys{background:var(--sys-bg);border:1px solid var(--sys-bd);color:#cdeede}
+  .ghead .mid{background:transparent}
+
+  .row{display:grid;grid-template-columns:1fr 56px 1fr;gap:14px;align-items:stretch;margin:6px 0}
+  .cell{border-radius:8px;padding:9px 12px;font-size:13px;border:1px solid var(--line);position:relative}
+  .cell.real{background:var(--real-bg);border-color:var(--real-bd)}
+  .cell.sys{background:var(--sys-bg);border-color:var(--sys-bd)}
+  .cell.empty{background:#16161a;border:1px dashed #3a2222;color:var(--gap);display:flex;align-items:center;justify-content:center;font-size:12px}
+  .cell b{font-weight:600}
+  .cell small{display:block;color:var(--muted);font-size:11.5px;margin-top:3px}
+  .cell .fld{font:11px/1.4 ui-monospace,Consolas,monospace;color:#8fa0c8}
+  .mid{display:flex;align-items:center;justify-content:center}
+  .link{font-size:18px}
+  .link.ok{color:var(--ok)} .link.gap{color:var(--gap)} .link.partial{color:var(--partial)}
+  .step-no{position:absolute;top:-8px;left:-8px;width:20px;height:20px;border-radius:50%;
+    background:#222733;border:1px solid var(--line);font-size:11px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+
+  /* 落差表 */
+  table{border-collapse:collapse;width:100%;max-width:1080px;margin:0 auto;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#1b1f28;color:#cfd6e4;font-weight:600}
+  td code{background:#11141b;padding:1px 5px;border-radius:4px;font-size:11.5px;color:#8fa0c8}
+
+  /* 匯入路徑 */
+  .pipe{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+  .pstep{background:var(--imp-bg);border:1px solid var(--imp-bd);border-radius:8px;padding:10px 14px;font-size:13px}
+  .pstep b{color:#cdb8ff}
+  .pstep small{display:block;color:var(--muted);font-size:11.5px;margin-top:3px}
+  .pstep .fld{font:11px/1.4 ui-monospace,Consolas,monospace;color:#a99cd0}
+  .parrow{text-align:center;color:var(--muted);font-size:16px}
+  .note{max-width:1080px;margin:18px auto 0;background:var(--partial-bg);border:1px solid #5a4a1f;border-radius:10px;padding:12px 16px;font-size:12.5px}
+  .note b{color:var(--partial)}
+  @media(max-width:760px){
+    .ghead,.row{grid-template-columns:1fr;gap:6px}
+    .ghead .mid,.mid{display:none}
+  }
+</style>
+</head>
+<body>
+  <h1>計劃書申請審查流程 — 實際業務 vs 系統現況 對照</h1>
+  <div class="sub">
+    左軸：依實體歸檔重建的<b>實際業務流程</b>（<code>計劃書匯入\PIG-109/110</code> 各計劃資料夾的編號子目錄 + 收件證明 + 修正單 + 結案報告）。
+    右軸：<b>系統現況</b>（protocols 狀態機 + import-approved，依 2026-06-11 程式碼）。中欄符號表示對應關係。
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--real)"></span>實際業務流程（紙本/電子歸檔）</span>
+    <span><span class="dot" style="background:var(--sys)"></span>系統現況</span>
+    <span><span class="badge b-ok">對應</span> 系統已支援</span>
+    <span><span class="badge b-partial">部分</span> 系統有但不完整</span>
+    <span><span class="badge b-gap">缺口</span> 系統無此環節</span>
+  </div>
+
+  <!-- ============ Section 1: 雙軸對照 ============ -->
+  <h2 class="sec">① 流程雙軸對照</h2>
+  <div class="grid">
+    <div class="ghead">
+      <div class="col real">實際業務流程（委託單位 / 執秘 / IACUC）</div>
+      <div class="col mid"></div>
+      <div class="col sys">系統現況（protocols 狀態機）</div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">1</span><b>填寫動物試驗申請表</b>
+        <small>常見多版本、多日期（…1125 → 1204 → 1209）</small>
+        <span class="fld">1-申請表\ (xlsx / docx / pdf)</span></div>
+      <div class="mid"><span class="link ok">→</span></div>
+      <div class="cell sys"><b>DRAFT</b> 編輯計劃內容
+        <small>PI 線上填表、暫存</small>
+        <span class="fld">protocols.working_content (JSONB)</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">2</span><b>簽署「申請須知簽名檔」</b>
+        <small>聲明已閱讀並同意《動物試驗申請須知》（含版本，如 2019年9月修訂版）</small>
+        <span class="fld">2-申請須知簽名檔\ (pdf)</span></div>
+      <div class="mid"><span class="link gap">✗</span></div>
+      <div class="cell empty">系統無此環節 — 無須知文件、無同意簽署、submit 不檢查 <span class="badge b-gap" style="margin-left:6px">缺口</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">3</span><b>收件 → 開立「收件證明」</b>
+        <small>指派 APIG 申請編號（例 APIG-109033）</small>
+        <span class="fld">APIG-xxx_收件證明 (doc/pdf)</span></div>
+      <div class="mid"><span class="link partial">≈</span></div>
+      <div class="cell sys"><b>SUBMITTED</b> 自動生編號 + 版本快照
+        <small>系統生 APIG，但<b>不產出「收件證明」文件</b></small>
+        <span class="fld">application_no · protocol_versions</span>
+        <span class="badge b-partial">部分</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">4</span><b>執行秘書行政預審</b>
+        <small>形式/完整性檢查</small></div>
+      <div class="mid"><span class="link ok">→</span></div>
+      <div class="cell sys"><b>PRE_REVIEW</b>
+        <small>執秘預審意見</small>
+        <span class="fld">review_comments (stage=PRE_REVIEW)</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">5</span><b>獸醫師審查</b>
+        <small>動物福祉、麻醉、疼痛等級、安樂死方式</small></div>
+      <div class="mid"><span class="link ok">→</span></div>
+      <div class="cell sys"><b>VET_REVIEW</b>
+        <small>獸醫評比表 + 意見</small>
+        <span class="fld">vet_review_assignments (review_form)</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">6</span><b>IACUC 委員審查 → 審查意見回覆表</b>
+        <small>多輪：委員逐項意見 + 申請人回覆（…1125 → 1201 → 1204 → 1209 → 1222 → 1230）</small>
+        <span class="fld">4-審查意見回覆表\ + 收件證明含審查過程</span></div>
+      <div class="mid"><span class="link ok">→</span></div>
+      <div class="cell sys"><b>UNDER_REVIEW</b>
+        <small>委員一審/二審意見、含申請人回覆(reply)、項次(section_no)</small>
+        <span class="fld">review_comments (reply · section_no)</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">7</span><b>修訂 / 補件循環</b>
+        <small>退回補件 → 重送（動物實驗申請表修正單）</small>
+        <span class="fld">…申請表修正單 / 修正須知</span></div>
+      <div class="mid"><span class="link ok">↺</span></div>
+      <div class="cell sys"><b>REVISION_REQUIRED → RESUBMITTED</b>
+        <small>多輪往返</small>
+        <span class="fld">protocol_status_history</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">8</span><b>核准 → 指派 PIG 計劃編號</b>
+        <small>例 PIG-110002（資料夾名前綴）</small>
+        <span class="fld">資料夾確認表 / 目錄</span></div>
+      <div class="mid"><span class="link ok">→</span></div>
+      <div class="cell sys"><b>APPROVED</b>
+        <small>核准日；委員簽章</small>
+        <span class="fld">iacuc_no · approved_at · electronic_signatures</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">9</span><b>執行期間管理</b>
+        <small>人員教育訓練、實驗人員名單臨時新增</small>
+        <span class="fld">動物實驗人員教育訓練 / D.名單臨時新增.xlsx</span></div>
+      <div class="mid"><span class="link partial">≈</span></div>
+      <div class="cell sys">amendments（變更）+ 人員 / 動物模組
+        <small>教育訓練紀錄綁定？人員新增走 amendment？需確認覆蓋度</small>
+        <span class="badge b-partial">部分</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell real"><span class="step-no">10</span><b>結案報告</b>
+        <small>例 IBD98-M12-結案報告-Final.docx</small></div>
+      <div class="mid"><span class="link partial">≈</span></div>
+      <div class="cell sys"><b>CLOSED</b>
+        <small>狀態關閉，但<b>無結構化結案報告</b>產出/上傳</small>
+        <span class="badge b-partial">部分</span></div>
+    </div>
+  </div>
+
+  <!-- ============ Section 2: 落差總表 ============ -->
+  <h2 class="sec">② 落差總表（系統 vs 實際流程）</h2>
+  <table>
+    <tr><th style="width:130px">環節</th><th style="width:80px">狀態</th><th>系統現況</th><th>改善方向</th></tr>
+    <tr>
+      <td>申請須知 + 須知簽名</td>
+      <td><span class="badge b-gap">缺口</span></td>
+      <td>完全無：無須知文件版本管理、無申請人同意簽署、submit 不檢查</td>
+      <td><b>本次實作（已裁定）</b>：全院共用「須知版本表」（版次制）+ 申請人<b>手寫電子簽章</b>（複用 signature_bridge）+ submit 前驗證已簽當前生效版本</td>
+    </tr>
+    <tr>
+      <td>收件證明</td>
+      <td><span class="badge b-partial">部分</span></td>
+      <td>SUBMITTED 自動生 APIG 編號，但不產出「收件證明」文件</td>
+      <td>可選：收件時產出收件證明 PDF（後續評估）</td>
+    </tr>
+    <tr>
+      <td>執行期間：教育訓練 / 人員新增</td>
+      <td><span class="badge b-partial">部分</span></td>
+      <td>人員/動物模組 + amendment，但與「教育訓練紀錄」「臨時名單」對應度待確認</td>
+      <td>盤點覆蓋度（後續）</td>
+    </tr>
+    <tr>
+      <td>結案報告</td>
+      <td><span class="badge b-partial">部分</span></td>
+      <td>CLOSED 狀態存在，但無結構化結案報告文件產出/上傳</td>
+      <td>可選：結案報告附件 / 範本（後續）</td>
+    </tr>
+    <tr>
+      <td>審查里程碑時間軸</td>
+      <td><span class="badge b-ok">對應</span></td>
+      <td>import-approved 已支援 backfill：申請→預審→獸醫→委員一審→補件→委員二審→核准</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>委員意見 + 申請人回覆</td>
+      <td><span class="badge b-ok">對應</span></td>
+      <td>import-reviews 支援院外審查者姓名 + reply + section_no</td>
+      <td>—（收件證明裡的審查過程可灌入此處）</td>
+    </tr>
+  </table>
+
+  <!-- ============ Section 3: 匯入路徑 ============ -->
+  <h2 class="sec">③ 舊計劃匯入路徑（歸檔資料夾 → 系統）</h2>
+  <div class="pipe">
+    <div class="pstep"><b>0. 取版</b> — 每個 PIG 資料夾挑出「核准前最後一版申請表」
+      <small>去除 ~$ 暫存鎖檔 / Thumbs.db；多日期版本取最新（如 1230 &gt; 1209）</small>
+      <span class="fld">來源：1-申請表\ 最新版 + 9-附件</span></div>
+    <div class="parrow">▼</div>
+    <div class="pstep"><b>1. import-approved</b> — 建立 APPROVED + import_pending 計劃
+      <small>title / iacuc_no(PIG-xxx) / application_no(APIG-xxx) / PI / SD / 起迄日 + 7 個審查里程碑日期</small>
+      <span class="fld">POST /api/v1/protocols/import-approved</span></div>
+    <div class="parrow">▼</div>
+    <div class="pstep"><b>2. 補登內容</b> — import_pending 期間直接編輯 working_content
+      <small>把申請表抓出的 PI / 動物數 / 設計方法等填入</small>
+      <span class="fld">PUT /api/v1/protocols/{id}</span></div>
+    <div class="parrow">▼</div>
+    <div class="pstep"><b>3. import-reviews</b> — 補登審查意見（收件證明的審查過程）
+      <small>執秘意見 / 委員一審二審意見 + 申請人回覆 / 獸醫評比</small>
+      <span class="fld">POST /api/v1/protocols/{id}/import-reviews</span></div>
+    <div class="parrow">▼</div>
+    <div class="pstep"><b>4. finalize-import</b> — 建 v1 版本快照 + 清 import_pending
+      <small>原計劃書版本號（如 v2.1）</small>
+      <span class="fld">POST /api/v1/protocols/{id}/finalize-import</span></div>
+  </div>
+
+  <div class="note">
+    <b>⚠️ 匯入時的須知簽名缺口</b>：步驟 0–4 不包含「申請須知簽名」（2-申請須知簽名檔），因系統目前無處可放。
+    本次將先補上須知功能（落差表第 1 列），匯入流程才能完整承接歸檔內容。流程圖確認後進入實作。
+  </div>
+</body>
+</html>

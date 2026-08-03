@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeightEntryRow 版面預覽（前3次測量 + RWD）</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;--accent:#7c3aed;
+    --ok:#16a34a;--okbg:#dcfce7;--err:#dc2626;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif;}
+  header{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;padding:20px 26px;}
+  header h1{margin:0 0 4px;font-size:19px;} header p{margin:0;opacity:.9;font-size:13px;}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px 26px 80px;}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;}
+  .bar b{font-size:13px;}
+  .pw{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 11px;cursor:pointer;}
+  .pw.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  input[type=range]{flex:1;min-width:200px;accent-color:var(--accent);}
+  .meta{font-size:12px;color:var(--muted);margin:6px 2px 14px;}
+  .meta b{color:var(--accent);font-variant-numeric:tabular-nums;}
+  /* the dialog-content sim wrapper, width = slider */
+  .dlg{margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.10);
+    padding:16px;transition:width .12s ease;}
+  .dtitle{font-weight:700;font-size:14px;margin:0 0 2px;}
+  .ddesc{font-size:12px;color:var(--muted);margin:0 0 12px;}
+  .sect{border-top:1px solid var(--line);padding-top:12px;}
+  .shead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .shead .t{font-size:13px;font-weight:600;}
+  .shead .date{font-size:12px;color:var(--muted);}
+  /* rows container = the @container */
+  .rows{container-type:inline-size;display:flex;flex-direction:column;gap:8px;}
+
+  /* ===== ROW layout (default / ≥600px) ===== */
+  .row{display:flex;align-items:flex-start;gap:8px;}
+  .col-ear{flex:1 1 auto;min-width:120px;}
+  .inp{height:32px;border:1px solid var(--line);border-radius:6px;width:100%;font-family:ui-monospace,monospace;
+    padding:0 8px;display:flex;align-items:center;font-size:13px;color:#374151;background:#fff;}
+  .status{font-size:11px;margin-top:3px;display:flex;align-items:center;gap:4px;}
+  .status.ok{color:var(--ok);} .status.err{color:var(--err);} .status.idle{color:var(--muted);}
+  .status .badge{background:var(--okbg);color:#166534;border-radius:4px;padding:0 5px;font-weight:600;}
+  .hist{display:flex;gap:18px;}
+  .hcell{width:auto;min-width:50px;border:none;background:transparent;padding:2px 0;text-align:center;}
+  .hcell .d{font-size:11px;color:var(--muted);line-height:1.5;}
+  .hcell .w{font-size:14px;font-weight:600;line-height:1.4;}
+  .hcell.empty .d,.hcell.empty .w{color:#cbd5e1;}
+  .col-today{width:96px;flex:0 0 auto;}
+  .col-today .lbl{font-size:10px;color:var(--muted);margin-bottom:2px;text-align:center;}
+  .del{width:32px;height:32px;border:none;background:transparent;color:var(--muted);cursor:pointer;border-radius:6px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;font-size:15px;}
+  .hist-label{display:none;}
+
+  /* ===== CARD layout (<600px) ===== */
+  @container (max-width: 599px){
+    .row{flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:10px;gap:8px;background:#fff;position:relative;}
+    .col-ear{min-width:0;padding-right:30px;}
+    .hist{justify-content:flex-start;gap:24px;}
+    .hcell{min-width:46px;text-align:left;}
+    .hist-label{display:block;font-size:11px;color:var(--muted);margin-bottom:-2px;}
+    .row-foot{display:block;}
+    .col-today{flex:none;width:100%;}
+    .col-today .lbl{text-align:left;}
+    .col-today .inp{height:38px;font-size:15px;}
+    .del{position:absolute;top:8px;right:8px;width:28px;height:28px;border:none;}
+  }
+  /* desktop: foot is inline (handled by row flex); on card, .row-foot is its own block */
+  .row-foot{display:contents;}
+
+  .modetag{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;}
+  .modetag.row{background:#cffafe;color:#155e75;} .modetag.card{background:#fef3c7;color:#92400e;}
+</style>
+</head>
+<body>
+<header>
+  <h1>匯入體重 · 手動逐筆登錄列 — 版面預覽</h1>
+  <p>拖滑桿改容器寬度。≥600px = 欄位列（耳號｜前3次測量｜今天輸入｜刪除）；&lt;600px = 卡片式（橫向三格）。對話框實際為 xl(896px)。</p>
+</header>
+<div class="wrap">
+  <div class="bar">
+    <b>寬度</b>
+    <button class="pw" data-w="375">375 手機</button>
+    <button class="pw" data-w="600">600 斷點</button>
+    <button class="pw" data-w="768">768 平板</button>
+    <button class="pw active" data-w="848">848 (xl dialog)</button>
+    <input id="sl" type="range" min="320" max="900" value="848" step="2">
+  </div>
+  <div class="meta">容器寬：<b id="wv">848px</b> ｜ 模式：<span id="mode" class="modetag row">欄位列</span> ｜ 桌面欄寬總和 ~532px（848 內無溢出）</div>
+
+  <div class="dlg" id="dlg" style="width:848px">
+    <div class="dtitle">匯入動物體重資料</div>
+    <div class="ddesc">批次匯入多隻動物的體重紀錄</div>
+    <div class="sect">
+      <div class="shead"><span class="t">手動逐筆登錄</span><span class="date">測量日期：2026-07-01</span></div>
+      <div class="rows" id="rows"></div>
+    </div>
+  </div>
+</div>
+<script>
+  // sample rows
+  const ROWS=[
+    {ear:'002', ok:true, info:'A-0231 · 迷你豬 · 實驗中 · E23', hist:[['3/28','30kg'],['4/30','35kg'],['5/28','40kg']]},
+    {ear:'279', ok:true, info:'— · 迷你豬 · 未分配 · G06', hist:[['6/15','22kg'],['',''],['','']]},
+    {ear:'', idle:true, hist:[['',''],['',''],['','']]},
+  ];
+  const rowsEl=document.getElementById('rows');
+  function hcell(d,w){const e=(!d&&!w);return `<div class="hcell ${e?'empty':''}"><div class="d">${d||'—'}</div><div class="w">${w||'—'}</div></div>`;}
+  function render(){
+    rowsEl.innerHTML = ROWS.map(r=>{
+      const status = r.idle
+        ? `<div class="status idle">輸入耳號自動驗證</div>`
+        : r.ok
+          ? `<div class="status ok"><span class="badge">存在</span><span style="color:#6b7280">· ${r.info}</span></div>`
+          : `<div class="status err">查無存活中的此耳號動物</div>`;
+      return `<div class="row">
+        <div class="col-ear">
+          <div class="inp">${r.ear||'耳號'}</div>
+          ${status}
+        </div>
+        <div>
+          <div class="hist-label">前 3 次測量</div>
+          <div class="hist">${hcell(...r.hist[0])}${hcell(...r.hist[1])}${hcell(...r.hist[2])}</div>
+        </div>
+        <div class="row-foot">
+          <div class="col-today"><div class="lbl">今天 (kg)</div><div class="inp" style="text-align:center">　</div></div>
+          <button class="del" title="刪除此列">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  render();
+
+  const sl=document.getElementById('sl'), wv=document.getElementById('wv'), dlg=document.getElementById('dlg'), mode=document.getElementById('mode');
+  function setW(w){
+    w=Math.round(w);
+    dlg.style.width=w+'px'; sl.value=w; wv.textContent=w+'px';
+    const card = w<600;
+    mode.textContent = card?'卡片式':'欄位列';
+    mode.className = 'modetag '+(card?'card':'row');
+    document.querySelectorAll('.pw').forEach(b=>b.classList.toggle('active', +b.dataset.w===w));
+  }
+  sl.addEventListener('input',()=>setW(+sl.value));
+  document.querySelectorAll('.pw').forEach(b=>b.addEventListener('click',()=>setW(+b.dataset.w)));
+  setW(848);
+</script>
+</body>
+</html>

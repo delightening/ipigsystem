@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>預覽 — 動物預約與試驗規劃（reservation-planning）</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --border: #e4e6eb;
+    --border-strong: #d3d6dc;
+    --muted: #6b7280;
+    --fg: #1f2430;
+    --accent: #4f46e5;
+    --accent-bg: #eef0fe;
+    --success: #0f7b52; --success-bg: #e5f5ec;
+    --warning: #9a6a00; --warning-bg: #fdf3d7;
+    --info: #1d5fb3; --info-bg: #e7f0fb;
+    --error: #b42318; --error-bg: #fdeceb;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: "Noto Sans TC", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  /* ===== controls ===== */
+  .toolbar {
+    position: sticky; top: 0; z-index: 50;
+    background: #111827; color: #e5e7eb;
+    padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  }
+  .toolbar b { color: #fff; }
+  .toolbar button {
+    background: #374151; color: #e5e7eb; border: 1px solid #4b5563;
+    border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 13px;
+  }
+  .toolbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .toolbar input[type=range] { width: 220px; accent-color: var(--accent); }
+  .wpill { background:#1f2937; border:1px solid #374151; border-radius:999px; padding:3px 10px; font-variant-numeric: tabular-nums; }
+  .modepill { background: var(--accent); border-radius:999px; padding:3px 10px; font-weight:700; }
+
+  .stage { padding: 24px; display: flex; justify-content: center; }
+  /* viewport = the resizable container the app lives in */
+  .viewport {
+    width: 1024px; max-width: 100%;
+    border: 2px dashed var(--border-strong); border-radius: 14px;
+    background: var(--bg); padding: 14px; transition: width .12s ease;
+    position: relative;
+  }
+  .cq { container-type: inline-size; }
+
+  .page-head { padding: 4px 4px 12px; }
+  .page-head h1 { font-size: 18px; margin: 0 0 2px; }
+  .page-head p { margin: 0; color: var(--muted); font-size: 12.5px; }
+
+  /* ============ SPARE POOL (sticky) ============ */
+  .spare {
+    position: sticky; top: 56px; z-index: 20;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 4px 14px rgba(17,24,39,.08); margin-bottom: 16px; overflow: hidden;
+  }
+  .spare-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--card);
+  }
+  .spare-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .spare-head .title { font-weight: 700; }
+  .spare-head .cnt { color: var(--muted); font-size: 12.5px; }
+  .spare-head .grow { margin-left: auto; }
+  .collapse-btn { background: transparent; border: 1px solid var(--border-strong); border-radius: 8px; padding: 3px 9px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
+
+  /* filter row */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: #fafbfc; align-items:center; }
+  .filters .f { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+  .filters select, .filters input {
+    border: 1px solid var(--border-strong); border-radius: 7px; padding: 3px 7px; font-size: 12.5px; background: #fff; color: var(--fg);
+  }
+  .filters input { width: 62px; }
+  .filters .apply { background: var(--accent-bg); color: var(--accent); border:1px solid transparent; border-radius:7px; padding: 3px 10px; cursor:pointer; font-weight:600; }
+
+  .spare-scroll { max-height: 40vh; overflow-y: auto; }
+
+  /* batch bar */
+  .batchbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 9px 14px; border-top: 1px solid var(--border);
+    background: var(--accent-bg); color: var(--accent); font-weight: 600; font-size: 13px;
+  }
+  .batchbar select { border:1px solid var(--accent); border-radius:7px; padding:3px 8px; color: var(--accent); background:#fff; font-weight:600; }
+  .batchbar .ghost { margin-left:auto; background:transparent; border:none; color: var(--muted); cursor:pointer; font-weight:500; }
+  .batchbar .go { background: var(--accent); color:#fff; border:none; border-radius:7px; padding:4px 12px; cursor:pointer; }
+
+  /* ============ PLAN GROUP CARD ============ */
+  .group { border:1px solid var(--border); border-radius: var(--radius); background: var(--card); margin-bottom: 14px; overflow: hidden; }
+  .group-head { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--border); }
+  .tag { border-radius:999px; padding:2px 9px; font-size:11px; font-weight:700; }
+  .tag.approved { background: var(--success-bg); color: var(--success); }
+  .tag.planned { background: var(--warning-bg); color: var(--warning); }
+  .gname { font-weight:700; }
+  .gsub { color: var(--muted); font-size:12px; }
+  .pills { margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; font-size:12px; font-variant-numeric: tabular-nums; }
+  .pill { border-radius:999px; padding:2px 9px; font-weight:700; }
+  .pill.demand { background: var(--info-bg); color: var(--info); }
+  .pill.assigned { background: var(--success-bg); color: var(--success); }
+  .pill.reserved { background: var(--accent-bg); color: var(--accent); }
+  .pill.short { background: var(--error-bg); color: var(--error); }
+  .searchbtn { border:1px solid var(--border-strong); border-radius:8px; padding:3px 9px; cursor:pointer; background:#fff; color: var(--fg); font-size:12px; }
+
+  /* ===== rows (shared by spare + group) ===== */
+  .thead, .row { display:flex; align-items:center; }
+  .thead {
+    padding:6px 14px; font-size:11.5px; color:var(--muted); font-weight:600;
+    background:#f7f8fa; border-bottom:1px solid var(--border);
+  }
+  .row { padding:8px 14px; border-bottom:1px solid var(--border); }
+  .row:last-child { border-bottom:none; }
+  .empty { padding:18px 14px; text-align:center; color:var(--muted); font-size:13px; }
+
+  .c-chk { width:32px; flex:0 0 32px; }
+  .c-ear { width:64px; flex:0 0 64px; font-family: ui-monospace, monospace; font-weight:600; }
+  .c-sex { width:48px; flex:0 0 48px; }
+  .c-birth { width:96px; flex:0 0 96px; }
+  .c-weight { width:96px; flex:0 0 96px; }
+  .c-remark { flex:1 1 150px; min-width:150px; color:var(--muted); }
+  .row .c-remark { cursor:text; border-radius:6px; padding:2px 4px; margin:-2px 4px -2px 0; transition:background .1s; }
+  .row .c-remark:hover { background: var(--accent-bg); }
+  .c-status { width:80px; flex:0 0 80px; }
+  .c-act { width:44px; flex:0 0 44px; text-align:center; }
+
+  .badge { display:inline-block; border-radius:999px; padding:1px 8px; font-size:11px; }
+  .badge.reserved { background: var(--accent-bg); color: var(--accent); }
+  .badge.inexp { background: var(--info-bg); color: var(--info); }
+  .badge.completed { background: var(--warning-bg); color: var(--warning); }
+  .badge.unassigned { background:#eef0f2; color: var(--muted); }
+  .wnum b { font-weight:700; color: var(--fg); }
+  .wnum span { font-size:10.5px; color:var(--muted); }
+  .kebab { border:none; background:transparent; cursor:pointer; color:var(--muted); font-size:18px; line-height:1; padding:0 4px; }
+  .remark-edit { font-style: normal; }
+  .remark-edit::after { content:" ✎"; color: var(--border-strong); font-size:11px; }
+  .lbl { display:none; font-size:10px; color:var(--muted); margin-right:4px; }
+
+  /* ============ CARD MODE  (<600px) ============ */
+  @container (max-width: 599px) {
+    .thead { display:none; }
+    .row {
+      flex-wrap: wrap; align-items:flex-start; gap:4px 14px; position:relative; padding:10px 14px;
+    }
+    .c-chk { position:absolute; left:10px; top:10px; width:auto; flex:none; }
+    .row.has-chk { padding-left:38px; }
+    .c-ear { width:auto; flex:none; font-size:15px; }
+    .c-sex, .c-birth, .c-weight { width:auto; flex:none; }
+    .c-remark { flex-basis:100%; min-width:0; }
+    .c-status { width:auto; flex:none; order:-1; margin-left:auto; }
+    .c-act { position:absolute; right:6px; top:8px; width:auto; flex:none; }
+    .lbl { display:inline; }
+  }
+  @container (min-width: 600px) {
+    .row.has-chk { padding-left:14px; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <b>reservation-planning 表格預覽</b>
+    <span>寬度：</span>
+    <button data-w="375">375</button>
+    <button data-w="600">600</button>
+    <button data-w="768">768</button>
+    <button data-w="1024" class="active">1024</button>
+    <button data-w="1280">1280</button>
+    <input id="slider" type="range" min="320" max="1400" value="1024" />
+    <span class="wpill" id="wlabel">1024px</span>
+    <span class="modepill" id="mode">表格模式</span>
+  </div>
+
+  <div class="stage">
+    <div class="viewport" id="viewport">
+      <div class="cq">
+        <div class="page-head">
+          <h1>動物預約與試驗規劃</h1>
+          <p>全場活豬按計劃分組：未分配備用池（置頂）+ 各計劃 需求/已預約/已分配缺口。備註可直接編輯。</p>
+        </div>
+
+        <!-- ===== SPARE POOL ===== -->
+        <section class="spare">
+          <div class="spare-head">
+            <span class="dot"></span>
+            <span class="title">未分配（備用池）</span>
+            <span class="cnt">— 共 23 隻活豬未分配</span>
+            <span class="grow"></span>
+            <button class="collapse-btn">收合 ▲</button>
+          </div>
+          <div class="filters">
+            <span class="f">性別
+              <select><option>不限</option><option>公</option><option>母</option></select>
+            </span>
+            <span class="f">月齡
+              <input placeholder="min" /> – <input placeholder="max" />
+            </span>
+            <span class="f">體重(kg)
+              <input placeholder="min" /> – <input placeholder="max" />
+            </span>
+            <button class="apply">篩選</button>
+          </div>
+          <div class="spare-scroll">
+            <div class="thead">
+              <div class="c-chk"></div>
+              <div class="c-ear">耳號</div>
+              <div class="c-sex">性別</div>
+              <div class="c-birth">出生日期</div>
+              <div class="c-weight">最新體重</div>
+              <div class="c-remark">備註</div>
+              <div class="c-act">操作</div>
+            </div>
+            <div class="row has-chk">
+              <div class="c-chk"><input type="checkbox" checked /></div>
+              <div class="c-ear">807</div>
+              <div class="c-sex"><span class="lbl">性別</span>公</div>
+              <div class="c-birth"><span class="lbl">出生</span>2024/5/25</div>
+              <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>56.5kg</b> <span>5/2</span></span></div>
+              <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">來源：自繁</span></div>
+              <div class="c-act"><button class="kebab">⋯</button></div>
+            </div>
+            <div class="row has-chk">
+              <div class="c-chk"><input type="checkbox" checked /></div>
+              <div class="c-ear">802</div>
+              <div class="c-sex"><span class="lbl">性別</span>公</div>
+              <div class="c-birth"><span class="lbl">出生</span>2024/5/25</div>
+              <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>56.5kg</b> <span>5/2</span></span></div>
+              <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">—</span></div>
+              <div class="c-act"><button class="kebab">⋯</button></div>
+            </div>
+            <div class="row has-chk">
+              <div class="c-chk"><input type="checkbox" /></div>
+              <div class="c-ear">797</div>
+              <div class="c-sex"><span class="lbl">性別</span>母</div>
+              <div class="c-birth"><span class="lbl">出生</span>2024/5/30</div>
+              <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>63.5kg</b> <span>5/1</span></span></div>
+              <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">預計 6/25 淘汰</span></div>
+              <div class="c-act"><button class="kebab">⋯</button></div>
+            </div>
+            <div class="row has-chk">
+              <div class="c-chk"><input type="checkbox" /></div>
+              <div class="c-ear">652</div>
+              <div class="c-sex"><span class="lbl">性別</span>母</div>
+              <div class="c-birth"><span class="lbl">出生</span>2024/10/15</div>
+              <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>55.5kg</b> <span>5/3</span></span></div>
+              <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">—</span></div>
+              <div class="c-act"><button class="kebab">⋯</button></div>
+            </div>
+          </div>
+          <div class="batchbar">
+            <span>已選 2 隻 →</span>
+            <span>預約到計劃</span>
+            <select><option>PIG-114006 第一批母豬</option><option>國防醫學院 (規劃中)</option><option>PIG-114022</option></select>
+            <button class="go">預約</button>
+            <button class="ghost">取消選取</button>
+          </div>
+        </section>
+
+        <!-- ===== APPROVED GROUP (has pigs) ===== -->
+        <section class="group">
+          <div class="group-head">
+            <span class="tag approved">已核准</span>
+            <span class="gname">PIG-114006</span>
+            <span class="gsub">第一批母豬 · 王大明</span>
+            <span class="pills">
+              <span class="pill demand">需求 6</span>
+              <span class="pill assigned">已分配 3</span>
+              <span class="pill reserved">已預約 1</span>
+              <span class="pill short">缺 2</span>
+            </span>
+            <button class="searchbtn">🔍 搜尋配對</button>
+          </div>
+          <div class="thead">
+            <div class="c-ear">耳號</div>
+            <div class="c-sex">性別</div>
+            <div class="c-birth">出生日期</div>
+            <div class="c-weight">最新體重</div>
+            <div class="c-remark">備註</div>
+            <div class="c-status">狀態</div>
+            <div class="c-act">操作</div>
+          </div>
+          <div class="row">
+            <div class="c-ear">609</div>
+            <div class="c-sex"><span class="lbl">性別</span>公</div>
+            <div class="c-birth"><span class="lbl">出生</span>2023/5/16</div>
+            <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>69.0kg</b> <span>5/2</span></span></div>
+            <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">術後恢復良好</span></div>
+            <div class="c-status"><span class="badge inexp">實驗中</span></div>
+            <div class="c-act"><button class="kebab">⋯</button></div>
+          </div>
+          <div class="row">
+            <div class="c-ear">619</div>
+            <div class="c-sex"><span class="lbl">性別</span>公</div>
+            <div class="c-birth"><span class="lbl">出生</span>2023/6/5</div>
+            <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>67.5kg</b> <span>5/2</span></span></div>
+            <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">—</span></div>
+            <div class="c-status"><span class="badge completed">實驗完成</span></div>
+            <div class="c-act"><button class="kebab">⋯</button></div>
+          </div>
+          <div class="row">
+            <div class="c-ear">243</div>
+            <div class="c-sex"><span class="lbl">性別</span>母</div>
+            <div class="c-birth"><span class="lbl">出生</span>2025/9/15</div>
+            <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>51.5kg</b> <span>5/1</span></span></div>
+            <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">—</span></div>
+            <div class="c-status"><span class="badge reserved">已預約</span></div>
+            <div class="c-act"><button class="kebab">⋯</button></div>
+          </div>
+        </section>
+
+        <!-- ===== PLANNED GROUP ===== -->
+        <section class="group">
+          <div class="group-head">
+            <span class="tag planned">規劃中</span>
+            <span class="gname">國防醫學院</span>
+            <span class="gsub">異種心臟移植前導試驗</span>
+            <span class="pills">
+              <span class="pill demand">需求 4</span>
+              <span class="pill assigned">已分配 0</span>
+              <span class="pill reserved">已預約 2</span>
+              <span class="pill short">缺 2</span>
+            </span>
+            <button class="searchbtn">🔍 搜尋配對</button>
+          </div>
+          <div class="thead">
+            <div class="c-ear">耳號</div>
+            <div class="c-sex">性別</div>
+            <div class="c-birth">出生日期</div>
+            <div class="c-weight">最新體重</div>
+            <div class="c-remark">備註</div>
+            <div class="c-status">狀態</div>
+            <div class="c-act">操作</div>
+          </div>
+          <div class="row">
+            <div class="c-ear">819</div>
+            <div class="c-sex"><span class="lbl">性別</span>公</div>
+            <div class="c-birth"><span class="lbl">出生</span>2025/9/20</div>
+            <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>32.0kg</b> <span>5/2</span></span></div>
+            <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">體重待達標</span></div>
+            <div class="c-status"><span class="badge reserved">已預約</span></div>
+            <div class="c-act"><button class="kebab">⋯</button></div>
+          </div>
+          <div class="row">
+            <div class="c-ear">820</div>
+            <div class="c-sex"><span class="lbl">性別</span>公</div>
+            <div class="c-birth"><span class="lbl">出生</span>2025/9/20</div>
+            <div class="c-weight"><span class="lbl">體重</span><span class="wnum"><b>32.5kg</b> <span>5/2</span></span></div>
+            <div class="c-remark"><span class="lbl">備註</span><span class="remark-edit">—</span></div>
+            <div class="c-status"><span class="badge reserved">已預約</span></div>
+            <div class="c-act"><button class="kebab">⋯</button></div>
+          </div>
+        </section>
+
+        <!-- ===== EMPTY APPROVED GROUP (gap) ===== -->
+        <section class="group">
+          <div class="group-head">
+            <span class="tag approved">已核准</span>
+            <span class="gname">PIG-114022</span>
+            <span class="gsub">工研院 · 李小華</span>
+            <span class="pills">
+              <span class="pill demand">需求 4</span>
+              <span class="pill assigned">已分配 0</span>
+              <span class="pill reserved">已預約 0</span>
+              <span class="pill short">缺 4</span>
+            </span>
+            <button class="searchbtn">🔍 搜尋配對</button>
+          </div>
+          <div class="empty">尚無預約 / 分配動物 — 點「搜尋配對」或從上方備用池選豬預約</div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+  var vp = document.getElementById('viewport');
+  var slider = document.getElementById('slider');
+  var wlabel = document.getElementById('wlabel');
+  var mode = document.getElementById('mode');
+  var btns = document.querySelectorAll('.toolbar button[data-w]');
+  function apply(w) {
+    w = Math.max(320, Math.min(1400, w));
+    vp.style.width = w + 'px';
+    wlabel.textContent = w + 'px';
+    slider.value = w;
+    var cq = w - 32; /* container = viewport - 2*14 padding - 2*2 border */
+    var card = cq < 600;
+    mode.textContent = card ? '卡片模式 (<600px)' : '表格模式 (≥600px)';
+    mode.style.background = card ? '#9a6a00' : '#4f46e5';
+    btns.forEach(function(b){ b.classList.toggle('active', parseInt(b.dataset.w,10)===w); });
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ apply(parseInt(b.dataset.w,10)); }); });
+  slider.addEventListener('input', function(){ apply(parseInt(slider.value,10)); });
+  apply(1024);
+
+  /* ===== demo：備註 inline 編輯（整格可點；輸入框帶 ✓存/✕取消 按鈕，桌機手機皆可） ===== */
+  function bindRemarkCell(cell){
+    cell.title = '點擊編輯備註';
+    cell.addEventListener('click', function(){
+      if (cell.querySelector('.remark-editor')) return; // 已在編輯
+      var span = cell.querySelector('.remark-edit');
+      if (!span) return;
+      var cur = span.textContent.trim();
+      if (cur === '—') cur = '';
+      var original = span.textContent;
+
+      var wrap = document.createElement('span');
+      wrap.className = 'remark-editor';
+      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;';
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = cur;
+      input.setAttribute('enterkeyhint', 'done');
+      input.style.cssText = 'width:150px;max-width:60vw;border:1px solid var(--accent);border-radius:6px;padding:3px 7px;font:inherit;color:var(--fg);background:#fff;';
+
+      var save = document.createElement('button');
+      save.type = 'button'; save.textContent = '✓';
+      save.title = '存檔';
+      save.style.cssText = 'border:none;border-radius:6px;background:var(--accent);color:#fff;width:28px;height:28px;cursor:pointer;font-size:14px;';
+
+      var cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.textContent = '✕';
+      cancel.title = '取消';
+      cancel.style.cssText = 'border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--muted);width:28px;height:28px;cursor:pointer;font-size:13px;';
+
+      wrap.appendChild(input); wrap.appendChild(save); wrap.appendChild(cancel);
+      span.replaceWith(wrap);
+      input.focus(); input.select();
+
+      var settled = false;
+      function finish(text){
+        if (settled) return; settled = true;
+        var s = document.createElement('span');
+        s.className = 'remark-edit';
+        s.textContent = (text && text.trim()) ? text.trim() : '—';
+        wrap.replaceWith(s);
+      }
+      // 按鈕用 mousedown+preventDefault，避免點按鈕時 input 先 blur 造成搶存
+      save.addEventListener('mousedown', function(e){ e.preventDefault(); });
+      cancel.addEventListener('mousedown', function(e){ e.preventDefault(); });
+      save.addEventListener('click', function(){ finish(input.value); });
+      cancel.addEventListener('click', function(){ finish(original); });
+      input.addEventListener('keydown', function(e){
+        if (e.key === 'Enter') { e.preventDefault(); finish(input.value); }
+        else if (e.key === 'Escape') { e.preventDefault(); finish(original); }
+      });
+      // 點別處（非按鈕）失焦 → 存（手機收鍵盤也算存）
+      input.addEventListener('blur', function(){ setTimeout(function(){ finish(input.value); }, 120); });
+    });
+  }
+  document.querySelectorAll('.row .c-remark').forEach(bindRemarkCell);
+</script>
+</body>
+</html>

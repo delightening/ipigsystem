@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>犧牲 / 安樂死 / byproduct 流程示意圖</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --text:#e6e9ef; --muted:#9aa3b2;
+    --a:#4f8cff; --a-bg:#16233f; --b:#36c08a; --b-bg:#10271f;
+    --merge:#caa14a; --merge-bg:#2a2310; --warn:#ff6b6b; --warn-bg:#2a1414;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI","Noto Sans CJK TC",system-ui,sans-serif;line-height:1.5;padding:28px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;font-size:12px;color:var(--muted)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .start{max-width:520px;margin:0 auto 6px;text-align:center;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:600}
+  .start small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+  .arrow{text-align:center;color:var(--muted);font-size:18px;margin:2px 0}
+  .lanes{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;margin:0 auto}
+  .lane{border:1px solid var(--line);border-radius:12px;padding:14px;background:#12151c}
+  .lane.a{border-color:#27406e}
+  .lane.b{border-color:#1c4d3a}
+  .lane h2{font-size:14px;margin:0 0 4px;display:flex;align-items:center}
+  .lane .tbl{font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--muted);margin-bottom:10px}
+  .step{border-radius:8px;padding:8px 10px;margin:8px 0;font-size:13px;border:1px solid var(--line)}
+  .a .step{background:var(--a-bg);border-color:#27406e}
+  .b .step{background:var(--b-bg);border-color:#1c4d3a}
+  .step b{font-weight:600}
+  .step small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .side{color:var(--muted);font-size:11px;text-align:center;margin:-4px 0 4px}
+  .auto{border-style:dashed}
+  .merge{max-width:720px;margin:14px auto 0;background:var(--merge-bg);border:1px solid #5a4a1f;
+    border-radius:12px;padding:14px;text-align:center}
+  .merge b{color:var(--merge)}
+  .merge code{background:#1d1a10;padding:1px 5px;border-radius:4px;font-size:12px}
+  .warn{max-width:720px;margin:14px auto 0;background:var(--warn-bg);border:1px solid #5a2020;
+    border-radius:12px;padding:14px}
+  .warn b{color:var(--warn)}
+  .warn ul{margin:8px 0 0;padding-left:20px;font-size:13px}
+  .warn li{margin:4px 0}
+  @media(max-width:680px){.lanes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+  <h1>犧牲 / 安樂死 / byproduct 採樣 — 流程示意圖</h1>
+  <div class="sub">依現行程式碼繪製（2026-06-07）。兩條路徑都會產生「犧牲紀錄 + 動物=euthanized」，但只有路徑 A 有安樂死單 id。</div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--a)"></span>路徑 A：安樂死單工作流（euthanasia_orders）</span>
+    <span><span class="dot" style="background:var(--b)"></span>路徑 B：直接犧牲表單（animal_sacrifices）</span>
+    <span><span class="dot" style="background:var(--merge)"></span>共同結果</span>
+    <span><span class="dot" style="background:var(--warn)"></span>byproduct 採樣的缺口</span>
+  </div>
+
+  <div class="start">
+    動物（status：unassigned / in_experiment / completed）
+    <small>實驗結束、需結束動物生命時</small>
+  </div>
+  <div class="arrow">▼ 兩種做法 ▼</div>
+
+  <div class="lanes">
+    <!-- Path A -->
+    <div class="lane a">
+      <h2><span class="dot" style="background:var(--a)"></span>路徑 A — 安樂死單（正式審批流）</h2>
+      <div class="tbl">表：euthanasia_orders（0..N / 動物）</div>
+      <div class="step"><b>Vet 開單</b><small>status = pending_pi · 設 deadline（PI 24h 內回應）</small></div>
+      <div class="arrow">↓</div>
+      <div class="step"><b>PI 同意</b> → approved<small>PI 簽章；或 PI 申訴 → appealed → Chair 仲裁</small></div>
+      <div class="arrow">↓</div>
+      <div class="step"><b>Vet 執行</b> → executed<small>執行簽章（不可逆）</small></div>
+      <div class="arrow">↓</div>
+      <div class="step auto"><b>execute() 同 tx 自動：</b>
+        <small>• order → <code>executed</code><br>• <b>INSERT animal_sacrifices</b>（帶執行時填的方法細節）<br>• animals.status → <b>euthanized</b></small></div>
+    </div>
+
+    <!-- Path B -->
+    <div class="lane b">
+      <h2><span class="dot" style="background:var(--b)"></span>路徑 B — 直接犧牲表單（SacrificeTab）</h2>
+      <div class="tbl">表：animal_sacrifices（1:1 / 動物）</div>
+      <div class="step"><b>Vet 在動物頁填「犧牲/採樣」表單</b><small>Zoletil 劑量、電擊、放血、採血量…</small></div>
+      <div class="arrow">↓</div>
+      <div class="step"><b>勾「確定犧牲」</b> confirmed_sacrifice = true<small>upsert_sacrifice（medical.rs:278）</small></div>
+      <div class="arrow">↓</div>
+      <div class="step auto"><b>同 tx 自動：</b>
+        <small>• <b>INSERT/UPDATE animal_sacrifices</b>（ON CONFLICT animal_id）<br>• animals.status → <b>euthanized</b><br>• <b>不需任何安樂死單</b></small></div>
+      <div class="side">（沒有 euthanasia_orders 紀錄）</div>
+    </div>
+  </div>
+
+  <div class="arrow" style="margin-top:10px">▼ 兩路徑匯流 ▼</div>
+  <div class="merge">
+    <b>共同結果</b>：<code>animal_sacrifices</code> 紀錄存在　+　<code>animals.status = euthanized</code>
+    <div style="color:var(--muted);font-size:12px;margin-top:6px">犧牲紀錄可被 GLP 鎖定（is_locked）成不可變醫療紀錄</div>
+  </div>
+
+  <div class="arrow">▼</div>
+  <div class="warn">
+    <b>⚠️ byproduct 採樣（廢棄物再利用）的缺口 — 這就是 #445 的核心</b>
+    <ul>
+      <li>byproduct 建立 API 掛在 <code>euthanasia_id</code>（後端從它推導 animal/protocol 做 IDOR 守衛）。</li>
+      <li>→ <b>只有路徑 A</b> 的動物有 euthanasia_id；<b>路徑 B</b> 的動物已犧牲卻沒有單 → <b>拿不到 euthanasia_id</b>。</li>
+      <li>我目前 PR #623 把採樣鈕鎖在「有 executed 安樂死單」= <b>只支援路徑 A</b>；路徑 B 犧牲的動物採樣鈕會一直 disabled。</li>
+      <li><b>需你裁定</b>：byproduct 是否只允許走正式安樂死單（接受路徑 B 不能採樣 / 或乾脆禁路徑 B）？還是只要動物已犧牲就該能採樣（需把後端改成可從 animal 建立、不綁單，較大改動）？</li>
+    </ul>
+  </div>
+</body>
+</html>

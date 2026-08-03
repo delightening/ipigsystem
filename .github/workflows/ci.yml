@@ -1,0 +1,1084 @@
+name: CI
+
+on:
+  push:
+    # main: 正式釋出
+    # integration/**: long-lived 重構 integration branches（例如 integration/r26
+    #   收集 Service-driven audit 重構所有 PR，合 main 前需完整 CI 驗證）
+    branches:
+      - main
+      - 'integration/**'
+    # docs-only push 跳過整個 CI（治本：所有純文件 PR 不再跑 backend / frontend / Trivy）
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches:
+      - main
+      - 'integration/**'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+  # Node.js 20 actions 將於 2026-06-02 強制切換為 Node.js 24，提前 opt-in 避免破壞
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # =========================
+  # 🧭 變更路徑判別（CI 加速 2026-07-22 方案 A：per-stack 路徑過濾）
+  #
+  # 前端 only PR 跳過後端 job（cargo test / coverage 分片 ~26-32 分鐘）、反之亦然。
+  # 純 script 實作（git diff），不引入第三方 action（供應鏈面最小）。
+  # Fail-open 設計：無法取得 diff 基準（workflow_dispatch / 首推 / force-push）
+  # 或本 job 掛掉 → 下游以 `outputs.X != 'false'` 判斷（空值視同 true）→ 全跑。
+  # 非 backend/ frontend/ 的檔案（.github/ docker-compose scripts/ …）一律全跑。
+  # 安全 job（gitleaks / semgrep / guards）不受過濾，永遠執行。
+  # =========================
+  changes:
+    name: "🧭 Changed paths"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # 只 checkout + 算 diff，最小權限（zizmor excessive-permissions）
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # 需歷史求 merge-base（PR 落後 main 時仍只算 PR 自己的變更）
+          fetch-depth: 0
+
+      - name: 判別本次變更觸及的 stack
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # -e 必要：git diff 失敗若繼續往下跑會靜默輸出 false/false（fail-closed 漏跑檢查）；
+          # -e 下 job 直接紅，下游以 != 'false' 判斷（空值視同 true）→ 仍 fail-open 全跑。
+          set -euo pipefail
+          BASE=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null || true)
+          elif [ "$EVENT_NAME" = "push" ] \
+            && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] \
+            && git cat-file -e "$PUSH_BEFORE" 2>/dev/null; then
+            BASE="$PUSH_BEFORE"
+          fi
+          if [ -z "$BASE" ]; then
+            echo "無 diff 基準（workflow_dispatch / 首推 / force-push）→ fail-open 全跑"
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(git diff --name-only "$BASE" HEAD)
+          echo "變更檔案："; echo "$FILES"
+          BACKEND=false; FRONTEND=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              backend/*) BACKEND=true ;;
+              frontend/*) FRONTEND=true ;;
+              *) BACKEND=true; FRONTEND=true ;; # 未知領域 → 保守全跑
+            esac
+          done <<< "$FILES"
+          echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
+          echo "frontend=$FRONTEND" >> "$GITHUB_OUTPUT"
+          echo "判別結果：backend=$BACKEND frontend=$FRONTEND"
+
+  # =========================
+  # 🔒 安全漏洞掃描 (RustSec Advisory DB)
+  # =========================
+  security-audit:
+    name: "🔒 Security: cargo audit"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key-suffix: audit
+
+      - name: 安裝 cargo-audit
+        run: cargo install cargo-audit --locked 2>/dev/null || true
+
+      - name: 更新 yanked crates
+        working-directory: ./backend
+        run: cargo update
+
+      - name: 執行 cargo audit
+        working-directory: ./backend
+        # 與 backend/deny.toml ignore 清單對齊（理由詳見該檔）：
+        # RUSTSEC-2023-0071: rsa 時序攻擊（jsonwebtoken RS256，無修復版本）
+        # RUSTSEC-2024-0370: proc-macro-error 不維護（過渡期保留）
+        # RUSTSEC-2026-0173: proc-macro-error2 不維護（validator_derive，純編譯期無攻擊面）
+        run: >-
+          cargo audit
+          --ignore RUSTSEC-2023-0071
+          --ignore RUSTSEC-2024-0370
+          --ignore RUSTSEC-2026-0173
+
+  # =========================
+  # 🛡️ 供應鏈檢查 (授權/漏洞/來源)
+  # =========================
+  secret-scan:
+    name: "🔑 Security: secret scanning (gitleaks)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read      # checkout
+      security-events: write  # R48-2: upload-sarif → GitHub Security tab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SARIF: true
+      - name: Upload gitleaks SARIF
+        uses: github/codeql-action/upload-sarif@fee9466b8957867761f2d78f922ab084e3e2dd17 # v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: gitleaks
+
+  cargo-deny:
+    name: "🛡️ Security: cargo deny"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 執行 cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: backend/Cargo.toml
+          command: check
+          arguments: --all-features
+          log-level: "info"
+
+  # =========================
+  # 🔬 R41-5 程式碼級 SAST (semgrep)
+  # 對應 NICS 附表十「SDLC - 測試」中級要求；cargo-audit + Trivy 涵蓋依賴與映像，
+  # semgrep 補上程式碼模式級弱點（SQL 拼接 / XSS sink / unsafe deserialize 等）。
+  # **non-blocking**：首輪建立 baseline；觀察 1 週後依 finding 數決定是否 fail build。
+  # =========================
+  semgrep-sast:
+    name: "🔬 Security: semgrep SAST"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # 改用官方 semgrep Docker image（semgrep/semgrep-action@v1 已 deprecated，
+    # 上游建議使用 `semgrep ci`）。non-blocking 透過 continue-on-error 維持。
+    # 鎖定版本避免 supply-chain 攻擊（CSO audit 2026-05-27 Finding #1）。
+    container:
+      image: semgrep/semgrep:1.117.0
+    # non-blocking：finding 不阻擋 merge；finding 數透過 SARIF / job log 觀察
+    continue-on-error: true
+    # Dependabot PR 無法取得 secrets，跳過避免 SEMGREP_APP_TOKEN 缺失
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 執行 semgrep ci
+        env:
+          SEMGREP_RULES: p/rust p/typescript p/owasp-top-ten p/secrets
+        run: semgrep ci --config "$SEMGREP_RULES"
+
+  # =========================
+  # 🛡️ Static-analysis Guards (合 5 guards 為 1 job 省 ~2.5 min runner overhead)
+  #
+  # 各 step 為獨立 grep/awk 檢查、互不依賴；任一失敗即 fail。step name 在 CI
+  # log 一目了然失敗位置，等同舊版分 5 job 的 debug 體驗。
+  #
+  # 涵蓋：
+  #   🔄 migration down.sql 配對 (R30-26)
+  #   🛑 SQL injection (format! 拼接 SQL)
+  #   🔐 SDD audit pattern (handler 層 tokio::spawn audit, R26 DoD-5)
+  #   🔐 Audit redaction (R26-14, sensitive entity redact decision)
+  #   🚫 Unsafe code (require // SAFETY: 註解)
+  # =========================
+  guards:
+    name: "🛡️ Guards (6-in-1)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # migration-down-guard 需要 git diff base...HEAD，fetch-depth: 0 取整段歷史
+          fetch-depth: 0
+
+      - name: "🔄 Migration down.sql 配對 (R30-26)"
+        # 規則：本 PR 新增的 backend/migrations/NNN_xxx.sql（NNN ≥ 041）必須同步附
+        #       backend/migrations/down/NNN_xxx.sql。既有 001-040 在 ignore list。
+        # 撰寫規範：見 backend/migrations/down/README.md
+        run: |
+          set -euo pipefail
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            BASE="origin/${GITHUB_BASE_REF}"
+          else
+            BASE="origin/main"
+          fi
+          git fetch origin "${GITHUB_BASE_REF:-main}" --depth=1 || true
+
+          MIN_NEW_VERSION=41
+          ADDED=$(git diff --name-only --diff-filter=A "${BASE}...HEAD" \
+                  | grep -E '^backend/migrations/[0-9]+_[^/]+\.sql$' || true)
+
+          if [ -z "$ADDED" ]; then
+            echo "✅ 本 PR 未新增 migration，跳過"
+            exit 0
+          fi
+
+          MISSING=""
+          for up in $ADDED; do
+            base=$(basename "$up" .sql)
+            version=$(echo "$base" | grep -oE '^[0-9]+' | sed 's/^0*//')
+            if [ -z "$version" ] || [ "$version" -lt "$MIN_NEW_VERSION" ]; then
+              echo "⏭  $up (version=$version < $MIN_NEW_VERSION) 為既有 migration 範圍，豁免"
+              continue
+            fi
+            down="backend/migrations/down/${base}.sql"
+            if [ ! -f "$down" ]; then
+              MISSING="${MISSING}${down}\n"
+            else
+              echo "✅ $up → $down 配對 OK"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::新 migration 缺少對應的 down.sql："
+            printf '::error::  - %b' "$MISSING"
+            echo "::error::撰寫規範：backend/migrations/down/README.md"
+            echo "::error::範本：backend/migrations/down/TEMPLATE.sql"
+            exit 1
+          fi
+          echo "✅ 所有新 migration 皆附 down.sql"
+
+      - name: "🛑 SQL injection (format! 拼接)"
+        working-directory: ./backend
+        run: |
+          if grep -rn --include="*.rs" -E 'format!\s*\(.*\b(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER)\b' src/; then
+            echo "::error::發現潛在的 SQL 注入風險！請使用 sqlx 巨集參數綁定。"
+            exit 1
+          fi
+          echo "✅ 未發現 SQL 注入風險"
+
+      - name: "🔐 SDD audit pattern (R26 DoD-5)"
+        # 對應 R26_FullPlan.md DoD-5：防止未來新 PR 在 handler 層引入
+        # `tokio::spawn(async move { AuditService::log_*` pattern（fire-and-forget
+        # audit），違背 R26 SDD 原則。
+        # 例外 (D-15)：SEC fire-and-forget (FORCE_LOGOUT、IMPERSONATE_START) 可用
+        # log_activity_oneshot — 這些事件已發生不可回滾。
+        working-directory: ./backend
+        run: |
+          ALLOWED_EXCEPTIONS=2
+          MATCHES=$(grep -rn -A 15 'tokio::spawn' src/handlers/ 2>/dev/null \
+                    | grep 'AuditService::log_activity' || true)
+          if [ -z "$MATCHES" ]; then
+            ACTUAL_COUNT=0
+          else
+            ACTUAL_COUNT=$(printf '%s\n' "$MATCHES" | wc -l)
+          fi
+          echo "Handler 層 tokio::spawn(... AuditService::log_activity*) 呼叫點: ${ACTUAL_COUNT}（容許上限: ${ALLOWED_EXCEPTIONS}）"
+          if [ "$ACTUAL_COUNT" -gt "$ALLOWED_EXCEPTIONS" ]; then
+            echo "::error::發現新的 tokio::spawn(... AuditService::log_activity*) pattern！"
+            echo "::error::R26 SDD 原則: mutation 應改用 log_activity_tx 在同一 tx 寫 audit。"
+            echo "::error::SEC fire-and-forget (FORCE_LOGOUT/IMPERSONATE_START) 為已知例外 (D-15)。"
+            echo "::error::詳見 docs/plans/R26_FullPlan.md"
+            printf '%s\n' "$MATCHES"
+            exit 1
+          fi
+          echo "✅ Handler 層 SDD audit pattern 守則達標"
+
+      - name: "🔐 Audit redaction (R26-14)"
+        # 對應 docs/security/AUDIT_REDACTION.md：偵測 models/ 中新增含敏感欄位
+        # （password_hash / _secret / _token / api_key / backup_codes）的 struct，
+        # 若未在 allowlist 或無明確 AuditRedact::redacted_fields() 覆寫則 CI fail。
+        working-directory: ./backend
+        run: |
+          ALLOWED='User|AiApiKey|UserSession|Invitation'
+          BAD=$(find src/models -name '*.rs' -type f -print0 | xargs -0 awk '
+            /^#\[derive/ {
+              is_fromrow = /FromRow/
+              next
+            }
+            /^pub struct / {
+              match($0, /pub struct [A-Z][A-Za-z0-9_]+/)
+              name = substr($0, RSTART+11, RLENGTH-11)
+              in_struct = 1
+              has_sensitive = 0
+              next
+            }
+            in_struct && /pub (password_hash|[a-z_]+_secret|[a-z_]+_token|api_key|backup_codes|key_hash) *:/ {
+              has_sensitive = 1
+            }
+            in_struct && /^}/ {
+              if (is_fromrow && has_sensitive) print name
+              in_struct = 0
+              is_fromrow = 0
+            }
+          ' 2>/dev/null | sort -u | grep -vE "^(${ALLOWED})$" || true)
+
+          if [ -n "$BAD" ]; then
+            echo "::error::新增敏感欄位 DB entity 需檢查 AuditRedact::redacted_fields() 覆寫："
+            printf '::error::  - %s\n' $BAD
+            echo "::error::處理方式："
+            echo "::error::  1) 明確覆寫 redacted_fields()，並登記於 docs/security/AUDIT_REDACTION.md §1"
+            echo "::error::  2) 若此 entity 不進 audit diff，加入 ci.yml 的 ALLOWED 清單 + §3 登記"
+            exit 1
+          fi
+          echo "✅ 敏感欄位 DB entity 的 AuditRedact 守則達標"
+
+      - name: "🚫 Unsafe code (require // SAFETY: 註解)"
+        working-directory: ./backend
+        run: |
+          UNSAFE_FILES=$(grep -rn --include="*.rs" -E '^\s*unsafe\s' src/ || true)
+          if [ -z "$UNSAFE_FILES" ]; then
+            echo "✅ 未發現 unsafe 程式碼"
+            exit 0
+          fi
+          BLOCKED=false
+          while IFS= read -r line; do
+            FILE=$(echo "$line" | cut -d: -f1)
+            LINENO_NUM=$(echo "$line" | cut -d: -f2)
+            PREV_LINE=$((LINENO_NUM - 1))
+            if [ "$PREV_LINE" -ge 1 ]; then
+              PREV_CONTENT=$(sed -n "${PREV_LINE}p" "$FILE")
+              if echo "$PREV_CONTENT" | grep -q '// SAFETY:'; then
+                echo "✅ $FILE:$LINENO_NUM — unsafe 有 SAFETY 註解，放行"
+                continue
+              fi
+            fi
+            echo "::error::$FILE:$LINENO_NUM — 發現未附 // SAFETY: 註解的 unsafe 程式碼"
+            BLOCKED=true
+          done <<< "$UNSAFE_FILES"
+          if [ "$BLOCKED" = true ]; then
+            echo "❌ 存在未附 // SAFETY: 註解的 unsafe 程式碼，CI 中止"
+            exit 1
+          fi
+
+      - name: "🔒 Handler 物件級授權 hard gate (R66-D2)"
+        # 硬 gate：窄掃描抓「宣告身分卻忽略」的 IDOR（_current_user + Path/body），現況 0 誤報
+        run: bash scripts/ci_handler_security_scan.sh
+
+      - name: "📋 Handler 物件級授權 advisory triage (R75-P4)"
+        # Advisory：廣掃描印 triage worklist 供人工複查 / Phase 2 取材（純文字掃描跟不進 service、
+        # 偽陽性多；真正根治由 Phase 2 型別化承擔，詳見 docs/design/r75-p4-structural-authz-design.md）。
+        # 腳本本身一律 exit 0；再加 continue-on-error 確保即使腳本 crash（parse/env）也絕不阻擋 merge。
+        continue-on-error: true
+        run: python3 scripts/ci_handler_authz_scan.py
+
+  # =========================
+  # Rust 後端：編譯檢查
+  # =========================
+  backend-check:
+    name: "Backend: cargo check"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+
+      # 格式閘（2026-08-03 新增）：在此之前 CI 完全不驗格式，漂移只能靠人工在每個 PR
+      # 手動還原無關檔案。放在 cargo check 之前——秒級成本，格式壞掉不必等編譯跑完。
+      # toolchain 已由 repo 根目錄 rust-toolchain.toml 釘死，本機與 CI 判定一致。
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo check
+        run: cargo check --release --locked
+
+  # =========================
+  # Rust 後端：單元測試
+  # =========================
+  backend-test:
+    name: "Backend: cargo test"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ipig_db_test
+          POSTGRES_INITDB_ARGS: "--locale=C"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: ./backend
+    env:
+      DATABASE_URL: postgres://postgres:password@localhost:5432/ipig_db_test
+      SQLX_OFFLINE: "false"
+      ADMIN_EMAIL: admin@ipigsystem.asia
+      # H9: 移除 hardcoded fallback，CI_ADMIN_PASSWORD secret 必須設定
+      ADMIN_INITIAL_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+      # 避免 login_with_wrong_password_returns_401 因平行測試累積 login_events 導致帳號鎖定（400）
+      DISABLE_ACCOUNT_LOCKOUT: "true"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key-suffix: test
+
+      # 釋放 runner 預裝 SDK 佔用：cargo test 要建 83 支整合測試 binary，在標準 runner
+      # 上磁碟邊際、偶爾 ENOSPC（本 session 實測 log 尾 "No space left" + cargo orphan）。
+      # step 在 setup-rust 後 → 不影響已就緒的 rustup 工具鏈；postgres service 映像使用中不被 prune。
+      - name: 釋放 runner 磁碟空間（避免 83 binary build ENOSPC）
+        run: |
+          echo "清理前磁碟："; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/lib/jvm || true
+          sudo docker image prune -af || true
+          echo "清理後磁碟："; df -h /
+
+      - name: 安裝 sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres --force
+
+      - name: 執行資料庫遷移
+        run: sqlx migrate run
+
+      - name: cargo test
+        run: cargo test --locked --verbose -- --test-threads=1
+
+  # =========================
+  # Rust 後端：Clippy 靜態分析
+  # =========================
+  backend-lint:
+    name: "Backend: clippy"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy
+
+      - name: cargo clippy
+        # -D warnings: 所有 clippy 警告視為錯誤
+        # -W clippy::unwrap_used: unwrap() 產生警告（不阻擋，漸進式修復）
+        # R26-4 已完成（2026-04-23, PR #188 + #190）：舊版 AuditService::log_activity 已刪除，
+        # 不再需要 -A deprecated 容忍標記。新 PR 引入 deprecated 警告會直接 CI 紅燈。
+        run: cargo clippy --all-targets -- -D warnings -W clippy::unwrap_used
+
+  # =========================
+  # 📊 後端：cargo-llvm-cov 行覆蓋率量測（R82-4 分組並行；2026-07-22 CI 加速方案 C
+  # 由 cargo-tarpaulin 改換 — llvm-cov 用一般 cargo profile + instrument-coverage，
+  # 編譯可吃快取、免 ptrace 逐步追蹤，單組實測可較 tarpaulin 快數倍；exit code
+  # 可靠（底層即 cargo test），不需 tarpaulin 的 log-grep 補判）。
+  # 全量儀器化建置（83 支整合測試 binary）容量超過標準 runner（build 到 0MB ENOSPC）。
+  # 解法＝matrix 把測試 round-robin 拆 4 組，每組各自 runner 只建自己那批 binary
+  # （塞得進磁碟）+ 輸出 lcov；下方 ratchet job 用 lcov 合併成總覆蓋率、比對 baseline
+  # （只升不降）。group 1 額外含 --lib（單元測試只算一次；lib 於各組皆為依賴、覆蓋合併取聯集）。
+  #   - main push 且現值 > 門檻：ratchet job 自動上調門檻並 commit + push（[skip ci]）
+  # 硬門檻（blocking，2026-07-12 啟用）：分組覆蓋率合併值 < baseline - 容許誤差
+  # → CI 失敗（擋 PR 覆蓋率退步）。量測引擎更換當輪：llvm-cov 與 tarpaulin 的行計數
+  # 定義略異，baseline 於換引擎 PR 依首輪實測值重校（見 coverage-baseline.txt）。
+  # 正確性另由獨立「Backend: cargo test」把關。
+  # =========================
+  backend-coverage:
+    name: "📊 Backend: coverage ${{ matrix.group }}/4"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ipig_db_test
+          POSTGRES_INITDB_ARGS: "--locale=C"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: ./backend
+    env:
+      DATABASE_URL: postgres://postgres:password@localhost:5432/ipig_db_test
+      SQLX_OFFLINE: "false"
+      ADMIN_EMAIL: admin@ipigsystem.asia
+      ADMIN_INITIAL_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+      DISABLE_ACCOUNT_LOCKOUT: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          # llvm-tools：cargo-llvm-cov 需要的 rustup component（llvm-profdata / llvm-cov）
+          components: llvm-tools-preview
+          cache-key-suffix: llvmcov-g${{ matrix.group }}
+
+      # 釋放 runner 預裝 SDK 佔用，增加分組磁碟餘裕（單組本就塞得進，此為保險）。
+      - name: 釋放 runner 磁碟空間
+        run: |
+          echo "清理前磁碟："; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/lib/jvm || true
+          sudo docker image prune -af || true
+          echo "清理後磁碟："; df -h /
+
+      - name: 安裝 cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked 2>/dev/null || true
+
+      - name: 安裝 sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres --force
+
+      - name: 執行資料庫遷移
+        run: sqlx migrate run
+
+      - name: 挑選本組測試 + 量測覆蓋率
+        # round-robin：tests/*.rs（整合測試 binary）排序後每 4 取 1；group 1 另含 --lib。
+        # llvm-cov exit code 可靠（底層即 cargo test，#[should_panic] 正常計綠），
+        # 測試失敗即非 0 → set -e 直接紅，不需 tarpaulin 時代的 log-grep 補判。
+        run: |
+          set -euo pipefail
+          ALL=$(ls tests/*.rs 2>/dev/null | xargs -n1 basename | sed 's/\.rs$//' | grep -v '^common$' | sort)
+          SEL=""
+          i=0
+          for t in $ALL; do
+            if [ $(( i % 4 )) -eq $(( ${{ matrix.group }} - 1 )) ]; then
+              SEL="$SEL --test $t"
+            fi
+            i=$((i+1))
+          done
+          LIB=""
+          if [ "${{ matrix.group }}" = "1" ]; then LIB="--lib"; fi
+          echo "本組（${{ matrix.group }}/4）目標：$LIB $SEL"
+          mkdir -p coverage
+          cargo llvm-cov --locked $LIB $SEL \
+            --lcov --output-path "coverage/group-${{ matrix.group }}.info" \
+            -- --test-threads=1
+          echo "=== build/run 後磁碟 ==="; df -h /
+          if [ ! -s "coverage/group-${{ matrix.group }}.info" ]; then
+            echo "::error::未產出本組 lcov（量測異常，見上方 log）"; exit 1
+          fi
+          echo "本組 lcov："; ls -la coverage/
+
+      - name: 上傳本組 lcov
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov-${{ matrix.group }}
+          path: backend/coverage/group-${{ matrix.group }}.info
+          retention-days: 3
+          if-no-files-found: warn
+
+  # 📊 合併各組 lcov → 總覆蓋率 → ratchet 門檻（覆蓋率這關的權威 job）
+  backend-coverage-ratchet:
+    name: "📊 Backend: coverage (llvm-cov)"
+    needs: [changes, backend-coverage]
+    # !cancelled()：分組部分失敗仍執行（給出「缺組拒絕合併」的明確錯誤），
+    # 但 workflow 取消時不空跑（與其他 job 的取消處理一致）；
+    # 前端 only 變更（backend 分組整批 skip）也不跑，避免空跑必失敗。
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # ratchet 上調門檻需 commit + push
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 安裝 lcov
+        run: sudo apt-get update -qq && sudo apt-get install -y lcov
+
+      - name: 下載各組 lcov（gh CLI，免額外 action / SHA-pin）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ github.run_id }} --pattern "coverage-lcov-*" --dir coverage-parts
+          echo "下載到的分組 lcov："; find coverage-parts -name '*.info' -print
+
+      - name: 合併 + 算總覆蓋率 + ratchet 門檻檢查
+        run: |
+          set -euo pipefail
+          # 要求全部組都在：缺任一組 → 覆蓋率不完整（低估）。寧可 fail 也不用部分子集
+          # 算出誤導的「總」覆蓋率、或據以評估 baseline。缺組通常是該組 flake，重跑即可。
+          EXPECTED=4 # 對齊上方 matrix group 數
+          N=$(find coverage-parts -name 'group-*.info' | wc -l)
+          if [ "$N" -ne "$EXPECTED" ]; then
+            echo "::error::分組 lcov 數 ${N} ≠ 預期 ${EXPECTED}（有組失敗 → 覆蓋率不完整，拒絕合併；請重跑失敗的組）"; exit 1
+          fi
+          ADD=""
+          for f in $(find coverage-parts -name 'group-*.info' | sort); do ADD="$ADD -a $f"; done
+          # --ignore-errors inconsistent：lcov 2.x（ubuntu 24.04）對跨 tracefile 的
+          # 行數不一致（不同組因條件編譯等對同檔略異）會嚴格報錯 → 放寬此類（不含 corrupt，
+          # 不遮蔽真損毀）。實測本可正常合併，此為前瞻硬化避免未來因資料差異 flake。
+          lcov $ADD -o merged.info --ignore-errors inconsistent
+          COVERAGE=$(lcov --summary merged.info --ignore-errors inconsistent 2>&1 | awk '/lines[.]*:/ {v=$2; gsub(/%/,"",v); print v}')
+          if [ -z "$COVERAGE" ]; then echo "::error::無法從合併 lcov 解析總覆蓋率"; exit 1; fi
+          echo "合併後總行覆蓋率：${COVERAGE}%"
+          BASELINE=$(cat coverage-baseline.txt)
+          TOLERANCE=0.5
+          echo "現值 ${COVERAGE}% / 門檻 ${BASELINE}%（容許 ${TOLERANCE} 個百分點量測誤差）"
+          awk -v cur="$COVERAGE" -v base="$BASELINE" -v tol="$TOLERANCE" \
+            'BEGIN { exit !(cur+0 >= base+0-tol) }' && ok=1 || ok=0
+          if [ "$ok" != "1" ]; then
+            echo "::error::覆蓋率退步：現值 ${COVERAGE}% < 門檻 ${BASELINE}%（容許 ${TOLERANCE}）"; exit 1
+          fi
+          echo "✅ 覆蓋率達標"
+          echo "COVERAGE=${COVERAGE}" >> "$GITHUB_ENV"
+
+      - name: Coverage ratchet 自動上調門檻（僅 main push）
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          BASELINE=$(cat coverage-baseline.txt)
+          NEW=$(awk -v cur="$COVERAGE" -v base="$BASELINE" 'BEGIN { print (cur+0 > base+0) ? cur : base }')
+          if [ "$NEW" != "$BASELINE" ]; then
+            echo "$NEW" > coverage-baseline.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add coverage-baseline.txt
+            git commit -m "chore(ci): ratchet 後端覆蓋率門檻 ${BASELINE}% → ${NEW}% [skip ci]"
+            # persist-credentials: false 後 origin 無憑證 → 用 GITHUB_TOKEN 顯式推（GitHub 於 log 遮蔽）
+            git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+            git pull --rebase origin main
+            git push
+          else
+            echo "覆蓋率未提升（門檻維持 ${BASELINE}%），不更新"
+          fi
+
+  # =========================
+  # React 前端：TypeScript 檢查
+  # =========================
+  frontend-check:
+    name: "Frontend: tsc + eslint + vitest"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
+    permissions:
+      contents: write # R82-4 ratchet 上調 vitest.config.ts thresholds 需 commit + push
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: 安裝 Playwright 瀏覽器 (Vitest browser 模式所需)
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: TypeScript 型別檢查
+        run: pnpm exec tsc --noEmit
+
+      - name: ESLint
+        run: pnpm exec eslint src --max-warnings=50
+
+      - name: 單元測試 (Vitest) + coverage ratchet
+        # 不指定 project，直接執行所有 test 檔（unit + storybook）；Playwright 已安裝
+        # --coverage：vitest.config.ts 的 coverage.thresholds.autoUpdate=true，
+        # 現值高於門檻時會就地改寫 vitest.config.ts 的 thresholds（只升不降的 ratchet）。
+        # 現值低於門檻時 vitest 直接 fail，autoUpdate 不會補救。
+        run: pnpm exec vitest run --coverage
+
+      - name: Coverage ratchet 門檻變更偵測（僅 main push 才 commit）
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- vitest.config.ts; then
+            echo "門檻未變更，不需 commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add vitest.config.ts
+            git commit -m "chore(ci): ratchet 前端覆蓋率門檻上調 [skip ci]"
+            # backend-coverage job 可能同時在 main push ratchet 後端門檻，避免 non-fast-forward 被拒
+            # persist-credentials: false 後 origin 無憑證 → 用 GITHUB_TOKEN 顯式推（GitHub 於 log 遮蔽）
+            git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+            git pull --rebase origin main
+            git push
+          fi
+
+  # =========================
+  # 🛡️ Frontend entrypoint script 邊界 case 測試 (R28-6)
+  # =========================
+  frontend-entrypoint-test:
+    name: "🛡️ Frontend: docker-entrypoint.sh"
+    runs-on: ubuntu-latest
+    # R29-6: tsc fail 時內部 pnpm build 必失敗，short-circuit 省 ~1 分鐘 runner 時間
+    needs: [frontend-check]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 執行 docker-entrypoint.sh 邊界 case 測試
+        working-directory: ./frontend
+        run: |
+          chmod +x test-entrypoint.sh
+          ./test-entrypoint.sh
+
+  # =========================
+  # 🔒 前端依賴漏洞掃描（OSV）
+  # =========================
+  # npm 於 2026-07 下架 `pnpm audit` 依賴的 audit API 端點（回 410），連 pnpm 10.x
+  # 也無法查詢（endpoint retired，全域壞掉）。改用 OSV scanner 掃 pnpm-lock.yaml
+  # 對 OSV.dev 漏洞資料庫（不碰 npm 端點）；任一已知漏洞即 fail（比原 --audit-level=high
+  # 更嚴，實測現行 lockfile 731 套件 0 漏洞）。job/check 名保留以維持分支保護。
+  npm-audit:
+    name: "🔒 Security: pnpm audit"
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 下載 osv-scanner（釘版本，供應鏈安全）
+        run: |
+          sudo curl -sSL -o /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64
+          sudo chmod +x /usr/local/bin/osv-scanner
+
+      - name: OSV 依賴漏洞掃描（frontend/pnpm-lock.yaml）
+        # --config 明確指向豁免清單（不倚賴自動尋找）；清單內每條均須附評估理由
+        # 與 ignoreUntil 到期日，完整評估紀錄見 docs/security/security.md。
+        run: osv-scanner scan --config=frontend/osv-scanner.toml --lockfile=frontend/pnpm-lock.yaml
+
+  # =========================
+  # 🐳 容器安全掃描 (Trivy)
+  # .trivyignore 內所列 CVE 均經評估，原因與風險見 docs/security-compliance/security.md（例如 CVE-2026-25646），非漏修。
+  # =========================
+  trivy-scan:
+    name: "🐳 Security: Trivy container scan"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read      # checkout + docker build context
+      security-events: write  # R48-2: upload-sarif → GitHub Security tab
+    # R29-6: 雙路徑 short-circuit — backend tsc 等同 cargo check 在 backend-check job
+    # 已涵蓋；frontend image 內含 pnpm build 在 tsc fail 時必失敗。CI 已知 code 壞時
+    # 不再花 ~10 分鐘 build image 跑 Trivy。
+    # 路徑過濾下 check job 可能被 skip（單邊變更）：skipped 視同放行（該邊 code 未動），
+    # 仍掃描兩支映像；只有 check 真失敗才 short-circuit。
+    needs: [changes, backend-check, frontend-check]
+    if: >-
+      ${{ !cancelled()
+          && (needs.changes.outputs.backend != 'false' || needs.changes.outputs.frontend != 'false')
+          && contains(fromJSON('["success", "skipped"]'), needs.backend-check.result)
+          && contains(fromJSON('["success", "skipped"]'), needs.frontend-check.result) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build backend image
+        run: docker build --no-cache --progress=plain -t ipig-api:ci ./backend
+
+      - name: Trivy 掃描後端映像
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: "ipig-api:ci"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          vuln-type: "os,library"
+
+      - name: Trivy 後端 SARIF
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
+        with:
+          image-ref: "ipig-api:ci"
+          format: "sarif"
+          output: "trivy-backend.sarif"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          vuln-type: "os,library"
+      - name: Upload Trivy 後端 SARIF
+        uses: github/codeql-action/upload-sarif@fee9466b8957867761f2d78f922ab084e3e2dd17 # v3
+        if: always()
+        with:
+          sarif_file: trivy-backend.sarif
+          category: trivy-backend
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: 編譯前端
+        working-directory: ./frontend
+        run: pnpm run build
+
+      - name: Build frontend image
+        run: docker build --no-cache --progress=plain -t ipig-web:ci ./frontend
+
+      - name: Trivy 掃描前端映像
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: "ipig-web:ci"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          vuln-type: "os,library"
+
+      - name: Trivy 前端 SARIF
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
+        with:
+          image-ref: "ipig-web:ci"
+          format: "sarif"
+          output: "trivy-frontend.sarif"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          vuln-type: "os,library"
+      - name: Upload Trivy 前端 SARIF
+        uses: github/codeql-action/upload-sarif@fee9466b8957867761f2d78f922ab084e3e2dd17 # v3
+        if: always()
+        with:
+          sarif_file: trivy-frontend.sarif
+          category: trivy-frontend
+
+  # =========================
+  # 🧪 E2E 整合測試 (Playwright)
+  # 流程參照：docs/e2e/FLOW.md
+  # 完整說明：docs/e2e/README.md
+  # =========================
+  e2e-test:
+    name: "🧪 E2E: Playwright"
+    runs-on: ubuntu-latest
+    # CI 加速 2026-07-22 方案 B：改等 backend-check（~7 分鐘）而非 backend-test
+    # （~26 分鐘），E2E 提早 ~19 分鐘起跑、脫離整條 CI 的關鍵路徑。編譯錯誤仍被
+    # backend-check 擋下；cargo test 紅時 E2E 會白跑一輪（僅浪費 runner 分鐘，
+    # 正確性由兩者各自把關）。skipped 視同放行（該邊 code 未動，路徑過濾）。
+    # Dependabot PR 無法取得 repository secrets，Docker 環境必然無法啟動，直接跳過。
+    needs: [changes, backend-check, frontend-check]
+    if: >-
+      ${{ !cancelled() && github.actor != 'dependabot[bot]'
+          && (needs.changes.outputs.backend != 'false' || needs.changes.outputs.frontend != 'false')
+          && contains(fromJSON('["success", "skipped"]'), needs.backend-check.result)
+          && contains(fromJSON('["success", "skipped"]'), needs.frontend-check.result) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 設定專案環境變數
+        run: cp .env.example .env
+
+      - name: 產生 E2E 測試用 EC JWT 金鑰
+        run: |
+          mkdir -p secrets
+          openssl ecparam -name prime256v1 -genkey -noout | \
+            openssl pkcs8 -topk8 -nocrypt -out secrets/jwt_ec_private_key_test.pem
+          openssl ec -in secrets/jwt_ec_private_key_test.pem -pubout \
+            -out secrets/jwt_ec_public_key_test.pem
+          # 將金鑰內容匯出為環境變數，供 docker-compose.test.yml 直接使用
+          # （Docker Compose file-based secrets 不支援設定 mode，非 root 容器無法讀取）
+          {
+            echo "JWT_EC_PRIVATE_KEY<<ECEOF"
+            cat secrets/jwt_ec_private_key_test.pem
+            echo "ECEOF"
+            echo "JWT_EC_PUBLIC_KEY<<ECEOF"
+            cat secrets/jwt_ec_public_key_test.pem
+            echo "ECEOF"
+          } >> "$GITHUB_ENV"
+
+      - name: 啟動 Docker 測試環境 (build)
+        env:
+          CI_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+          CI_DEV_PASSWORD: ${{ secrets.CI_DEV_PASSWORD }}
+          # E2E 覆蓋率：docker-compose.test.yml 透過 ${VITE_E2E_COVERAGE:-0} 讀取，
+          # local/dev 預設 0、CI 顯式設 1 → vite 產 hidden source map
+          VITE_E2E_COVERAGE: "1"
+        run: |
+          set -euo pipefail
+          echo "=== Docker 版本檢查 ==="
+          docker --version && docker compose --version
+          echo ""
+          echo "=== 開始構建鏡像 ==="
+          # --progress=plain 必須放在 compose 層級；放在 build 子命令是 deprecated warning。
+          docker compose --progress=plain -f docker-compose.test.yml build
+
+      - name: 啟動 Docker 測試環境 (up)
+        env:
+          CI_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+          CI_DEV_PASSWORD: ${{ secrets.CI_DEV_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "=== 啟動容器（不帶 --wait，手動輪詢 healthcheck） ==="
+          # 先 up -d（不 --wait），讓容器啟動；再單獨輪詢 healthcheck，這樣
+          # 單一容器啟動失敗時能在失敗當下立刻印日誌，而非 --wait-timeout 才暴露。
+          docker compose -f docker-compose.test.yml up -d
+          echo ""
+          echo "=== 初始容器狀態 ==="
+          docker compose -f docker-compose.test.yml ps -a
+          echo ""
+          echo "=== 輪詢 healthcheck（最多 3 分鐘） ==="
+          SERVICES="db-test api-test web-test"
+          for i in $(seq 1 36); do
+            ALL_HEALTHY=true
+            for svc in $SERVICES; do
+              cname="ipig-${svc}"
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$cname" 2>/dev/null || echo "no-container")
+              running=$(docker inspect --format='{{.State.Status}}' "$cname" 2>/dev/null || echo "none")
+              if [ "$running" = "exited" ] || [ "$running" = "dead" ]; then
+                echo "❌ $cname 已退出 (status=$running)，即將傾印日誌並中止"
+                ALL_HEALTHY=false
+                break 2
+              fi
+              if [ "$status" != "healthy" ]; then
+                ALL_HEALTHY=false
+                if [ $((i % 6)) -eq 0 ]; then
+                  echo "  [$i/36] $cname: health=$status, state=$running"
+                fi
+              fi
+            done
+            if $ALL_HEALTHY; then
+              echo "✅ 所有服務 healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "❌ 180s 後仍有服務未就緒"
+          exit 1
+
+      - name: 傾印容器日誌 (啟動失敗時偵錯)
+        if: failure()
+        run: |
+          echo "=== 容器狀態 ==="
+          docker compose -f docker-compose.test.yml ps -a || true
+          echo ""
+          echo "=== API 容器詳細信息 ==="
+          docker inspect ipig-api-test 2>/dev/null | jq '.[] | {State, Health, Config}' || true
+          echo ""
+          echo "=== API 容器日誌 (最後 500 行) ==="
+          docker logs ipig-api-test --tail=500 2>&1 || docker compose -f docker-compose.test.yml logs api-test --tail=500
+          echo ""
+          echo "=== DB 容器日誌 (最後 100 行) ==="
+          docker compose -f docker-compose.test.yml logs db-test --tail=100 || true
+          echo ""
+          echo "=== Web 容器日誌 (最後 100 行) ==="
+          docker compose -f docker-compose.test.yml logs web-test --tail=100 || true
+          echo ""
+          echo "=== Docker 網絡檢查 ==="
+          docker network ls || true
+          echo ""
+          echo "=== Docker 卷檢查 ==="
+          docker volume ls | grep ipig || true
+
+      - name: 確認服務可連線 (備援檢查)
+        run: |
+          # 雙端點一併輪詢，總等待最多 120s，避免 port 映射延遲
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/ > /dev/null && curl -sf http://localhost:8000/api/health > /dev/null; then
+              echo "✅ 所有服務已就緒"
+              exit 0
+            fi
+            echo "等待服務... ($i/60)"
+            sleep 2
+          done
+          echo "❌ 服務未在時限內就緒"
+          docker compose -f docker-compose.test.yml ps -a
+          docker compose -f docker-compose.test.yml logs --tail=80
+          exit 1
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: 安裝 Playwright 瀏覽器
+        working-directory: ./frontend
+        run: pnpm exec playwright install --with-deps
+
+      - name: 執行 Playwright E2E 測試
+        working-directory: ./frontend
+        env:
+          # 須與 docker-compose.test.yml ADMIN_INITIAL_PASSWORD fallback 一致（見 docs/e2e/FLOW.md）
+          # docker-compose.test.yml: ${CI_ADMIN_PASSWORD:-ci_test_admin_password_for_local}
+          # 若 secret 未設定，兩端皆 fallback 到同一個值，確保密碼一致
+          E2E_BASE_URL: http://localhost:8080
+          E2E_USER_EMAIL: admin@ipigsystem.asia
+          E2E_USER_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD || 'ci_test_admin_password_for_local' }}
+          E2E_ADMIN_EMAIL: admin@ipigsystem.asia
+          E2E_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD || 'ci_test_admin_password_for_local' }}
+          ADMIN_INITIAL_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD || 'ci_test_admin_password_for_local' }}
+          # 啟用 V8 coverage：fixtures/coverage.ts 收集，monocart-reporter 聚合 → lcov + html
+          E2E_COVERAGE: "1"
+        run: pnpm run test:e2e
+
+      - name: 上傳測試報告 (失敗時)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 30
+
+      - name: 上傳 E2E coverage 報告
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-coverage-report
+          path: frontend/monocart-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 停止 Docker 環境
+        if: always()
+        run: docker compose -f docker-compose.test.yml down

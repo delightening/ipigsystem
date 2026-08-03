@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>狀態色兩階 · Solid / Soft 選階規範</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --ink:#161a1d; --ink2:#3a424a; --mut:#6b7480; --line:#e4e7eb; --bg:#f4f6f8; --card:#fff;
+    /* status tokens（同 frontend/src/index.css light 值） */
+    --success-bg:hsl(142 76% 95%); --success-text:hsl(142 76% 30%); --success-border:hsl(142 76% 85%); --success-solid:hsl(142 76% 36%);
+    --warning-bg:hsl(38 92% 95%);  --warning-text:hsl(38 92% 30%);  --warning-border:hsl(38 92% 85%);  --warning-solid:hsl(38 92% 50%);
+    --error-bg:hsl(0 84% 95%);     --error-text:hsl(0 84% 40%);     --error-border:hsl(0 84% 85%);     --error-solid:hsl(0 84% 60%);
+    --info-bg:hsl(217 91% 95%);    --info-text:hsl(217 91% 40%);    --info-border:hsl(217 91% 85%);    --info-solid:hsl(217 91% 60%);
+    --neutral-bg:hsl(215 16% 95%); --neutral-text:hsl(215 16% 46%); --neutral-border:hsl(215 16% 85%); --neutral-solid:hsl(215 16% 47%);
+    --purple-bg:hsl(263 70% 95%);  --purple-text:hsl(263 70% 40%);  --purple-border:hsl(263 70% 85%);  --purple-solid:hsl(263 70% 50%);
+  }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.55; }
+  .mono { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.9em; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 20px 60px; }
+  header { background:var(--ink); color:#fff; padding:26px 0 22px; margin-bottom:22px; }
+  header .wrap { padding-bottom:0; }
+  h1 { margin:0 0 4px; font-size:22px; letter-spacing:.01em; }
+  .sub { color:#9aa4ae; font-size:13px; margin:0; }
+  h2 { font-size:16px; margin:30px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+  section.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:14px 0; }
+  p { margin:8px 0; }
+  .lead { color:var(--ink2); }
+  /* badge renderers */
+  .badge { display:inline-flex; align-items:center; gap:6px; border-radius:999px; border:1px solid transparent;
+    padding:2px 10px; font-size:12px; font-weight:600; }
+  .badge.soft { font-weight:500; }
+  .dot { width:6px; height:6px; border-radius:999px; }
+  /* families */
+  .fam { display:grid; grid-template-columns:110px 1fr 1fr; gap:10px 16px; align-items:center; margin-top:6px; }
+  .fam .h { font-size:12px; font-weight:700; color:var(--mut); }
+  .fam .name { font-size:12.5px; color:var(--ink2); }
+  /* rule table */
+  table { width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mut); font-weight:700; font-size:12px; }
+  td.mono { white-space:nowrap; }
+  /* demo table */
+  .demo { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .demo .row { display:flex; align-items:center; gap:0; padding:7px 14px; border-bottom:1px solid var(--line); font-size:13px; }
+  .demo .row:last-child { border-bottom:0; }
+  .demo .hd { background:#f7f9fb; color:var(--mut); font-weight:700; font-size:12px; }
+  .demo .c1 { width:120px; } .demo .c2 { width:90px; } .demo .c3 { flex:1; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:720px){ .two{grid-template-columns:1fr;} .fam{grid-template-columns:90px 1fr;} .fam .soft-h,.fam .soft{display:none;} }
+  .lbl { font-size:11px; font-weight:700; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .pill { border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .warn-box { background:var(--warning-bg); border:1px solid var(--warning-border); border-left:4px solid var(--warning-solid);
+    border-radius:10px; padding:12px 16px; color:#7a4c07; font-size:13px; }
+  .warn-box b { color:#8a4b00; }
+  .note { font-size:12.5px; color:var(--mut); margin-top:6px; }
+  code { background:#eef1f4; padding:1px 5px; border-radius:5px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.88em; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>狀態色兩階 · Solid / Soft 選階規範</h1>
+  <p class="sub">DESIGN.md §3.4 · 每個 status 語意色刻意保留兩階，依「密度」選階（非二選一統一）· 2026-07-04</p>
+</div></header>
+
+<div class="wrap">
+
+  <section class="card">
+    <p class="lead"><b>問題：</b>全站狀態色出現兩種長相並存——（1）飽和底＋白字（solid）、（2）淺底＋深字（soft）——跨頁一比顯得不一致。</p>
+    <p class="lead"><b>結論：</b>不統一為單一種。兩階都保留，訂規則分工並收斂進 <code>StatusBadge</code>（<code>tone</code> prop），禁止再手刻。</p>
+    <p class="lead" style="margin-bottom:0"><b>判準一句話：</b>成群 / 密集重複 → <b>soft</b>；單顆 / 需搶眼 → <b>solid</b>。</p>
+  </section>
+
+  <h2>兩階長相對照（六語意色）</h2>
+  <section class="card">
+    <div class="fam">
+      <div class="h"></div><div class="h">Solid（實心 · 白字）</div><div class="h soft-h">Soft（淺底 · 深字 · 淺框）</div>
+
+      <div class="name">success</div>
+      <div><span class="badge" style="background:var(--success-solid);color:#fff">已核准</span></div>
+      <div class="soft"><span class="badge soft" style="background:var(--success-bg);color:var(--success-text);border-color:var(--success-border)">實驗中</span></div>
+
+      <div class="name">warning</div>
+      <div><span class="badge" style="background:var(--warning-solid);color:#fff">審查中</span></div>
+      <div class="soft"><span class="badge soft" style="background:var(--warning-bg);color:var(--warning-text);border-color:var(--warning-border)">已預約</span></div>
+
+      <div class="name">error</div>
+      <div><span class="badge" style="background:var(--error-solid);color:#fff">超標</span></div>
+      <div class="soft"><span class="badge soft" style="background:var(--error-bg);color:var(--error-text);border-color:var(--error-border)">缺料</span></div>
+
+      <div class="name">info</div>
+      <div><span class="badge" style="background:var(--info-solid);color:#fff">已提交</span></div>
+      <div class="soft"><span class="badge soft" style="background:var(--info-bg);color:var(--info-text);border-color:var(--info-border)">需求</span></div>
+
+      <div class="name">neutral</div>
+      <div><span class="badge" style="background:var(--neutral-solid);color:#fff">草稿</span></div>
+      <div class="soft"><span class="badge soft" style="background:var(--neutral-bg);color:var(--neutral-text);border-color:var(--neutral-border)">待處理</span></div>
+
+      <div class="name">purple</div>
+      <div><span class="badge" style="background:var(--purple-solid);color:#fff">實驗完成</span></div>
+      <div class="soft"><span class="badge soft" style="background:var(--purple-bg);color:var(--purple-text);border-color:var(--purple-border)">已完成</span></div>
+    </div>
+    <p class="note">Solid / Soft 的 HSL 值取自 <span class="mono">frontend/src/index.css</span>（此頁為 Light 主題示意）。</p>
+  </section>
+
+  <h2>選階規則（context → tone）</h2>
+  <section class="card">
+    <table>
+      <thead><tr><th>階</th><th>Token 寫法</th><th>適用場景</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge" style="background:var(--info-solid);color:#fff">Solid</span></td>
+          <td class="mono">bg-status-X-solid<br>text-white</td>
+          <td>單顆、需醒目的狀態；計數 / 通知 badge；<span class="mono">destructive</span> 等需抓眼球的警示</td>
+        </tr>
+        <tr>
+          <td><span class="badge soft" style="background:var(--info-bg);color:var(--info-text);border-color:var(--info-border)">Soft</span></td>
+          <td class="mono">bg-status-X-bg<br>text-status-X-text<br>border-status-X-border</td>
+          <td>表格每列、chip 群等成群、重複、密集出現的狀態標籤（降低「聖誕燈牆」視覺噪音）</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>為什麼「密集用 soft」— 同一張表對照</h2>
+  <section class="card">
+    <div class="two">
+      <div>
+        <div class="lbl">❌ 全 Solid（密集處變吵）</div>
+        <div class="demo">
+          <div class="row hd"><div class="c1">耳號</div><div class="c2">性別</div><div class="c3">狀態</div></div>
+          <div class="row"><div class="c1 mono">PIG-002</div><div class="c2">公</div><div class="c3"><span class="badge" style="background:var(--success-solid);color:#fff">實驗中</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-003</div><div class="c2">公</div><div class="c3"><span class="badge" style="background:var(--warning-solid);color:#fff">已預約</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-004</div><div class="c2">母</div><div class="c3"><span class="badge" style="background:var(--purple-solid);color:#fff">已完成</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-005</div><div class="c2">公</div><div class="c3"><span class="badge" style="background:var(--success-solid);color:#fff">實驗中</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-006</div><div class="c2">母</div><div class="c3"><span class="badge" style="background:var(--error-solid);color:#fff">已退場</span></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="lbl">✅ Soft（密集處安靜、仍分得出語意）</div>
+        <div class="demo">
+          <div class="row hd"><div class="c1">耳號</div><div class="c2">性別</div><div class="c3">狀態</div></div>
+          <div class="row"><div class="c1 mono">PIG-002</div><div class="c2">公</div><div class="c3"><span class="badge soft" style="background:var(--success-bg);color:var(--success-text);border-color:var(--success-border)">實驗中</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-003</div><div class="c2">公</div><div class="c3"><span class="badge soft" style="background:var(--warning-bg);color:var(--warning-text);border-color:var(--warning-border)">已預約</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-004</div><div class="c2">母</div><div class="c3"><span class="badge soft" style="background:var(--purple-bg);color:var(--purple-text);border-color:var(--purple-border)">已完成</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-005</div><div class="c2">公</div><div class="c3"><span class="badge soft" style="background:var(--success-bg);color:var(--success-text);border-color:var(--success-border)">實驗中</span></div></div>
+          <div class="row"><div class="c1 mono">PIG-006</div><div class="c2">母</div><div class="c3"><span class="badge soft" style="background:var(--error-bg);color:var(--error-text);border-color:var(--error-border)">已退場</span></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">預約規劃頁的 chip 群（下）本來就是 soft，這次是把其餘落在表格裡的 solid 也收斂到同一階。</p>
+    <div class="chips" style="margin-top:10px">
+      <span class="pill" style="background:var(--info-bg);color:var(--info-text)">需求 15</span>
+      <span class="pill" style="background:var(--success-bg);color:var(--success-text)">實驗中 3</span>
+      <span class="pill" style="background:var(--purple-bg);color:var(--purple-text)">已完成 2</span>
+      <span class="pill" style="background:var(--warning-bg);color:var(--warning-text)">已預約 4</span>
+      <span class="pill" style="background:var(--error-bg);color:var(--error-text)">缺 6</span>
+    </div>
+  </section>
+
+  <h2>已知 a11y 待辦（Debt #15）</h2>
+  <section class="card">
+    <div class="warn-box">
+      <b>solid warning 白字不過 WCAG AA。</b>
+      <span class="badge" style="background:var(--warning-solid);color:#fff">審查中</span>
+      橘黃底（<span class="mono">38 92% 50%</span>）配白字對比僅約 2:1（AA 需 4.5:1）。
+      多數 warning 落在表格 → 改 soft（<span class="badge soft" style="background:var(--warning-bg);color:var(--warning-text);border-color:var(--warning-border)">審查中</span> 深字淺底，合格）後問題大幅縮小；殘留的 solid warning 前景色另案處理。
+    </div>
+  </section>
+
+  <h2>實作與範圍</h2>
+  <section class="card">
+    <p><b>本 PR（地基，零視覺回歸）：</b></p>
+    <ul>
+      <li><code>StatusBadge</code> 加 <code>tone="solid" | "soft"</code>（預設 <code>solid</code> → 既有 52 個呼叫點外觀不變）</li>
+      <li>DESIGN.md §3.4 選階規範 + §9 表格標準更新 + §21 決策紀錄 + §20 Debt #14/#15</li>
+      <li>本預覽頁</li>
+    </ul>
+    <p><b>Follow-up PR（遷移 sweep，Debt #14）：</b>把落在表格 / chip 群的 ~52 個 <code>StatusBadge</code> 由 solid 改 <code>tone="soft"</code>，並將手刻 <span class="mono">bg-status-X-bg text-status-X-text</span> 的狀態標籤收斂進 <code>StatusBadge</code>。此段有可見改動，待此規範拍板後執行。</p>
+    <p class="note">提示框 / alert 面板 / 區塊底色的淺底不屬「狀態標籤」，不在遷移範圍。</p>
+  </section>
+
+</div>
+</body>
+</html>

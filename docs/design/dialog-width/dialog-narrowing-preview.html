@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>變窄 dialog 效果對照</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;--accent:#7c3aed;--warn:#d97706;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif;line-height:1.5;}
+  header{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;padding:24px 28px;}
+  header h1{margin:0 0 4px;font-size:20px;} header p{margin:0;opacity:.9;font-size:13px;}
+  .wrap{max-width:1500px;margin:0 auto;padding:20px 28px 80px;}
+  .cmp{margin-top:28px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;}
+  .cmp h2{margin:0 0 4px;font-size:16px;border-left:4px solid var(--accent);padding-left:10px;}
+  .cmp .who{font-size:12px;color:var(--muted);margin:0 0 14px;padding-left:14px;}
+  .pair{display:flex;gap:22px;align-items:flex-start;overflow-x:auto;padding-bottom:8px;}
+  .col{flex:0 0 auto;}
+  .tag{font-size:12px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+  .tag .px{font-variant-numeric:tabular-nums;}
+  .tag.cur{color:var(--warn);} .tag.new{color:var(--accent);}
+  .delta{font-size:11px;background:#fef3c7;color:#92400e;border-radius:999px;padding:1px 8px;}
+  /* a fake dialog box rendered at real px width */
+  .dlg{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.10);padding:16px 18px;}
+  .dlg .dt{font-size:15px;font-weight:700;margin:0 0 2px;}
+  .dlg .dd{font-size:12px;color:var(--muted);margin:0 0 12px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;font-size:12.5px;}
+  .grid2 .k{color:var(--muted);} .grid2 .v{font-weight:600;}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px;}
+  th,td{border-bottom:1px solid var(--line);padding:5px 7px;text-align:left;white-space:nowrap;}
+  th{background:#f3f4f6;font-weight:600;}
+  td.note{white-space:normal;color:var(--muted);}
+  .field{display:flex;flex-direction:column;gap:3px;margin-bottom:10px;}
+  .field label{font-size:12px;color:var(--muted);}
+  .field .inp{height:30px;border:1px solid var(--line);border-radius:6px;background:#fafafa;}
+  .field .inp.area{height:54px;}
+  .frow{display:flex;gap:12px;} .frow .field{flex:1;}
+  /* chat */
+  .thread{display:flex;flex-direction:column;gap:8px;}
+  .bubble{max-width:78%;padding:7px 11px;border-radius:12px;font-size:12.5px;}
+  .bubble.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px;}
+  .bubble.you{align-self:flex-start;background:#eef1f5;border-bottom-left-radius:3px;}
+  .recip{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .chip{font-size:11px;background:#ede9fe;color:#5b21b6;border-radius:999px;padding:2px 9px;}
+  .verdict{margin-top:10px;font-size:12px;}
+  .verdict.ok{color:#166534;} .verdict.warn{color:#92400e;}
+  .foot{font-size:12px;color:var(--muted);margin-top:26px;border-top:1px dashed var(--line);padding-top:14px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>「變窄」dialog 效果對照（現寬 vs 提案寬，真實像素）</h1>
+  <p>內容為各類別代表性樣本（非逐一元件 1:1）。左=現用寬、右=提案標準寬。看右側是否會擠／換行不良，再決定縮窄或改往上一級標準。</p>
+</header>
+<div class="wrap">
+
+  <!-- 類別 1：資料密集 detail 768→672 -->
+  <div class="cmp">
+    <h2>① 資料密集 detail（含表格）　現 768px → 提案 lg 672px <span class="delta">−96px</span></h2>
+    <p class="who">影響：血檢明細、活動紀錄明細、犧牲紀錄、觀察紀錄、血檢項歷史、版本分頁（6 個）</p>
+    <div class="pair">
+      <div class="col" style="width:768px">
+        <div class="tag cur">現用　<span class="px">768px (max-w-3xl)</span></div>
+        <div class="dlg" id="d1a"></div>
+      </div>
+      <div class="col" style="width:672px">
+        <div class="tag new">提案　<span class="px">672px (lg)</span></div>
+        <div class="dlg" id="d1b"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 類別 2：站內訊息 860→672 -->
+  <div class="cmp">
+    <h2>② 站內訊息　現 860px → 提案 lg 672px <span class="delta">−188px（縮最多）</span></h2>
+    <p class="who">影響：MessagingPage（1 個）</p>
+    <div class="pair">
+      <div class="col" style="width:860px">
+        <div class="tag cur">現用　<span class="px">860px (硬編)</span></div>
+        <div class="dlg" id="d2a"></div>
+      </div>
+      <div class="col" style="width:672px">
+        <div class="tag new">提案　<span class="px">672px (lg)</span></div>
+        <div class="dlg" id="d2b"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 類別 3：簡單表單 500→448 -->
+  <div class="cmp">
+    <h2>③ 簡單表單　現 500px → 提案 sm 448px <span class="delta">−52px</span></h2>
+    <p class="who">影響：猝死單、加班申請、請假申請、血檢範本、血檢預設（5 個）</p>
+    <div class="pair">
+      <div class="col" style="width:500px">
+        <div class="tag cur">現用　<span class="px">500px (硬編)</span></div>
+        <div class="dlg" id="d3a"></div>
+      </div>
+      <div class="col" style="width:448px">
+        <div class="tag new">提案　<span class="px">448px (sm)</span></div>
+        <div class="dlg" id="d3b"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    其餘變窄為可忽略級：SurgeryFormDialog 1200→2xl(1152) −48px、VetPatrolReportDialog 已改 <b>2xl(1152)</b>（不縮）。<br>
+    判斷後告訴我：哪幾類「照提案縮」、哪幾類「改往上一級（① / ③ 可改 xl / md）保留較寬」。
+  </div>
+</div>
+
+<script>
+  const detail=()=>`
+    <div class="dt">血液檢驗明細　耳號 002</div>
+    <div class="dd">採樣 2026-05-28 · 報告 2026-05-30 · 計畫 PIG-115003</div>
+    <div class="grid2">
+      <div class="k">動物編號</div><div class="v">A-0231</div>
+      <div class="k">品系</div><div class="v">迷你豬</div>
+      <div class="k">採樣人</div><div class="v">王獸醫</div>
+      <div class="k">套組</div><div class="v">生化 + 血液學</div>
+    </div>
+    <table>
+      <thead><tr><th>項目</th><th>數值</th><th>單位</th><th>參考值</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr><td>白血球 WBC</td><td>12.4</td><td>10³/µL</td><td>6.0–17.0</td><td>正常</td></tr>
+        <tr><td>血紅素 HGB</td><td>9.1</td><td>g/dL</td><td>10.0–16.0</td><td>偏低</td></tr>
+        <tr><td>肌酸酐 CREA</td><td>1.8</td><td>mg/dL</td><td>0.8–1.8</td><td>正常</td></tr>
+        <tr><td>丙胺酸轉胺酶 ALT</td><td>62</td><td>U/L</td><td>21–46</td><td>偏高</td></tr>
+      </tbody>
+    </table>`;
+  document.getElementById('d1a').innerHTML=detail();
+  document.getElementById('d1b').innerHTML=detail();
+
+  const chat=()=>`
+    <div class="dt">站內訊息 · 計畫 PIG-115003 討論</div>
+    <div class="recip"><span class="chip">王獸醫</span><span class="chip">李主治</span><span class="chip">陳秘書</span><span class="chip">張 SD</span></div>
+    <div class="thread">
+      <div class="bubble you">002 號血檢 ALT 偏高，是否需要追蹤一次？建議一週後複檢。</div>
+      <div class="bubble me">同意，我排下週二複檢，順便看 HGB 有沒有回升。</div>
+      <div class="bubble you">好，複檢前先停那支保肝藥動，避免干擾數值判讀。</div>
+      <div class="bubble me">收到，已記錄到病程。複檢結果出來我貼這串。</div>
+    </div>`;
+  document.getElementById('d2a').innerHTML=chat();
+  document.getElementById('d2b').innerHTML=chat();
+
+  const form=()=>`
+    <div class="dt">猝死紀錄</div>
+    <div class="dd">耳號 002 · 自動帶入動物資訊</div>
+    <div class="frow"><div class="field"><label>死亡日期</label><div class="inp"></div></div>
+      <div class="field"><label>發現時間</label><div class="inp"></div></div></div>
+    <div class="field"><label>發現人</label><div class="inp"></div></div>
+    <div class="field"><label>初步死因 / 描述</label><div class="inp area"></div></div>
+    <div class="field"><label>是否解剖</label><div class="inp"></div></div>`;
+  document.getElementById('d3a').innerHTML=form();
+  document.getElementById('d3b').innerHTML=form();
+</script>
+</body>
+</html>

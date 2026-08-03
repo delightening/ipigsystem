@@ -1,0 +1,338 @@
+import React, { useState, useCallback } from 'react'
+import { GuestHide } from '@/components/ui/guest-hide'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import api, { deleteResource, AnimalVaccination } from '@/lib/api'
+import { uiLocale } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { toast } from '@/components/ui/use-toast'
+import { getApiErrorMessage } from '@/lib/apiError'
+import { Plus, Edit2, Trash2, Syringe, Loader2 } from 'lucide-react'
+import { TableEmptyRow } from '@/components/ui/empty-state'
+import { useTableSort } from '@/hooks/useTableSort'
+import { SortableTableHead } from '@/components/ui/sortable-table-head'
+import { DeleteReasonDialog } from '@/components/ui/delete-reason-dialog'
+
+interface VaccinationsTabProps {
+  animalId: string
+  earTag: string
+  afterParam: string
+  vaccinations: AnimalVaccination[] | undefined
+}
+
+export const VaccinationsTab = React.memo(function VaccinationsTab({ animalId, earTag, afterParam: _afterParam, vaccinations }: VaccinationsTabProps) {
+  const queryClient = useQueryClient()
+  const { sortedData, sort, toggleSort } = useTableSort(vaccinations)
+
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [newVaccination, setNewVaccination] = useState({ administered_date: new Date().toISOString().split('T')[0], vaccine: '', deworming_dose: '' })
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<AnimalVaccination | null>(null)
+  const [editForm, setEditForm] = useState({ administered_date: '', vaccine: '', deworming_dose: '' })
+
+  const openEdit = useCallback((vac: AnimalVaccination) => {
+    setEditTarget(vac)
+    setEditForm({
+      administered_date: vac.administered_date.split('T')[0],
+      vaccine: vac.vaccine ?? '',
+      deworming_dose: vac.deworming_dose ?? '',
+    })
+  }, [])
+
+  const addMutation = useMutation({
+    mutationFn: async (data: typeof newVaccination) => {
+      return api.post(`/animals/${animalId}/vaccinations`, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['animal-vaccinations', animalId] })
+      toast({ title: '成功', description: '疫苗紀錄已新增' })
+      setShowAddDialog(false)
+      setNewVaccination({ administered_date: new Date().toISOString().split('T')[0], vaccine: '', deworming_dose: '' })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: '錯誤',
+        description: getApiErrorMessage(error, '新增失敗'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof editForm }) => {
+      return api.put(`/vaccinations/${id}`, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['animal-vaccinations', animalId] })
+      toast({ title: '成功', description: '疫苗紀錄已更新' })
+      setEditTarget(null)
+      setEditForm({ administered_date: '', vaccine: '', deworming_dose: '' })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: '錯誤',
+        description: getApiErrorMessage(error, '更新失敗'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      return deleteResource(`/vaccinations/${id}`, { data: { reason } })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['animal-vaccinations', animalId] })
+      toast({ title: '成功', description: '疫苗紀錄已刪除' })
+      setDeleteTarget(null)
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: '錯誤',
+        description: getApiErrorMessage(error, '刪除失敗'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <>
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>疫苗/驅蟲紀錄</CardTitle>
+            <CardDescription>記錄疫苗接種與驅蟲紀錄</CardDescription>
+          </div>
+          <GuestHide>
+            <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              新增紀錄
+            </Button>
+          </GuestHide>
+        </CardHeader>
+        <CardContent>
+          <div className="@container">
+
+            {/* ── Table view: container ≥ 600px ── */}
+            <div className="hidden @[600px]:block overflow-x-auto">
+              <Table className="w-full" style={{ minWidth: 530 }}>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <SortableTableHead style={{ width: 100 }} sortKey="administered_date" currentSort={sort.column} currentDirection={sort.direction} onSort={toggleSort}>施打日期</SortableTableHead>
+                    <SortableTableHead style={{ minWidth: 120 }} sortKey="vaccine" currentSort={sort.column} currentDirection={sort.direction} onSort={toggleSort}>疫苗</SortableTableHead>
+                    <TableHead style={{ minWidth: 120 }}>驅蟲劑量</TableHead>
+                    <TableHead style={{ width: 100 }}>記錄者</TableHead>
+                    <SortableTableHead style={{ width: 160 }} sortKey="created_at" currentSort={sort.column} currentDirection={sort.direction} onSort={toggleSort} className="hidden @[690px]:table-cell">建立時間</SortableTableHead>
+                    <TableHead style={{ width: 90 }} className="text-right">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!vaccinations || vaccinations.length === 0 ? (
+                    <TableEmptyRow colSpan={6} icon={Syringe} title="尚無疫苗/驅蟲紀錄" />
+                  ) : (
+                    sortedData?.map((vac) => (
+                      <TableRow key={vac.id}>
+                        <TableCell style={{ width: 100 }} className="whitespace-nowrap">{new Date(vac.administered_date).toLocaleDateString(uiLocale(), { timeZone: 'Asia/Taipei' })}</TableCell>
+                        <TableCell style={{ minWidth: 120 }} className="whitespace-normal break-words">{vac.vaccine || '-'}</TableCell>
+                        <TableCell style={{ minWidth: 120 }} className="whitespace-normal break-words">{vac.deworming_dose || '-'}</TableCell>
+                        <TableCell style={{ width: 100 }} className="whitespace-normal break-words">{vac.created_by_name || '-'}</TableCell>
+                        <TableCell style={{ width: 160 }} className="text-xs text-muted-foreground hidden @[690px]:table-cell">{new Date(vac.created_at).toLocaleString(uiLocale(), { timeZone: 'Asia/Taipei' })}</TableCell>
+                        <TableCell style={{ width: 90 }} className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <GuestHide>
+                              <Button variant="ghost" size="icon" onClick={() => openEdit(vac)} aria-label="編輯">
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(vac.id)} aria-label="刪除">
+                                <Trash2 className="h-4 w-4 text-status-error-solid" />
+                              </Button>
+                            </GuestHide>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* ── Card view: container < 600px ── */}
+            <div className="@[600px]:hidden space-y-3 py-1">
+              {!vaccinations || vaccinations.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <Syringe className="h-8 w-8" />
+                  <p className="text-sm">尚無疫苗/驅蟲紀錄</p>
+                </div>
+              ) : (
+                sortedData?.map((vac) => (
+                  <div key={vac.id} className="rounded-lg border bg-card p-3 space-y-2">
+                    <div className="text-sm font-medium text-foreground">
+                      {new Date(vac.administered_date).toLocaleDateString(uiLocale(), { timeZone: 'Asia/Taipei' })}
+                    </div>
+                    {vac.vaccine && (
+                      <div className="text-sm text-muted-foreground">
+                        💉 疫苗：{vac.vaccine}
+                      </div>
+                    )}
+                    {vac.deworming_dose && (
+                      <div className="text-sm text-muted-foreground">
+                        💊 驅蟲：{vac.deworming_dose}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t">
+                      <span className="text-xs text-muted-foreground">{vac.created_by_name || '-'}</span>
+                      <div className="flex gap-0.5">
+                        <GuestHide>
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(vac)} aria-label="編輯">
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(vac.id)} aria-label="刪除">
+                            <Trash2 className="h-4 w-4 text-status-error-solid" />
+                          </Button>
+                        </GuestHide>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新增疫苗/驅蟲紀錄</DialogTitle>
+            <DialogDescription>耳號：{earTag}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="vac_date">施打日期 *</Label>
+              <Input
+                id="vac_date"
+                type="date"
+                value={newVaccination.administered_date}
+                onChange={(e) => setNewVaccination({ ...newVaccination, administered_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vaccine">疫苗</Label>
+              <Input
+                id="vaccine"
+                value={newVaccination.vaccine}
+                onChange={(e) => setNewVaccination({ ...newVaccination, vaccine: e.target.value })}
+                placeholder="如：SEP、IRON"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deworming">驅蟲劑量</Label>
+              <Input
+                id="deworming"
+                value={newVaccination.deworming_dose}
+                onChange={(e) => setNewVaccination({ ...newVaccination, deworming_dose: e.target.value })}
+                placeholder="如：Ivermectin 2mL"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={() => addMutation.mutate(newVaccination)}
+              disabled={addMutation.isPending || !newVaccination.administered_date}
+              className="bg-status-success-solid hover:bg-status-success-solid/90"
+            >
+              {addMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              儲存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editTarget !== null} onOpenChange={(open) => {
+        if (!open) {
+          setEditTarget(null)
+          updateMutation.reset()
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>編輯疫苗/驅蟲紀錄</DialogTitle>
+            <DialogDescription>耳號：{earTag}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit_vac_date">施打日期 *</Label>
+              <Input
+                id="edit_vac_date"
+                type="date"
+                value={editForm.administered_date}
+                onChange={(e) => setEditForm({ ...editForm, administered_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit_vaccine">疫苗</Label>
+              <Input
+                id="edit_vaccine"
+                value={editForm.vaccine}
+                onChange={(e) => setEditForm({ ...editForm, vaccine: e.target.value })}
+                placeholder="如：SEP、IRON"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit_deworming">驅蟲劑量</Label>
+              <Input
+                id="edit_deworming"
+                value={editForm.deworming_dose}
+                onChange={(e) => setEditForm({ ...editForm, deworming_dose: e.target.value })}
+                placeholder="如：Ivermectin 2mL"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)}>
+              取消
+            </Button>
+            <Button
+              onClick={() => editTarget && updateMutation.mutate({ id: editTarget.id, data: editForm })}
+              disabled={updateMutation.isPending || !editForm.administered_date}
+              className="bg-status-success-solid hover:bg-status-success-solid/90"
+            >
+              {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              儲存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteReasonDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        copy={{ title: '刪除疫苗紀錄', description: '此操作將標記紀錄為已刪除，資料將保留於系統中以符合 GLP 規範。' }}
+        onConfirm={(reason) => deleteMutation.mutate({ id: deleteTarget!, reason })}
+        isPending={deleteMutation.isPending}
+      />
+    </>
+  )
+})

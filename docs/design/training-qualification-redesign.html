@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>訓練/資格 — UI/UX 重新設計預覽</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<style>
+  :root{
+    --primary: 217.2 91.2% 59.8%;
+    --primary-fg: 0 0% 100%;
+    --bg: 0 0% 100%;
+    --fg: 222.2 84% 4.9%;
+    --muted: 210 40% 96.1%;
+    --muted-fg: 215.4 16.3% 46.9%;
+    --border: 214.3 31.8% 91.4%;
+    --card: 0 0% 100%;
+    --warning-bg: 48 96% 95%;
+    --warning-text: 25 90% 38%;
+    --warning-border: 45 90% 55%;
+    --success-bg: 142 70% 94%;
+    --success-text: 142 72% 29%;
+    --destructive: 0 84% 60%;
+    --radius: 0.5rem;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg: 222.2 84% 4.9%;
+      --fg: 210 40% 98%;
+      --muted: 217.2 32.6% 17.5%;
+      --muted-fg: 215 20.2% 65.1%;
+      --border: 217.2 32.6% 24%;
+      --card: 222 47% 8%;
+      --warning-bg: 30 40% 14%;
+      --warning-text: 42 96% 62%;
+      --warning-border: 38 70% 40%;
+      --success-bg: 142 40% 14%;
+      --success-text: 142 70% 60%;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:32px 16px 80px;
+    font-family:"Noto Sans TC","Inter",system-ui,sans-serif;
+    background:hsl(210 40% 97%); color:hsl(var(--fg));
+    line-height:1.55;
+  }
+  @media (prefers-color-scheme: dark){ body{ background:hsl(222 47% 6%);} }
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:22px;font-weight:800;letter-spacing:-.01em;margin:0 0 4px}
+  .lead{color:hsl(var(--muted-fg));font-size:14px;margin:0 0 28px}
+  .section-tag{
+    display:inline-block;font-size:12px;font-weight:700;
+    color:hsl(var(--primary));background:hsl(var(--primary)/.1);
+    padding:3px 10px;border-radius:999px;margin:36px 0 12px;
+  }
+  .card{
+    background:hsl(var(--card));border:1px solid hsl(var(--border));
+    border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.04);
+    overflow:hidden;
+  }
+  .card-head{
+    padding:16px 20px;border-bottom:1px solid hsl(var(--border));
+    background:hsl(var(--muted)/.5);display:flex;align-items:center;justify-content:space-between;gap:12px;
+  }
+  .card-title{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+  .card-desc{font-size:12px;color:hsl(var(--muted-fg));margin-top:2px}
+  .card-body{padding:20px}
+  .badge{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .badge-success{background:hsl(var(--success-bg));color:hsl(var(--success-text))}
+  .badge-danger{background:hsl(var(--destructive)/.12);color:hsl(var(--destructive));animation:pulse 1.6s infinite}
+  .badge-outline{border:1px solid hsl(var(--primary)/.25);color:hsl(var(--primary))}
+  @keyframes pulse{50%{opacity:.55}}
+  .ico{width:18px;height:18px;display:inline-block;vertical-align:middle}
+
+  /* training grid */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .train{
+    border:1px solid hsl(var(--border));border-radius:10px;padding:14px;
+    display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .15s;user-select:none;
+  }
+  .train:hover{border-color:hsl(var(--primary)/.4)}
+  .train.on{background:hsl(var(--warning-bg));border-color:hsl(var(--warning-border)/.5)}
+  .cbox{
+    width:20px;height:20px;border-radius:5px;border:2px solid hsl(var(--muted-fg)/.5);
+    flex:0 0 auto;display:flex;align-items:center;justify-content:center;transition:all .15s;
+  }
+  .train.on .cbox{background:hsl(var(--primary));border-color:hsl(var(--primary))}
+  .cbox svg{width:13px;height:13px;color:#fff;opacity:0;transition:opacity .15s}
+  .train.on .cbox svg{opacity:1}
+  .train label{font-size:13.5px;font-weight:700;cursor:pointer}
+
+  /* consolidated certificate table */
+  .cert-block{margin-top:22px;border:1px dashed hsl(var(--border));border-radius:12px;
+    background:hsl(var(--muted)/.4);padding:16px 18px}
+  .cert-title{font-size:13px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  table.cert{width:100%;border-collapse:collapse}
+  table.cert thead th{
+    text-align:left;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    color:hsl(var(--muted-fg));padding:6px 10px;border-bottom:1px solid hsl(var(--border));
+  }
+  table.cert thead th:first-child{width:48px;text-align:center}
+  table.cert tbody td{padding:8px 10px;vertical-align:middle}
+  .code-dot{
+    width:30px;height:30px;border-radius:999px;background:hsl(var(--primary));color:#fff;
+    font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;margin:0 auto;
+  }
+  .fld{
+    width:100%;height:38px;border:1px solid hsl(var(--border));border-radius:8px;
+    padding:0 12px;font-size:13px;font-family:inherit;
+    background:hsl(var(--card));color:hsl(var(--fg));
+  }
+  .fld:focus{outline:2px solid hsl(var(--primary)/.5);outline-offset:1px;border-color:hsl(var(--primary))}
+  .fld::placeholder{color:hsl(var(--muted-fg)/.7)}
+  .cert-empty{font-size:13px;color:hsl(var(--muted-fg));font-style:italic;padding:14px 4px}
+  .col-date{width:170px}
+  @media(max-width:560px){
+    table.cert,table.cert tbody,table.cert tr,table.cert td{display:block;width:100%}
+    table.cert thead{display:none}
+    table.cert tr{border:1px solid hsl(var(--border));border-radius:10px;padding:10px;margin-bottom:10px;
+      display:grid;grid-template-columns:40px 1fr;gap:8px;align-items:center;background:hsl(var(--card))}
+    table.cert td{padding:2px}
+    .col-date{width:auto;grid-column:2}
+    .code-dot{margin:0}
+  }
+
+  /* section-level save footer (the requested "就近儲存鈕") */
+  .save-bar{
+    margin-top:22px;padding:14px 18px;border-radius:12px;
+    background:hsl(var(--primary)/.06);border:1px solid hsl(var(--primary)/.18);
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  }
+  .save-hint{font-size:13px;color:hsl(var(--muted-fg));display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:999px;background:hsl(var(--muted-fg)/.5)}
+  .save-bar.dirty .dot{background:hsl(var(--warning-text))}
+  .save-bar.dirty .save-hint b{color:hsl(var(--warning-text))}
+  .save-bar.saved .dot{background:hsl(var(--success-text))}
+  .btn{
+    height:40px;padding:0 20px;border-radius:9px;border:0;cursor:pointer;
+    font-family:inherit;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:8px;
+    background:hsl(var(--primary));color:hsl(var(--primary-fg));transition:filter .15s,opacity .15s;
+  }
+  .btn:hover{filter:brightness(.94)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* welcome guide reminder mock */
+  .guide{
+    position:relative;padding:16px 18px;border-radius:10px;
+    background:hsl(var(--primary)/.05);border:1px solid hsl(var(--primary)/.2);
+    display:flex;gap:12px;align-items:flex-start;
+  }
+  .guide .x{position:absolute;top:12px;right:12px;color:hsl(var(--muted-fg));cursor:pointer}
+  .guide-title{font-weight:700;font-size:15px}
+  .guide-body{font-size:13.5px;color:hsl(var(--muted-fg));margin-top:4px}
+  .glink{color:hsl(var(--primary));font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+
+  .note{font-size:12.5px;color:hsl(var(--muted-fg));margin-top:10px}
+  .before{
+    border:1px solid hsl(var(--border));border-radius:10px;padding:14px 16px;
+    background:hsl(var(--destructive)/.04);
+  }
+  .before h4{margin:0 0 6px;font-size:13px;font-weight:800;color:hsl(var(--destructive))}
+  .before ul{margin:0;padding-left:18px;font-size:13px;color:hsl(var(--muted-fg))}
+  .before li{margin:3px 0}
+  .kbd{font-family:"JetBrains Mono",monospace;font-size:11.5px;background:hsl(var(--muted));padding:1px 6px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>訓練/資格 — UI/UX 重新設計預覽</h1>
+  <p class="lead">帳號設定 · AUP 第 8 節人員資料 ·「訓練/資格」。此為靜態預覽，A–F 可點擊試玩，證書表格與儲存狀態會即時反應。確認樣式後再改 React／後端。</p>
+
+  <span class="section-tag">問題盤點（現況）</span>
+  <div class="before">
+    <h4>目前 3 個痛點</h4>
+    <ul>
+      <li><b>沒有就近儲存鈕</b>：資料其實已寫入 <span class="kbd">users.trainings</span>（JSONB），但儲存鈕只在頁面最上/最下方，離訓練區塊很遠 → 誤以為沒存、reload 就消失。</li>
+      <li><b>證照編號重複兩處</b>：每張勾選卡片內一個、下方表格又一個，同值兩入口易混亂。</li>
+      <li><b>頒發日期不對齊</b>：只在下方表格出現，勾選卡片內沒有。</li>
+    </ul>
+  </div>
+
+  <span class="section-tag">重新設計後</span>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--warning-text))" stroke-width="2"><path d="m21.42 10.922-9.42 5.078-9.42-5.078a1 1 0 0 1 0-1.844L12 4l9.42 5.078a1 1 0 0 1 0 1.844Z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg>
+          訓練/資格
+        </div>
+        <div class="card-desc">勾選已完成的訓練，並填寫對應的證照編號與頒發日期</div>
+      </div>
+      <span id="count-badge" class="badge badge-danger">未填寫</span>
+    </div>
+    <div class="card-body">
+      <!-- A–F cards：移除卡片內的證照編號輸入（收斂到下方表格） -->
+      <div class="grid" id="train-grid">
+        <div class="train" data-code="A"><div class="cbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><label>A. 實驗動物照護及使用委員會或小組成員訓練班</label></div>
+        <div class="train" data-code="B"><div class="cbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><label>B. IACUC 教育訓練研討會</label></div>
+        <div class="train" data-code="C"><div class="cbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><label>C. 輻射安全訓練班</label></div>
+        <div class="train" data-code="D"><div class="cbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><label>D. 生醫產業用畜禽應用研習會及技術研習會</label></div>
+        <div class="train" data-code="E"><div class="cbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><label>E. 實驗動物法規及照護管理班</label></div>
+        <div class="train" data-code="F"><div class="cbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><label>F. 其他</label></div>
+      </div>
+
+      <!-- 收斂後的單一「詳細證書資訊」表格 -->
+      <div class="cert-block">
+        <p class="cert-title">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 8h10M7 12h6"/></svg>
+          詳細證書資訊
+        </p>
+        <table class="cert">
+          <thead>
+            <tr><th>代碼</th><th>證照編號</th><th class="col-date">頒發日期</th></tr>
+          </thead>
+          <tbody id="cert-body"></tbody>
+        </table>
+        <div class="cert-empty" id="cert-empty">尚未勾選任何訓練。勾選上方項目後，會在此逐列填寫證照編號與頒發日期。</div>
+      </div>
+
+      <!-- 就近儲存鈕（本次採用方案） -->
+      <div class="save-bar" id="save-bar">
+        <div class="save-hint"><span class="dot"></span><span id="save-text">尚無變更</span></div>
+        <button class="btn" id="save-btn" disabled>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7H7v7M7 3v4h8"/></svg>
+          儲存訓練/資格
+        </button>
+      </div>
+      <p class="note">此按鈕只送出訓練/資格相關欄位（<span class="kbd">trainings / position / entry_date / years_experience</span>），不動基本資料；PUT <span class="kbd">/api/v1/me</span> → <span class="kbd">users.trainings</span>。</p>
+    </div>
+  </div>
+
+  <span class="section-tag">首次登入提醒（結合現有「歡迎指引」開關）</span>
+  <p class="note" style="margin-bottom:12px">沿用現有 <span class="kbd">show_welcome_guide</span> 偏好與儀表板歡迎橫幅：當使用者是審查委員／staff 等需填 AUP 第 8 節的角色、且 <span class="kbd">trainings</span> 為空時，於歡迎橫幅內多一條提醒＋前往設定連結。關掉「登入時顯示歡迎指引」即一併關閉。</p>
+  <div class="guide">
+    <span class="x">✕</span>
+    <svg class="ico" style="width:20px;height:20px;color:hsl(var(--primary));margin-top:2px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
+    <div>
+      <div class="guide-title">歡迎，系統管理員！</div>
+      <div class="guide-body">
+        身為審查委員，請先到 <span class="glink">帳號設定 → 訓練/資格</span> 完成您的訓練與證照填寫，資料會自動帶入 AUP 申請書第 8 節。
+      </div>
+    </div>
+  </div>
+  <p class="note">⚠️ 待你確認：對象是否限「審查委員＋staff 角色」、還是所有需填 AUP 第 8 節的角色都提醒。</p>
+</div>
+
+<script>
+  const LABELS={A:'A',B:'B',C:'C',D:'D',E:'E',F:'F'};
+  const CERT_PH='例如：(112)動訓字第 001 號';
+  const selected=[]; // preserve order
+  const grid=document.getElementById('train-grid');
+  const body=document.getElementById('cert-body');
+  const empty=document.getElementById('cert-empty');
+  const badge=document.getElementById('count-badge');
+  const bar=document.getElementById('save-bar');
+  const saveText=document.getElementById('save-text');
+  const saveBtn=document.getElementById('save-btn');
+
+  function markDirty(){
+    bar.classList.remove('saved'); bar.classList.add('dirty');
+    saveText.innerHTML='<b>尚未儲存</b> — 記得按「儲存訓練/資格」';
+    saveBtn.disabled=false;
+  }
+  function renderCert(){
+    // 重新渲染前先暫存已輸入的值，避免勾選/取消時抹除其他列
+    const currentValues={};
+    body.querySelectorAll('tr').forEach(tr=>{
+      const code=tr.querySelector('.code-dot').textContent;
+      const inputs=tr.querySelectorAll('input');
+      if(inputs.length>=2){ currentValues[code]={no:inputs[0].value,date:inputs[1].value}; }
+    });
+    body.innerHTML='';
+    if(selected.length===0){ empty.style.display='block'; return; }
+    empty.style.display='none';
+    selected.forEach(code=>{
+      const tr=document.createElement('tr');
+      const saved=currentValues[code]||{no:'',date:''};
+      tr.innerHTML=`
+        <td><div class="code-dot">${LABELS[code]}</div></td>
+        <td><input class="fld" placeholder="${CERT_PH}" value="${saved.no}" oninput="window.__dirty()"></td>
+        <td class="col-date"><input class="fld" type="date" value="${saved.date}" oninput="window.__dirty()"></td>`;
+      body.appendChild(tr);
+    });
+  }
+  function updateBadge(){
+    if(selected.length===0){ badge.className='badge badge-danger'; badge.textContent='未填寫'; }
+    else{ badge.className='badge badge-success'; badge.textContent='已完成 '+selected.length+' 項'; }
+  }
+  window.__dirty=markDirty;
+  grid.querySelectorAll('.train').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const code=el.dataset.code;
+      el.classList.toggle('on');
+      const i=selected.indexOf(code);
+      if(i>=0) selected.splice(i,1); else selected.push(code);
+      renderCert(); updateBadge(); markDirty();
+    });
+  });
+  saveBtn.addEventListener('click',()=>{
+    bar.classList.remove('dirty'); bar.classList.add('saved');
+    saveText.textContent='已儲存 ✓（reload 後仍在）';
+    saveBtn.disabled=true;
+  });
+</script>
+</body>
+</html>

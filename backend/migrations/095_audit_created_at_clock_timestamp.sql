@@ -1,0 +1,16 @@
+-- 095: 修復 audit HMAC chain「單一 transaction 寫多筆 audit」的斷鏈根因
+--
+-- 問題：user_activity_logs.created_at 預設為 now()（= transaction_timestamp，整個 tx 內固定）。
+-- 同一 transaction 寫入多筆 audit（如：核准 + 簽章、單據 + 明細、匯入 + 簽章）時，所有 row 的
+-- created_at 完全相同；而 HMAC chain 以 (created_at, id) 排序，id 為隨機 UUID（gen_random_uuid()）。
+-- 因此「寫入順序」與「(created_at, id) 排序順序」約有半數機率不一致 →
+-- compute_and_store_hmac_tx 寫入時計算的 previous_hash 與 verify_chain 重算的鏈接順序對不上 →
+-- 每日鏈完整性驗證誤判斷鏈（已於 prod 觀察到 16 筆此類斷鏈）。
+--
+-- 修法：改用 clock_timestamp()（每個 statement 取執行當下的實際時間）。同一 tx 內多次 INSERT
+-- 取得嚴格遞增且唯一的 created_at；配合既有 pg_advisory_xact_lock（序列化跨 tx 的 audit 寫入），
+-- (created_at, id) 排序順序 == 實際寫入順序 == 鏈接順序，徹底消除多筆/tx 的排序歧義。
+--
+-- 影響範圍：僅改 DEFAULT，不動既有 row。所有寫入路徑（log_activity proc，migration 012/035/036/077）
+-- 皆未顯式指定 created_at，故一律套用新預設。
+ALTER TABLE user_activity_logs ALTER COLUMN created_at SET DEFAULT clock_timestamp();

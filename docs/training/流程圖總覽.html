@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>iPig 系統 — 核心流程圖總覽（24 個 · 離線版）</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1f2630; --muted:#6b7682;
+    --line:#e3e7ec; --accent:#2f6f4f; --accent-soft:#e7f1eb; --chip:#eef1f4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+       background:var(--bg);color:var(--ink);display:flex;min-height:100vh}
+  aside{width:280px;flex:0 0 280px;background:var(--panel);border-right:1px solid var(--line);
+        height:100vh;position:sticky;top:0;overflow-y:auto;padding:18px 14px}
+  aside h1{font-size:15px;margin:4px 6px 14px;line-height:1.4}
+  aside h1 small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:3px}
+  .grp{margin:14px 6px 4px;font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:700}
+  nav a{display:flex;gap:8px;align-items:baseline;padding:7px 10px;border-radius:8px;
+        text-decoration:none;color:var(--ink);font-size:13px;cursor:pointer;line-height:1.35}
+  nav a .n{flex:0 0 22px;color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px}
+  nav a:hover{background:var(--chip)}
+  nav a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  nav a.active .n{color:var(--accent)}
+  main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh}
+  header{display:flex;align-items:center;gap:14px;padding:14px 28px;border-bottom:1px solid var(--line);
+         background:var(--panel);position:sticky;top:0;z-index:5}
+  header .title{font-size:17px;font-weight:700;flex:1;min-width:0}
+  header .title span.grp-tag{display:inline-block;font-size:11px;color:var(--accent);
+         background:var(--accent-soft);padding:2px 8px;border-radius:999px;margin-right:8px;vertical-align:middle}
+  .counter{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .navbtn{border:1px solid var(--line);background:#fff;border-radius:8px;width:34px;height:34px;
+          font-size:16px;cursor:pointer;color:var(--ink)}
+  .navbtn:hover{background:var(--chip)}
+  .navbtn:disabled{opacity:.4;cursor:default}
+  .content{flex:1;overflow-y:auto;padding:28px 36px 60px}
+  .desc{color:var(--muted);font-size:14px;margin:0 0 22px;line-height:1.6;max-width:920px}
+  .diagram{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px 28px;overflow-x:auto}
+  .panel{display:none}
+  body.ready .panel{display:none}
+  body.ready .panel.active{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  /* flow building blocks (pure CSS, no JS/CDN) */
+  .flow{display:flex;flex-direction:column;gap:14px}
+  .chain{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .node{background:var(--accent-soft);border:1px solid #cfe0d6;color:#22402f;border-radius:10px;
+        padding:10px 14px;font-size:14px;font-weight:600;text-align:center;line-height:1.45}
+  .node.start{background:#eef3f7;border-color:#cdd8e2;color:#2b3a47}
+  .node.end{background:#e4f5ea;border-color:#b6dec6;color:#1d5436}
+  .node.dec{background:#fff4e2;border-color:#f0d9ad;color:#7a5a1e;border-radius:22px}
+  .node.stop{background:#fdecec;border-color:#f2c9c9;color:#8a2f2f}
+  .node small{display:block;font-weight:400;font-size:11px;color:#5d6f63;margin-top:2px}
+  .arr{color:#9aa6b1;font-size:18px;font-weight:700;flex:0 0 auto}
+  .branchset{margin-left:10px;border-left:2px dashed #d7dee5;padding-left:18px;display:flex;flex-direction:column;gap:10px}
+  .branch{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+  .lbl{font-size:12px;color:#5a6672;background:#eef1f4;border:1px solid #e1e6ea;border-radius:999px;padding:2px 10px;white-space:nowrap}
+  .note{font-size:12px;color:var(--muted)}
+  footer{padding:10px 28px;border-top:1px solid var(--line);background:var(--panel);
+          font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:12px}
+  kbd{background:var(--chip);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;
+      padding:1px 6px;font-size:11px;font-family:inherit}
+  @media(max-width:760px){aside{display:none}}
+</style>
+</head>
+<body>
+<aside>
+  <h1>iPig 系統核心流程圖<small>24 個有狀態流轉的業務流程 · 完全離線 · 點選或 ← → 切換</small></h1>
+  <nav id="nav"></nav>
+</aside>
+
+<main>
+  <header>
+    <button class="navbtn" id="prev" title="上一個 (←)" aria-label="上一個流程圖">‹</button>
+    <div class="title" id="title"></div>
+    <span class="counter" id="counter"></span>
+    <button class="navbtn" id="next" title="下一個 (→)" aria-label="下一個流程圖">›</button>
+    <div id="announce" aria-live="polite" aria-atomic="true" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
+  </header>
+
+  <div class="content">
+
+    <!-- A 計畫（AUP） -->
+    <section class="panel" data-group="A" data-title="AUP 計畫申請與 IACUC 審查"
+      data-desc="計畫書必須通過 IACUC 多階段審查核准後才能開始實驗。提交前須簽署申請須知並至少指派 1 位試驗工作人員(Co-editor)。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">草稿</span><span class="arr">→</span>
+          <span class="node">提交</span><span class="arr">→</span>
+          <span class="node">行政預審</span><span class="arr">→</span>
+          <span class="node">獸醫審查</span><span class="arr">→</span>
+          <span class="node dec">審查中</span><span class="arr">→</span>
+          <span class="node end">核准 / 附條件核准</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">行政預審 / 獸醫審查 要求補件</span><span class="arr">→</span><span class="node">需修訂</span><span class="arr">→</span><span class="node">PI 修改 · 重送</span><span class="arr">↺</span><span class="node dec">回審查</span></div>
+          <div class="branch"><span class="lbl">審查中 要求修正</span><span class="arr">→</span><span class="node">需修訂</span><span class="arr">→</span><span class="node">PI 修改 · 重送</span><span class="arr">↺</span><span class="node dec">審查中</span></div>
+          <div class="branch"><span class="lbl">審查中</span><span class="arr">→</span><span class="node stop">否決</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="A" data-title="計畫變更申請（Amendment）"
+      data-desc="已核准計畫不可直接改，須提變更申請；由審查委員審核，核准後生效。另有「補登歷史變更」補齊過去未走流程的異動。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">草稿</span><span class="arr">→</span>
+          <span class="node">提交</span><span class="arr">→</span>
+          <span class="node">分類</span><span class="arr">→</span>
+          <span class="node dec">審查中</span><span class="arr">→</span>
+          <span class="node">核准</span><span class="arr">→</span>
+          <span class="node end">生效</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">審查中 要求修正</span><span class="arr">→</span><span class="node">需修訂</span><span class="arr">→</span><span class="node">PI 修改 · 重送</span><span class="arr">↺</span><span class="node dec">審查中</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="A" data-title="已通過計畫書匯入"
+      data-desc="將他處已核准的既有計畫納入系統，不重跑審查。匯入→補登內容/文件→完成匯入(建 v1 快照)。誤匯刪除僅系統管理員可執行。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">匯入已核准計畫</span><span class="arr">→</span>
+          <span class="node">補登內容 / 審查文件</span><span class="arr">→</span>
+          <span class="node">完成匯入<small>建立 v1 快照</small></span><span class="arr">→</span>
+          <span class="node end">出現於已核准清單</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">誤匯</span><span class="arr">→</span><span class="node stop">刪除（限 admin）</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- B 實驗動物 -->
+    <section class="panel" data-group="B" data-title="動物進場與建檔"
+      data-desc="在系統建立動物檔案；可單筆新增或 Excel 批次匯入，再指派到已核准計畫後開始各項醫療紀錄。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">取得匯入範本</span><span class="arr">→</span>
+          <span class="node dec">建檔方式</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">單筆</span><span class="arr">→</span><span class="node">單筆新增</span><span class="arr">→</span><span class="node">指派到計畫</span></div>
+          <div class="branch"><span class="lbl">大量</span><span class="arr">→</span><span class="node">Excel 批次匯入</span><span class="arr">→</span><span class="node">指派到計畫</span></div>
+        </div>
+        <div class="chain"><span class="node">指派到計畫</span><span class="arr">→</span><span class="node end">開始醫療紀錄</span></div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="B" data-title="動物轉讓（五階段）"
+      data-desc="動物轉到另一計畫需五關把關：發起→獸醫健康評估→指派接收計畫→接收計畫 PI 核准→完成。任一關駁回則留在原計畫。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">① 發起轉讓</span><span class="arr">→</span>
+          <span class="node dec">② 獸醫健康評估</span><span class="arr">→</span>
+          <span class="node">③ 指派接收計畫</span><span class="arr">→</span>
+          <span class="node dec">④ 接收計畫 PI 核准</span><span class="arr">→</span>
+          <span class="node end">⑤ 完成轉讓</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">獸醫評估 / PI 駁回</span><span class="arr">→</span><span class="node stop">留在原計畫</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="B" data-title="安樂死單"
+      data-desc="獸醫開立(不簽章)→PI 核准(簽章)或申訴→申訴時由 IACUC 主席仲裁→執行並簽署執行紀錄(鎖定)。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">獸醫開立安樂死單</span><span class="arr">→</span>
+          <span class="node dec">PI 審核</span><span class="arr">→</span>
+          <span class="node">執行</span><span class="arr">→</span>
+          <span class="node end">簽署執行紀錄 · 鎖定</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">PI 核准（簽章）</span><span class="arr">→</span><span class="node">執行</span></div>
+          <div class="branch"><span class="lbl">PI 申訴</span><span class="arr">→</span><span class="node">IACUC 主席仲裁</span><span class="arr">→</span><span class="node">維持核准 → 執行</span><span class="arr">／</span><span class="node stop">撤銷 → 取消</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="B" data-title="動物犧牲 / 採樣"
+      data-desc="記錄計畫性犧牲與採樣後電子簽章鎖定，符合 21 CFR Part 11；犧牲後可關聯廢棄物再利用樣本。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">記錄犧牲 / 採樣</span><span class="arr">→</span>
+          <span class="node">電子簽章</span><span class="arr">→</span>
+          <span class="node end">鎖定不可改</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">可關聯</span><span class="arr">→</span><span class="node">廢棄物再利用樣本</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- C 獸醫師 -->
+    <section class="panel" data-group="C" data-title="獸醫巡場（三階段）"
+      data-desc="獸醫巡場報告→提交追蹤改善→追蹤者確認並填改善→獸醫確認完成。完成後紀錄即鎖定，無駁回退回機制。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">① 巡場報告 + 照片</span><span class="arr">→</span>
+          <span class="node">提交追蹤改善</span><span class="arr">→</span>
+          <span class="node">② 追蹤者確認 / 填改善</span><span class="arr">→</span>
+          <span class="node end">③ 獸醫確認完成 · 鎖定</span>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="C" data-title="獸醫建議"
+      data-desc="對觀察/手術紀錄建立建議；勾選「緊急」會即時 Email 通知計畫主持人與共同主持人；並以 vet-read 標記已讀。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">建立獸醫建議</span><span class="arr">→</span>
+          <span class="node dec">緊急建議？</span><span class="arr">→</span>
+          <span class="node end">vet-read 已讀標記</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">是</span><span class="arr">→</span><span class="node">Email 通知 PI / 共同主持人</span></div>
+          <div class="branch"><span class="lbl">否</span><span class="arr">→</span><span class="node">站內記錄</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- D 共通合規 -->
+    <section class="panel" data-group="D" data-title="電子簽章（21 CFR Part 11）"
+      data-desc="觸發簽章→輸入密碼(必要時 TOTP)確認身分→簽章完成並鎖定不可改。桌機操作可用手機掃碼橋接於手機完成簽名。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">觸發簽章</span><span class="arr">→</span>
+          <span class="node">輸入密碼 + TOTP 確認</span><span class="arr">→</span>
+          <span class="node end">簽章完成 · 鎖定不可改</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">桌機操作</span><span class="arr">→</span><span class="node">手機掃碼橋接</span><span class="arr">↺</span><span class="node">輸入密碼 + TOTP 確認</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- E ERP -->
+    <section class="panel" data-group="E" data-title="採購進貨（PO → GRN → PR）"
+      data-desc="建立採購單 PO 並核准→到貨驗收 GRN(更新收貨狀態)→不良品建立採購退貨 PR。未核准單據不影響庫存。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">建立採購單 PO</span><span class="arr">→</span>
+          <span class="node">提交 / 核准</span><span class="arr">→</span>
+          <span class="node end">到貨驗收 GRN</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">不良品</span><span class="arr">→</span><span class="node">採購退貨 PR</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="E" data-title="銷貨（SO 一段式）"
+      data-desc="建立銷貨單 SO(關聯銷貨計畫，外部客戶可留空；逐行選儲位)→提交→核准即出庫扣帳＋會計過帳。DO 已棄用僅供舊單查詢。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">銷貨單 SO<small>關聯銷貨計畫（可空）· 逐行選儲位</small></span><span class="arr">→</span>
+          <span class="node">提交</span><span class="arr">→</span>
+          <span class="node">核准<small>倉管簽核</small></span><span class="arr">→</span>
+          <span class="node end">扣減庫存＋會計過帳<small>逐行照儲位所屬倉</small></span>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="E" data-title="倉儲作業（ADJ / STK / TR / RM）"
+      data-desc="四種倉儲作業：調整 ADJ、盤點 STK、調撥 TR、報廢 RM。大金額調整需管理員核准/駁回，一般單據由倉管核准。">
+      <div class="diagram"><div class="flow">
+        <div class="chain"><span class="node dec">選擇倉儲作業</span></div>
+        <div class="branchset">
+          <div class="branch"><span class="node">調整 ADJ</span><span class="arr">→</span><span class="lbl">大額</span><span class="arr">→</span><span class="node">管理員核准 / 駁回</span><span class="arr">｜</span><span class="lbl">一般</span><span class="arr">→</span><span class="node end">核准</span></div>
+          <div class="branch"><span class="node">盤點 STK</span><span class="arr">→</span><span class="node end">核准</span></div>
+          <div class="branch"><span class="node">調撥 TR</span><span class="arr">→</span><span class="node end">核准</span></div>
+          <div class="branch"><span class="node">報廢 RM</span><span class="arr">→</span><span class="node end">核准</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- F 人事 -->
+    <section class="panel" data-group="F" data-title="出勤打卡"
+      data-desc="上/下班打卡(可設 IP/GPS 限制)→查詢歷史或申請打卡修正→具權限者匯出出勤資料。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">IP / GPS 驗證</span><span class="arr">→</span>
+          <span class="node">上班打卡</span><span class="arr">→</span>
+          <span class="node">下班打卡</span><span class="arr">→</span>
+          <span class="node">歷史查詢 / 修正</span><span class="arr">→</span>
+          <span class="node end">出勤匯出</span>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="F" data-title="請假申請"
+      data-desc="申請請假(選假別、日期、上傳證明文件)→主管審核→核准或駁回；可依狀態編輯/取消。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">申請請假<small>假別 / 日期 / 證明</small></span><span class="arr">→</span>
+          <span class="node dec">主管審核</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">同意</span><span class="arr">→</span><span class="node end">核准</span></div>
+          <div class="branch"><span class="lbl">不同意</span><span class="arr">→</span><span class="node stop">駁回</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="F" data-title="加班申請"
+      data-desc="申請加班→系統驗證加班時數合理性→主管審核→核准或駁回。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">申請加班</span><span class="arr">→</span>
+          <span class="node">時數驗證</span><span class="arr">→</span>
+          <span class="node dec">主管審核</span><span class="arr">→</span>
+          <span class="node end">核准 / 駁回</span>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- G 品保 / GLP -->
+    <section class="panel" data-group="G" data-title="QAU 稽查（NC → CAPA）"
+      data-desc="稽查報告→開立不符合事項 NC→建立改善計畫 CAPA→驗證改善有效→關閉。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">稽查報告</span><span class="arr">→</span>
+          <span class="node">不符合事項 NC</span><span class="arr">→</span>
+          <span class="node">改善計畫 CAPA</span><span class="arr">→</span>
+          <span class="node">驗證有效</span><span class="arr">→</span>
+          <span class="node end">關閉</span>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="G" data-title="SOP 文件簽署"
+      data-desc="品保建立 SOP 文件→員工閱讀→簽署確認(留軌跡)；改版後可能需重新簽署。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">建立 SOP</span><span class="arr">→</span>
+          <span class="node">員工閱讀</span><span class="arr">→</span>
+          <span class="node end">簽署確認</span>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="G" data-title="GLP 文件控制"
+      data-desc="受控文件建立→核准生效→改版建立新版本(舊版留存)→相關人簽署確認→可查修訂歷史。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">建立受控文件</span><span class="arr">→</span>
+          <span class="node">核准</span><span class="arr">→</span>
+          <span class="node">建立版本</span><span class="arr">→</span>
+          <span class="node">簽署確認</span><span class="arr">→</span>
+          <span class="node end">修訂歷史</span>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="G" data-title="變更控制（GLP）"
+      data-desc="建立變更申請→編輯→核准→實施；變更未核准前不得實施，全程留軌跡。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">變更申請</span><span class="arr">→</span>
+          <span class="node">編輯</span><span class="arr">→</span>
+          <span class="node">核准</span><span class="arr">→</span>
+          <span class="node end">實施</span>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- H 器材維護 -->
+    <section class="panel" data-group="H" data-title="設備維修"
+      data-desc="報修建立維修紀錄時設備自動轉「維修中」並停用、通知維修人員；標記完成→自動「待審閱」→審閱者驗收並電子簽章；簽章後紀錄鎖定、設備自動恢復可用。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">報修 / 建立維修紀錄</span><span class="arr">→</span>
+          <span class="node">維修處理中</span><span class="arr">→</span>
+          <span class="node">標記完成</span><span class="arr">→</span>
+          <span class="node dec">待審閱</span><span class="arr">→</span>
+          <span class="node">審閱驗收</span><span class="arr">→</span>
+          <span class="node end">驗收簽章 · 鎖定</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">建立時</span><span class="arr">→</span><span class="node">設備自動轉「維修中」· 停用 · 通知維修人員</span></div>
+          <div class="branch"><span class="lbl">標記完成</span><span class="arr">→</span><span class="node">系統自動轉「待審閱」</span></div>
+          <div class="branch"><span class="lbl">簽章後</span><span class="arr">→</span><span class="node">紀錄鎖定（不可改 / 刪）· 設備自動恢復「可用」</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="H" data-title="設備報廢"
+      data-desc="設備不堪使用提出報廢申請→批准或駁回→誤報廢/可修復時可復原。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">報廢申請</span><span class="arr">→</span>
+          <span class="node dec">審批</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">批准</span><span class="arr">→</span><span class="node end">報廢</span><span class="arr">↺</span><span class="lbl">誤報廢</span><span class="arr">→</span><span class="node">復原</span></div>
+          <div class="branch"><span class="lbl">駁回</span><span class="arr">→</span><span class="node stop">退回</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- I 帳號 / 系統 -->
+    <section class="panel" data-group="I" data-title="登入 / 帳號安全"
+      data-desc="登入→首次強制改密(≥10 字含大小寫數字)→進入系統。忘記密碼以 Email 連結(1 小時)重設；2FA 僅管理員可啟用。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">登入</span><span class="arr">→</span>
+          <span class="node dec">首次登入？</span><span class="arr">→</span>
+          <span class="node end">進入系統</span>
+        </div>
+        <div class="branchset">
+          <div class="branch"><span class="lbl">是</span><span class="arr">→</span><span class="node">強制變更密碼<small>≥10 字含大小寫數字</small></span><span class="arr">→</span><span class="node end">進入系統</span></div>
+          <div class="branch"><span class="lbl">忘記密碼</span><span class="arr">→</span><span class="node">Email 連結（1 小時）</span><span class="arr">→</span><span class="node">重設密碼</span></div>
+          <div class="branch"><span class="note">＊ 2FA（TOTP）僅管理員可啟用</span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="panel" data-group="I" data-title="全庫資料匯出 / 匯入（IDXF）"
+      data-desc="一鍵匯出全庫資料為 IDXF(JSON/ZIP，可選含/除稽核)；用於系統遷移或備援還原時匯入。屬管理員層級操作。">
+      <div class="diagram"><div class="flow">
+        <div class="chain">
+          <span class="node start">全庫匯出<small>JSON / ZIP · 含 / 除稽核</small></span><span class="arr">→</span>
+          <span class="node">備份檔</span><span class="arr">→</span>
+          <span class="node">匯入 IDXF</span><span class="arr">→</span>
+          <span class="node end">遷移 / 還原</span>
+        </div>
+      </div></div>
+    </section>
+
+  </div>
+
+  <footer>
+    <span>iPig 系統核心流程圖總覽 · 共 24 個流程 · 離線版</span>
+    <span>鍵盤 <kbd>←</kbd> <kbd>→</kbd> 切換 · 純 HTML/CSS，無需網路</span>
+  </footer>
+</main>
+
+<script>
+const groupNames = {A:'A · 計畫（AUP）',B:'B · 實驗動物',C:'C · 獸醫師',D:'D · 共通合規',
+  E:'E · ERP 進銷存',F:'F · 人事 HR',G:'G · 品保 / GLP',H:'H · 器材維護',I:'I · 帳號 / 系統'};
+const panels = [...document.querySelectorAll('.panel')];
+const nav = document.getElementById('nav');
+const titleEl = document.getElementById('title');
+const counterEl = document.getElementById('counter');
+const prevBtn = document.getElementById('prev');
+const nextBtn = document.getElementById('next');
+let idx = 0, lastGrp = null;
+panels.forEach((p,i)=>{
+  const g = p.dataset.group;
+  if(g!==lastGrp){
+    const h=document.createElement('div'); h.className='grp'; h.textContent=groupNames[g]||g;
+    nav.appendChild(h); lastGrp=g;
+  }
+  const a=document.createElement('a');
+  a.innerHTML=`<span class="n">${String(i+1).padStart(2,'0')}</span><span>${p.dataset.title}</span>`;
+  a.addEventListener('click',()=>show(i));
+  nav.appendChild(a);
+});
+const links=[...nav.querySelectorAll('a')];
+function show(i){
+  idx=Math.max(0,Math.min(panels.length-1,i));
+  panels.forEach((p,j)=>p.classList.toggle('active',j===idx));
+  links.forEach((l,j)=>{l.classList.toggle('active',j===idx); if(j===idx){l.setAttribute('aria-current','true');}else{l.removeAttribute('aria-current');}});
+  const p=panels[idx];
+  const grpName=groupNames[p.dataset.group]||p.dataset.group;
+  titleEl.innerHTML=`<span class="grp-tag">${grpName.split(' · ')[0]}</span>${p.dataset.title}`;
+  const ann=document.getElementById('announce');
+  if(ann)ann.textContent=`第 ${idx+1} / ${panels.length} 個流程：${p.dataset.title}`;
+  let d=document.getElementById('activeDesc');
+  if(!d){d=document.createElement('p');d.className='desc';d.id='activeDesc';}
+  d.textContent=p.dataset.desc||'';
+  p.querySelector('.diagram').insertAdjacentElement('beforebegin',d);
+  counterEl.textContent=`${idx+1} / ${panels.length}`;
+  prevBtn.disabled=idx===0; nextBtn.disabled=idx===panels.length-1;
+  links[idx].scrollIntoView({block:'nearest'});
+  document.querySelector('.content').scrollTop=0;
+}
+prevBtn.addEventListener('click',()=>show(idx-1));
+nextBtn.addEventListener('click',()=>show(idx+1));
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft')show(idx-1);
+  if(e.key==='ArrowRight')show(idx+1);
+});
+document.body.classList.add('ready');
+show(0);
+</script>
+</body>
+</html>

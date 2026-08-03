@@ -1,0 +1,125 @@
+# 模型調度守則（DISPATCH）
+
+> 何時讀本檔：任務是多步驟、要大範圍讀取/掃描、要批次改檔、要研究/審查，或你正考慮 spawn subagent 時。
+> 派工用的填空模板在 `docs/agents/TEMPLATES.md`。
+> 撰寫：2026-07-04（Fable 5）。環境事實（可用 agent 型別、model 參數）已實際核對，非憑印象。
+
+## 0. 本環境的調度資源（實際核對過）
+
+**Agent tool 可用 subagent 型別**：
+| 型別 | 用途 | 特性 |
+|---|---|---|
+| `Explore` | 大範圍搜尋/定位 code | 唯讀，讀片段不讀全檔，回位置與結論 |
+| `general-purpose` | 搜尋+多步任務、批次改檔 | 全工具 |
+| `Plan` | 設計實作計畫 | 回步驟計畫與關鍵檔案 |
+| `fork` | 需要完整對話脈絡的延伸工作 | 繼承主對話全部 context，model 固定同主模型 |
+| `claude-code-guide` | 查 Claude Code / API / SDK 功能問題 | 唯讀+web |
+| `codex:codex-rescue` | 卡關時的外部第二實作/診斷（OpenAI Codex） | 跨模型第二意見 |
+
+**model 參數**：`haiku` / `sonnet` / `opus`（`fable` 只存在於一次性 session，永遠不要指定它；
+指定了也可能 fallback 或報錯）。省略 model = 繼承主對話模型。
+
+**effort 參數**：Agent tool **沒有** effort 參數。effort 來源：(a) 全域 settings `effortLevel`（目前 xhigh）
+(b) `.claude/agents/*.md` 自訂 agent 的 frontmatter (c) Workflow tool 的 `agent(prompt, {effort})`。
+Workflow tool 需使用者明確 opt-in（說「用 workflow」或「ultracode」）才能用——沒有 opt-in 就用多個 Agent 呼叫
+（若本 session 的工具清單裡根本沒有 Workflow，忽略相關段落即可）。
+
+**續談**：對已 spawn 的 agent 用 SendMessage 追問（保留它的 context），不要為追問開新 agent。
+
+## 1. 指揮官不下場
+
+主對話（指揮官）的 context 是最稀缺資源。**raw 內容進主對話 = 例外，不是常態。**
+
+以下情況一律派 subagent，主對話只收結論：
+- 預期要讀 **>3 個檔案的完整內容**，或讀任何 >500 行的檔案只為了回答一個問題。
+- 搜尋預期回 **>20 個結果**、或要跨多個命名慣例/目錄掃。→ `Explore`
+- 查網頁 / 查文件 / 研究。→ `general-purpose`（或 `claude-code-guide`）
+- 批次改檔 **>5 個檔案**套同一 pattern。→ `general-purpose`（haiku/sonnet）
+- 讀 log / CI dump / 測試輸出預期 >50 行。→ 派 agent 摘取關鍵行。
+
+主對話**可以**自己做的：改 1–3 個已知檔案、跑一條驗證指令、讀一個小檔確認事實、與使用者對話。
+
+**派了就不要自己再做一遍**（等結果）；反之，已知檔案+已知符號的單點查詢直接 Read/Grep，不派工。
+
+## 2. 派工三件套（每個 delegation prompt 必含）
+
+1. **目標與動機**：要什麼＋為什麼要（動機讓 agent 在邊界情況做對取捨）。
+2. **驗收條件**：可機械判定的完成標準（「tsc 零錯誤」「回傳的每個位置都附 檔案:行號」），
+   不可用「做好一點」這種弱標準。
+3. **回報格式**：明確指定回什麼、不回什麼（見 §4）。
+
+缺任何一件 → 先補齊再派。模板見 `TEMPLATES.md`。
+
+## 3. 模型選擇（顯式指定，不留給預設）
+
+| 派工性質 | model | 例子 |
+|---|---|---|
+| 機械套用已驗證 pattern、格式化、rename、抄寫 | `haiku` | 「把這 10 個檔案的 X 換成 Y，pattern 如下」 |
+| 一般搜尋、定位、實作、單檔重構、常規審查 | `sonnet` | 預設工作馬 |
+| 跨模組架構、頑固 bug 根因、安全審查、多方案裁決、對抗驗證 | `opus` | 「三個 agent 的結論互相矛盾，裁決」 |
+
+原則：**先想這件事失敗的代價**。失敗便宜（可重派）→ 用便宜模型；失敗貴（會誤導決策、動 prod）→ 直接上 opus。
+
+## 3.5. Subagent 不繼承主 session 的工具限制（重要）
+
+subagent **不繼承**主 session 的 Bash deny 清單（`ls/cat/grep/find/...`）。派唯讀掃描/搜尋 agent 時，
+prompt 必須明確要求「用 Glob/Grep/Read，禁止 bash find/grep/cat」——否則 agent 會用 bash 繞過使用者的
+安全設定（2026-07-04 稽核實證：兩個 agent 這樣繞過了 find 的 deny，一個加了禁令的對抗驗證 agent 則未違規）。
+此規則已內建在 `TEMPLATES.md` 通用尾段。
+
+## 4. 回報合約（寫進每個派工 prompt）
+
+- 只回：**結論 + 證據位置（`檔案:行號`）+ 明確的不確定處**。
+- 禁止：整檔內容、大段程式碼貼回（>20 行的產物一律寫檔，回傳路徑）。
+- 長產物落檔位置：分析報告 → scratchpad 或 `docs/design/`；程式碼 → 直接改在 repo。
+- 摘要上限 ~30 行；超過表示 agent 沒消化完，要求重摘。
+- 必答欄位：「你檢查過但**沒有**問題的範圍」（防止只報有問題的、漏報掃過的範圍）。
+
+## 5. 驗證不自驗
+
+做的人不驗收自己。宣告完成前：
+
+| 產物 | 驗收方式 |
+|---|---|
+| 檔案/文件 | fresh-context agent read-back：「讀 X，回答它是否涵蓋 A/B/C、有無自相矛盾」 |
+| 程式碼 | 測試綠（見 RULES_BACKEND §7 / RULES_FRONTEND §8）＋必要時 `/verify` 實跑受影響流程 |
+| 高風險判斷（安全、schema、prod 操作） | 第二意見：`codex` consult，或兩個獨立 agent 各答一次、不同結論就升 opus 裁決。「安全類」判準：碰權限 / audit / migration / secrets 任一即算 |
+| 「找完了嗎」型任務（掃 bug、掃引用點） | 換一種搜法再掃一輪（by-name → by-content → by-usage），連續一輪零新發現才算完 |
+
+fresh-context 的意思：驗收 agent 的 prompt **不含**實作過程的敘述，只給「產物 + 驗收條件」，
+避免被實作者的框架帶著走。
+
+## 6. 升降級路徑
+
+- **haiku 錯一次** → 直接升 sonnet 重派（不給 haiku 第二次）。
+- **sonnet 同一子任務連錯兩次** → 升 opus，且 prompt 必須帶**完整失敗軌跡**
+  （兩次嘗試各做了什麼、錯誤輸出原文、已排除的假設），不是重新描述任務。
+- **opus 也解不了 / 結論反覆** → 停下，向使用者報告卡點與已試路徑（見 JUDGMENT.md §3），
+  或用 `codex:codex-rescue` 要跨模型第二意見。
+- **降級**：一旦某 pattern 被驗證可行（一個檔案改對了、測試綠），剩餘同型工作降回 haiku/sonnet 批次套用。
+- **同一件事最多重試兩輪**。第三輪前必須換方法（換搜法、換拆法、換模型）或升級，
+  禁止相同 prompt 重派第三次。
+
+## 7. 並行紀律
+
+- 互相獨立的派工**同一則訊息一起發**（並行跑）。
+- 多個 agent 要**同時改檔** → 各給 `isolation: "worktree"`，避免互踩；只讀不寫則不需要。
+- worktree 內跑 cargo test 注意 OOM：`CARGO_PROFILE_TEST_DEBUG=0` + `-j2`，
+  DB 要同時設 `TEST_DATABASE_URL` + `DATABASE_URL`（指向 ipig_db_test）。
+- 並行數量：一次 fan-out ≤6 個 agent；更大規模需要 Workflow tool（= 需使用者 opt-in，先問）。
+
+## 8. 主對話的自我保護
+
+- 進入大任務前先想：「這個 session 結束時，主對話裡應該留下什麼？」答案永遠是：
+  決策、結論、路徑——不是 raw 資料。
+- 讀到 system 提示說 context 將被摘要 → 立即把當前狀態寫進檔案（TODO / checkpoint / 交接檔），
+  摘要後的自己會感謝現在的自己。
+- **探索超標的事後補救閘**：§1 是**事前**判斷（預期 >3 檔就派工），本條補**事後**——
+  已經在主對話裡連做 **5 次以上**試錯型 Grep/Glob/Read 還沒定位到目標 → 停下，改派 `Explore`，
+  且派工前先寫一則「已排除」摘要（試過哪些路徑 / 關鍵字、排除了什麼假設）塞進 prompt，
+  否則 agent 會重走同一條死路。失敗的探索軌跡沒有留在主對話的價值。
+- **狀態摘要只寫一次，不反覆重寫**：上一條的「已排除」摘要、摘要前 checkpoint、階段性回顧，
+  都是寫**一則完整的**就往下接，不要每輪重述前情。反覆改寫前文會持續讓 prompt cache 失效，
+  付出的成本高過省下的 context。
+  （依據：arXiv:2607.25431 CodeNib，2026-07。實測一次性改寫＋固定前綴延長，
+  比 grep/read 基線省 50–87% trajectory token 且不損定位正確率；關鍵在「一次性」。）

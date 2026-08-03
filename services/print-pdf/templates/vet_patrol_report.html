@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>試驗豬場巡場報告</title>
+  {#
+    修復（見 backend/src/handlers/animal/pdf_export.rs 註解歷史）：先前的「像素級對齊官方
+    AD-02-02-01B 母表」版本用固定 mm 高度的絕對定位（每頁一個 .sheet div）刻版面，只能容納
+    「每類別剛好一筆」的資料；但實際資料模型（categories[].entries[]，每隻豬一筆觀察/建議/
+    追蹤改善）本來就允許多筆。絕對定位版面完全沒有迴圈 entries[]，導致：
+      1) 主表格永遠印出空白（只讀了 categories[].observation/suggestion 這兩個 backend
+         故意留空的彙總欄位，entries[] 內的實際文字從未被讀取）。
+      2) photo_groups 與 categories[].photos 是同一批照片的兩種呈現，範本卻把兩者都攤平
+         合併，造成每張照片重複計算、照片頁重複出現。
+      3) 「追蹤及改善」欄位被畫成整表單一合併空白格，遺漏了 entries[].follow_up 這個
+         使用者透過兩階段流程（獸醫填觀察/建議 → 陪同人員填追蹤改善）實際填寫的資料。
+    此版改回一般文件流排版（可依 entries 數量自動長高、跨頁），改用 Chromium 原生
+    page.pdf(header_template/footer_template) 取得跨頁頁首/頁尾（見 main.py
+    _html_to_pdf_paginated_async 註解 — CSS Paged Media @top-left/@bottom-center 是
+    WeasyPrint 專屬語法，Chromium 引擎不支援）。代價：多筆條目時版面不再與官方單列表單
+    像素對齊，但資料正確性優先（2026-07-10 與使用者確認採此方案）。
+  #}
+  <style>
+    @font-face { font-family: "KaiEmbed"; src: url("file:///app/fonts/kaiu.ttf"); }
+    @font-face { font-family: "TimesEmbed"; font-weight: normal; font-style: normal; src: url("file:///app/fonts/times.ttf"); }
+    @font-face { font-family: "TimesEmbed"; font-weight: bold;   font-style: normal; src: url("file:///app/fonts/timesbd.ttf"); }
+    @font-face { font-family: "TimesEmbed"; font-weight: normal; font-style: italic; src: url("file:///app/fonts/timesi.ttf"); }
+    @font-face { font-family: "TimesEmbed"; font-weight: bold;   font-style: italic; src: url("file:///app/fonts/timesbi.ttf"); }
+
+    @page { size: A4 landscape; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { font-family: "TimesEmbed", "KaiEmbed", serif; color: #000; font-size: 11pt; }
+
+    .title1, .title2 { text-align: center; font-family: "KaiEmbed"; font-weight: bold; font-size: 14pt; letter-spacing: 0.9pt; line-height: 1.5; }
+
+    table.rpt { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: "KaiEmbed"; margin-top: 5mm; }
+    table.rpt colgroup col.c-label { width: 13%; }
+    table.rpt colgroup col.c-obs   { width: 35%; }
+    table.rpt colgroup col.c-sug   { width: 27%; }
+    table.rpt colgroup col.c-foll  { width: 25%; }
+    table.rpt thead { display: table-header-group; }
+    table.rpt td, table.rpt th {
+      border: 0.5pt solid #000;
+      font-size: 12pt; vertical-align: top; line-height: 1.45;
+      padding: 1.2mm 1.9mm; overflow-wrap: anywhere; white-space: pre-wrap;
+    }
+    table.rpt tr { page-break-inside: avoid; }
+    table.rpt thead th { text-align: center; font-weight: bold; font-size: 13pt; vertical-align: middle; white-space: normal; line-height: 1.3; }
+    .hint { font-weight: normal; font-size: 12pt; }
+    /* specificity 需 ≥ `table.rpt td`（0,1,2）才能讓 vertical-align:middle 蓋過該規則的
+       top，否則左欄「項目」標籤會靠上（豬隻狀況/防疫及消毒計畫/病歷紀錄/其他 上下置中）。 */
+    table.rpt td.cat { text-align: center; vertical-align: middle; white-space: nowrap; }
+    td.grp { text-align: center; vertical-align: middle; background: #d9d9d9; }
+
+    .sign { margin-top: 6mm; font-family: "KaiEmbed"; font-size: 12pt; page-break-inside: avoid; }
+    .sign table { margin-left: auto; border-collapse: collapse; }
+    .sign td { padding: 1.2mm 0; white-space: nowrap; line-height: 1; }
+    .sign td.k { text-align: right; padding-right: 1mm; }
+    .sign td.v { text-align: left; min-width: 35mm; }
+
+    .photos-page { page-break-before: always; }
+
+    table.photo, table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 2mm; }
+    table.photo td, table.grid td { border: 0.5pt solid #000; }
+    table.photo td.pic { height: 150mm; text-align: center; vertical-align: middle; padding: 2mm; }
+    table.photo td.pic img { max-width: 100%; max-height: 148mm; object-fit: contain; }
+    table.photo td.cap, table.grid td.cap { height: 6.5mm; text-align: center; vertical-align: middle; font-family: "KaiEmbed"; font-size: 12pt; }
+    table.grid td.pic { text-align: center; vertical-align: middle; padding: 2mm; }
+    table.grid td.pic img { max-width: 100%; object-fit: contain; }
+    table.grid.g2 td.pic { height: 130mm; }
+    table.grid.g2 td.pic img { max-height: 126mm; }
+    table.grid.g4 td.pic { height: 66mm; }
+    table.grid.g4 td.pic img { max-height: 62mm; }
+    tr.photo-row { page-break-inside: avoid; }
+  </style>
+</head>
+<body>
+  <div class="title1">豬博士動物科技股份有限公司</div>
+  <div class="title2">試驗豬場巡場報告</div>
+
+  {% set bylabel = {} %}
+  {% for c in categories %}{% set _ = bylabel.update({c.label: c}) %}{% endfor %}
+  {% set pig = bylabel.get('豬隻狀況', {}) %}
+  {% set pig_entries = pig.get('entries', []) %}
+
+  <table class="rpt">
+    <colgroup>
+      <col class="c-label"><col class="c-obs"><col class="c-sug"><col class="c-foll">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>項目</th><th>觀察內容</th><th>建議</th>
+        <th>追蹤及改善<br><span class="hint">（請照護同仁扼要填寫）</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {# 豬隻狀況：官方母表固定的「試驗中」子標題列，資料模型未帶 group label，此版固定一組 #}
+      <tr>
+        <td class="cat" rowspan="{{ (pig_entries|length if pig_entries|length > 0 else 1) + 1 }}">豬隻狀況</td>
+        <td class="grp">試驗中</td>
+        <td class="grp">試驗中</td>
+        <td></td>
+      </tr>
+      {% if pig_entries|length > 0 %}
+        {% for e in pig_entries %}
+        <tr>
+          <td>{{ e.get('observation', '') }}</td>
+          <td>{{ e.get('suggestion', '') }}</td>
+          <td>{{ e.get('follow_up', '') }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td>{{ pig.get('observation', '') }}</td>
+          <td>{{ pig.get('suggestion', '') }}</td>
+          <td>{{ pig.get('follow_up', '') }}</td>
+        </tr>
+      {% endif %}
+
+      {% for lbl in ['防疫及消毒計畫', '病歷紀錄', '其他'] %}
+      {% set c = bylabel.get(lbl, {}) %}
+      {% set ce = c.get('entries', []) %}
+      {% if ce|length > 0 %}
+        {% for e in ce %}
+        <tr>
+          {% if loop.first %}<td class="cat" rowspan="{{ ce|length }}">{{ lbl }}</td>{% endif %}
+          <td>{{ e.get('observation', '') }}</td>
+          <td>{{ e.get('suggestion', '') }}</td>
+          <td>{{ e.get('follow_up', '') }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td class="cat">{{ lbl }}</td>
+          <td>{{ c.get('observation', '') }}</td>
+          <td>{{ c.get('suggestion', '') }}</td>
+          <td>{{ c.get('follow_up', '') }}</td>
+        </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="sign">
+    <table>
+      <tr><td class="k">陪同人員：</td><td class="v">{{ companion }}</td></tr>
+      <tr><td class="k">巡場獸醫師：</td><td class="v">{{ vet_name }}</td></tr>
+      <tr><td class="k">巡場日期：</td><td class="v">{{ patrol_date_display or patrol_date }}</td></tr>
+    </table>
+  </div>
+
+  {#
+    照片：只用 photo_groups（backend R39-D2 已把 entry 照片按「同隻豬一組」+ report-level
+    整體環境照統一分組進這個欄位）。不要再併入 `photos` / `categories[].photos` —
+    那兩個欄位是同一批照片的重複表示法（backend 為了相容其他消費端才同時塞兩份），
+    併入會讓每張照片重複出現。
+  #}
+  {% set ns = namespace(ph=[]) %}
+  {% for g in photo_groups %}
+    {% for s in g.srcs %}
+      {% set ns.ph = ns.ph + [{'src': s, 'caption': g.caption}] %}
+    {% endfor %}
+  {% endfor %}
+  {% set n = ns.ph|length %}
+  {% set pp = 1 if n <= 1 else (2 if n == 2 else 4) %}
+
+  {% if n == 1 %}
+  <div class="photos-page">
+    <table class="photo">
+      <colgroup><col style="width:100%"></colgroup>
+      <tr class="photo-row"><td class="pic">{% if ns.ph[0].src %}<img src="{{ ns.ph[0].src }}" alt="">{% endif %}</td></tr>
+      <tr class="photo-row"><td class="cap">{{ ns.ph[0].caption }}</td></tr>
+    </table>
+  </div>
+  {% elif n >= 2 %}
+  {% for page in ns.ph|batch(pp) %}
+  <div class="photos-page">
+    <table class="grid {{ 'g2' if pp == 2 else 'g4' }}">
+      <colgroup><col style="width:50%"><col style="width:50%"></colgroup>
+      {% for row in page|batch(2) %}
+      <tr class="photo-row">
+        {% for p in row %}<td class="pic">{% if p.src %}<img src="{{ p.src }}" alt="">{% endif %}</td>{% endfor %}
+        {% if row|length < 2 %}<td class="pic"></td>{% endif %}
+      </tr>
+      <tr class="photo-row">
+        {% for p in row %}<td class="cap">{{ p.caption }}</td>{% endfor %}
+        {% if row|length < 2 %}<td class="cap"></td>{% endif %}
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+  {% endif %}
+</body>
+</html>

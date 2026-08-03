@@ -1,0 +1,596 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>ipig_system 資料庫 ER 圖（自實際 schema 反向產生）</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js" integrity="sha384-WmdflGW9aGfoBdHc4rRyWzYuAjEmDwMdGdiPNacbwfGKxBW/SO6guzuQ76qjnSlr" crossorigin="anonymous"></script>
+<style>
+:root{--bg:#0f1115;--card:#1a1d24;--fg:#e6e8ec;--mut:#9aa0aa;--acc:#7aa2f7;--bd:#2a2f3a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Segoe UI","Noto Sans CJK TC",sans-serif;line-height:1.6}
+header{padding:32px 40px;border-bottom:1px solid var(--bd)}
+h1{margin:0 0 8px;font-size:24px}
+.sub{color:var(--mut);font-size:14px}
+.wrap{max-width:1400px;margin:0 auto;padding:24px 40px}
+.stat{display:flex;gap:24px;flex-wrap:wrap;margin:16px 0}
+.stat div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 20px}
+.stat b{font-size:22px;color:var(--acc)}
+section.domain{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:20px 24px;margin:20px 0;overflow:auto}
+h2{font-size:18px;margin:0 0 12px;border-left:4px solid var(--acc);padding-left:10px}
+.cnt{color:var(--mut);font-size:13px;font-weight:400}
+.mermaid{background:#fff;border-radius:8px;padding:16px}
+.note{color:var(--mut);font-size:13px;margin:8px 0 0}
+</style></head>
+<body>
+<header>
+  <h1>ipig_system 資料庫 ER 圖</h1>
+  <div class="sub">由實際跑完 104 個 migration 的 PostgreSQL 16 schema 反向 introspect 產生 · 2026-06-24</div>
+</header>
+<div class="wrap">
+  <div class="stat">
+    <div><b>168</b> 邏輯表 <span class="note">(182 含分區子表)</span></div>
+    <div><b>276</b> 表對表外鍵</div>
+    <div><b>14</b> 業務領域</div>
+    <div><b>104</b> migrations</div>
+  </div>
+  <section class="domain">
+    <h2>領域依賴總覽 <span class="cnt">箭頭 = 外鍵方向（child → parent），數字 = FK 數</span></h2>
+    <div class="mermaid">graph LR
+  D_ANIMAL["動物管理<br/>33 表"]
+  D_ERP["ERP庫存會計<br/>22 表"]
+  D_AUP["實驗計畫AUP<br/>20 表"]
+  D_GLP["GLP合規<br/>13 表"]
+  D_HR["人資HR<br/>12 表"]
+  D_AI_QA["AI與QA<br/>10 表"]
+  D_NOTIFY["通知系統<br/>10 表"]
+  D_AUTH["認證權限<br/>10 表"]
+  D_EQUIP["設備<br/>9 表"]
+  D_INFRA["基礎設施<br/>7 表"]
+  D_SEC_AUDIT["安全稽核<br/>7 表"]
+  D_FACILITY["設施<br/>6 表"]
+  D_VET["獸醫巡檢<br/>5 表"]
+  D_MSG["訊息<br/>4 表"]
+  D_AI_QA -->|8| D_AUTH
+  D_AUP -->|19| D_AUTH
+  D_AUP -->|4| D_NOTIFY
+  D_ANIMAL -->|27| D_AUTH
+  D_ANIMAL -->|2| D_FACILITY
+  D_HR -->|9| D_AUTH
+  D_ERP -->|7| D_AUTH
+  D_NOTIFY -->|9| D_AUTH
+  D_GLP -->|11| D_AUTH
+  D_FACILITY -->|1| D_AUTH
+  D_ERP -->|1| D_AUP
+  D_GLP -->|2| D_FACILITY
+  D_EQUIP -->|3| D_ERP
+  D_EQUIP -->|1| D_GLP
+  D_EQUIP -->|3| D_NOTIFY
+  D_EQUIP -->|5| D_AUTH
+  D_ANIMAL -->|1| D_AUP
+  D_INFRA -->|5| D_AUTH
+  D_GLP -->|1| D_ERP
+  D_GLP -->|2| D_AUP
+  D_SEC_AUDIT -->|18| D_AUTH
+  D_MSG -->|4| D_AUTH
+  D_INFRA -->|2| D_NOTIFY
+  D_AUTH -->|1| D_AUP
+  D_GLP -->|1| D_NOTIFY
+  D_VET -->|2| D_ANIMAL
+  D_VET -->|3| D_AUTH</div>
+    <p class="note">⚠️ 觀察：幾乎每個領域都指向「認證權限」(users)，這是中心輻射依賴，schema 重設計時是關鍵討論點。</p>
+  </section>
+  
+    <section class="domain">
+      <h2>動物管理 <span class="cnt">33 表</span></h2>
+      <div class="mermaid">erDiagram
+  animal_blood_test_items { int id }
+  animal_blood_tests { int id }
+  animal_field_correction_requests { int id }
+  animal_import_batches { int id }
+  animal_observations { int id }
+  animal_pathology_reports { int id }
+  animal_record_attachments { int id }
+  animal_sacrifices { int id }
+  animal_sources { int id }
+  animal_sudden_deaths { int id }
+  animal_surgeries { int id }
+  animal_transfers { int id }
+  animal_vaccinations { int id }
+  animal_vet_advice_records { int id }
+  animal_vet_advices { int id }
+  animal_weights { int id }
+  animals { int id }
+  blood_test_panel_items { int id }
+  blood_test_panels { int id }
+  blood_test_presets { int id }
+  blood_test_templates { int id }
+  care_medication_records { int id }
+  change_reasons { int id }
+  euthanasia_appeals { int id }
+  euthanasia_byproduct_samples { int id }
+  euthanasia_orders { int id }
+  export_jobs { int id }
+  import_jobs { int id }
+  observation_vet_reads { int id }
+  record_versions { int id }
+  surgery_vet_reads { int id }
+  transfer_vet_evaluations { int id }
+  vet_recommendations { int id }
+  pens { ext _ }
+  protocols { ext _ }
+  species { ext _ }
+  users { ext _ }
+  animal_blood_tests ||--o{ animal_blood_test_items : "FK"
+  blood_test_templates ||--o{ animal_blood_test_items : "FK"
+  users ||--o{ animal_blood_test_items : "→認證權限"
+  animals ||--o{ animal_blood_tests : "FK"
+  users ||--o{ animal_blood_tests : "→認證權限"
+  animals ||--o{ animal_field_correction_requests : "FK"
+  users ||--o{ animal_field_correction_requests : "→認證權限"
+  users ||--o{ animal_import_batches : "→認證權限"
+  animals ||--o{ animal_observations : "FK"
+  users ||--o{ animal_observations : "→認證權限"
+  animals ||--o{ animal_pathology_reports : "FK"
+  users ||--o{ animal_pathology_reports : "→認證權限"
+  animals ||--o{ animal_sacrifices : "FK"
+  users ||--o{ animal_sacrifices : "→認證權限"
+  animals ||--o{ animal_sudden_deaths : "FK"
+  users ||--o{ animal_sudden_deaths : "→認證權限"
+  animals ||--o{ animal_surgeries : "FK"
+  users ||--o{ animal_surgeries : "→認證權限"
+  animals ||--o{ animal_transfers : "FK"
+  users ||--o{ animal_transfers : "→認證權限"
+  animals ||--o{ animal_vaccinations : "FK"
+  users ||--o{ animal_vaccinations : "→認證權限"
+  animals ||--o{ animal_vet_advice_records : "FK"
+  users ||--o{ animal_vet_advice_records : "→認證權限"
+  animals ||--o{ animal_vet_advices : "FK"
+  users ||--o{ animal_vet_advices : "→認證權限"
+  animals ||--o{ animal_weights : "FK"
+  users ||--o{ animal_weights : "→認證權限"
+  animal_sources ||--o{ animals : "FK"
+  pens ||--o{ animals : "→設施"
+  species ||--o{ animals : "→設施"
+  users ||--o{ animals : "→認證權限"
+  blood_test_panels ||--o{ blood_test_panel_items : "FK"
+  blood_test_templates ||--o{ blood_test_panel_items : "FK"
+  users ||--o{ care_medication_records : "→認證權限"
+  users ||--o{ change_reasons : "→認證權限"
+  euthanasia_orders ||--o{ euthanasia_appeals : "FK"
+  users ||--o{ euthanasia_appeals : "→認證權限"
+  animals ||--o{ euthanasia_byproduct_samples : "FK"
+  euthanasia_orders ||--o{ euthanasia_byproduct_samples : "FK"
+  protocols ||--o{ euthanasia_byproduct_samples : "→實驗計畫AUP"
+  users ||--o{ euthanasia_byproduct_samples : "→認證權限"
+  animals ||--o{ euthanasia_orders : "FK"
+  users ||--o{ euthanasia_orders : "→認證權限"
+  users ||--o{ export_jobs : "→認證權限"
+  users ||--o{ import_jobs : "→認證權限"
+  users ||--o{ observation_vet_reads : "→認證權限"
+  users ||--o{ record_versions : "→認證權限"
+  users ||--o{ surgery_vet_reads : "→認證權限"
+  animal_transfers ||--o{ transfer_vet_evaluations : "FK"
+  users ||--o{ transfer_vet_evaluations : "→認證權限"
+  users ||--o{ vet_recommendations : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>ERP庫存會計 <span class="cnt">22 表</span></h2>
+      <div class="mermaid">erDiagram
+  ap_payments { int id }
+  ar_receipts { int id }
+  chart_of_accounts { int id }
+  document_lines { int id }
+  documents { int id }
+  expiry_monthly_snapshots { int id }
+  expiry_notification_config { int id }
+  inventory_snapshots { int id }
+  journal_entries { int id }
+  journal_entry_lines { int id }
+  partners { int id }
+  product_categories { int id }
+  product_uom_conversions { int id }
+  products { int id }
+  sku_categories { int id }
+  sku_sequences { int id }
+  sku_subcategories { int id }
+  stock_ledger { int id }
+  storage_location_inventory { int id }
+  storage_locations { int id }
+  treatment_drug_options { int id }
+  warehouses { int id }
+  protocols { ext _ }
+  users { ext _ }
+  journal_entries ||--o{ ap_payments : "FK"
+  partners ||--o{ ap_payments : "FK"
+  users ||--o{ ap_payments : "→認證權限"
+  journal_entries ||--o{ ar_receipts : "FK"
+  partners ||--o{ ar_receipts : "FK"
+  users ||--o{ ar_receipts : "→認證權限"
+  documents ||--o{ document_lines : "FK"
+  products ||--o{ document_lines : "FK"
+  storage_locations ||--o{ document_lines : "FK"
+  partners ||--o{ documents : "FK"
+  protocols ||--o{ documents : "→實驗計畫AUP"
+  users ||--o{ documents : "→認證權限"
+  warehouses ||--o{ documents : "FK"
+  products ||--o{ expiry_monthly_snapshots : "FK"
+  warehouses ||--o{ expiry_monthly_snapshots : "FK"
+  users ||--o{ expiry_notification_config : "→認證權限"
+  products ||--o{ inventory_snapshots : "FK"
+  warehouses ||--o{ inventory_snapshots : "FK"
+  users ||--o{ journal_entries : "→認證權限"
+  chart_of_accounts ||--o{ journal_entry_lines : "FK"
+  journal_entries ||--o{ journal_entry_lines : "FK"
+  products ||--o{ product_uom_conversions : "FK"
+  product_categories ||--o{ products : "FK"
+  users ||--o{ products : "→認證權限"
+  sku_categories ||--o{ sku_subcategories : "FK"
+  document_lines ||--o{ stock_ledger : "FK"
+  documents ||--o{ stock_ledger : "FK"
+  products ||--o{ stock_ledger : "FK"
+  storage_locations ||--o{ stock_ledger : "FK"
+  warehouses ||--o{ stock_ledger : "FK"
+  products ||--o{ storage_location_inventory : "FK"
+  storage_locations ||--o{ storage_location_inventory : "FK"
+  warehouses ||--o{ storage_locations : "FK"
+  products ||--o{ treatment_drug_options : "FK"
+  users ||--o{ treatment_drug_options : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>實驗計畫AUP <span class="cnt">20 表</span></h2>
+      <div class="mermaid">erDiagram
+  amendment_review_assignments { int id }
+  amendment_status_history { int id }
+  amendment_versions { int id }
+  amendments { int id }
+  application_notices { int id }
+  protocol_activities { int id }
+  protocol_ai_reviews { int id }
+  protocol_attachments { int id }
+  protocol_notice_acknowledgements { int id }
+  protocol_template_versions { int id }
+  protocol_versions { int id }
+  protocols { int id }
+  report_history { int id }
+  review_assignments { int id }
+  review_comments { int id }
+  review_round_history { int id }
+  scheduled_reports { int id }
+  user_aup_profiles { int id }
+  user_protocols { int id }
+  vet_review_assignments { int id }
+  attachments { ext _ }
+  electronic_signatures { ext _ }
+  users { ext _ }
+  amendments ||--o{ amendment_review_assignments : "FK"
+  users ||--o{ amendment_review_assignments : "→認證權限"
+  amendments ||--o{ amendment_status_history : "FK"
+  amendments ||--o{ amendment_versions : "FK"
+  users ||--o{ amendment_versions : "→認證權限"
+  electronic_signatures ||--o{ amendments : "→通知系統"
+  protocols ||--o{ amendments : "FK"
+  users ||--o{ amendments : "→認證權限"
+  attachments ||--o{ application_notices : "→通知系統"
+  users ||--o{ application_notices : "→認證權限"
+  protocols ||--o{ protocol_activities : "FK"
+  users ||--o{ protocol_activities : "→認證權限"
+  protocol_versions ||--o{ protocol_ai_reviews : "FK"
+  protocols ||--o{ protocol_ai_reviews : "FK"
+  users ||--o{ protocol_ai_reviews : "→認證權限"
+  protocol_versions ||--o{ protocol_attachments : "FK"
+  protocols ||--o{ protocol_attachments : "FK"
+  users ||--o{ protocol_attachments : "→認證權限"
+  application_notices ||--o{ protocol_notice_acknowledgements : "FK"
+  attachments ||--o{ protocol_notice_acknowledgements : "→通知系統"
+  electronic_signatures ||--o{ protocol_notice_acknowledgements : "→通知系統"
+  protocols ||--o{ protocol_notice_acknowledgements : "FK"
+  users ||--o{ protocol_notice_acknowledgements : "→認證權限"
+  users ||--o{ protocol_template_versions : "→認證權限"
+  protocols ||--o{ protocol_versions : "FK"
+  users ||--o{ protocol_versions : "→認證權限"
+  users ||--o{ protocols : "→認證權限"
+  scheduled_reports ||--o{ report_history : "FK"
+  users ||--o{ report_history : "→認證權限"
+  protocols ||--o{ review_assignments : "FK"
+  users ||--o{ review_assignments : "→認證權限"
+  protocol_versions ||--o{ review_comments : "FK"
+  protocols ||--o{ review_comments : "FK"
+  users ||--o{ review_comments : "→認證權限"
+  protocols ||--o{ review_round_history : "FK"
+  users ||--o{ review_round_history : "→認證權限"
+  users ||--o{ scheduled_reports : "→認證權限"
+  users ||--o{ user_aup_profiles : "→認證權限"
+  protocols ||--o{ user_protocols : "FK"
+  users ||--o{ user_protocols : "→認證權限"
+  protocols ||--o{ vet_review_assignments : "FK"
+  users ||--o{ vet_review_assignments : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>GLP合規 <span class="cnt">13 表</span></h2>
+      <div class="mermaid">erDiagram
+  change_requests { int id }
+  competency_assessments { int id }
+  controlled_documents { int id }
+  document_acknowledgments { int id }
+  document_revisions { int id }
+  environment_monitoring_points { int id }
+  environment_readings { int id }
+  formulation_records { int id }
+  management_reviews { int id }
+  reference_standards { int id }
+  risk_register { int id }
+  role_training_requirements { int id }
+  study_final_reports { int id }
+  buildings { ext _ }
+  electronic_signatures { ext _ }
+  products { ext _ }
+  protocols { ext _ }
+  users { ext _ }
+  zones { ext _ }
+  users ||--o{ change_requests : "→認證權限"
+  users ||--o{ competency_assessments : "→認證權限"
+  users ||--o{ controlled_documents : "→認證權限"
+  controlled_documents ||--o{ document_acknowledgments : "FK"
+  users ||--o{ document_acknowledgments : "→認證權限"
+  controlled_documents ||--o{ document_revisions : "FK"
+  users ||--o{ document_revisions : "→認證權限"
+  buildings ||--o{ environment_monitoring_points : "→設施"
+  zones ||--o{ environment_monitoring_points : "→設施"
+  environment_monitoring_points ||--o{ environment_readings : "FK"
+  users ||--o{ environment_readings : "→認證權限"
+  products ||--o{ formulation_records : "→ERP庫存會計"
+  protocols ||--o{ formulation_records : "→實驗計畫AUP"
+  users ||--o{ formulation_records : "→認證權限"
+  users ||--o{ management_reviews : "→認證權限"
+  users ||--o{ reference_standards : "→認證權限"
+  users ||--o{ risk_register : "→認證權限"
+  electronic_signatures ||--o{ study_final_reports : "→通知系統"
+  protocols ||--o{ study_final_reports : "→實驗計畫AUP"
+  users ||--o{ study_final_reports : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>人資HR <span class="cnt">12 表</span></h2>
+      <div class="mermaid">erDiagram
+  annual_leave_entitlements { int id }
+  attendance_records { int id }
+  calendar_event_sync { int id }
+  calendar_sync_conflicts { int id }
+  calendar_sync_history { int id }
+  comp_time_balances { int id }
+  google_calendar_config { int id }
+  leave_approvals { int id }
+  leave_balance_usage { int id }
+  leave_requests { int id }
+  overtime_approvals { int id }
+  overtime_records { int id }
+  users { ext _ }
+  users ||--o{ annual_leave_entitlements : "→認證權限"
+  users ||--o{ attendance_records : "→認證權限"
+  leave_requests ||--o{ calendar_event_sync : "FK"
+  calendar_event_sync ||--o{ calendar_sync_conflicts : "FK"
+  leave_requests ||--o{ calendar_sync_conflicts : "FK"
+  users ||--o{ calendar_sync_conflicts : "→認證權限"
+  users ||--o{ calendar_sync_history : "→認證權限"
+  overtime_records ||--o{ comp_time_balances : "FK"
+  users ||--o{ comp_time_balances : "→認證權限"
+  leave_requests ||--o{ leave_approvals : "FK"
+  users ||--o{ leave_approvals : "→認證權限"
+  annual_leave_entitlements ||--o{ leave_balance_usage : "FK"
+  comp_time_balances ||--o{ leave_balance_usage : "FK"
+  leave_requests ||--o{ leave_balance_usage : "FK"
+  annual_leave_entitlements ||--o{ leave_requests : "FK"
+  users ||--o{ leave_requests : "→認證權限"
+  overtime_records ||--o{ overtime_approvals : "FK"
+  users ||--o{ overtime_approvals : "→認證權限"
+  attendance_records ||--o{ overtime_records : "FK"
+  users ||--o{ overtime_records : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>AI與QA <span class="cnt">10 表</span></h2>
+      <div class="mermaid">erDiagram
+  ai_api_keys { int id }
+  ai_query_logs { int id }
+  qa_audit_schedules { int id }
+  qa_capa { int id }
+  qa_inspection_items { int id }
+  qa_inspections { int id }
+  qa_non_conformances { int id }
+  qa_schedule_items { int id }
+  qa_sop_acknowledgments { int id }
+  qa_sop_documents { int id }
+  users { ext _ }
+  users ||--o{ ai_api_keys : "→認證權限"
+  users ||--o{ qa_audit_schedules : "→認證權限"
+  qa_non_conformances ||--o{ qa_capa : "FK"
+  users ||--o{ qa_capa : "→認證權限"
+  qa_inspections ||--o{ qa_inspection_items : "FK"
+  users ||--o{ qa_inspections : "→認證權限"
+  qa_inspections ||--o{ qa_non_conformances : "FK"
+  users ||--o{ qa_non_conformances : "→認證權限"
+  qa_audit_schedules ||--o{ qa_schedule_items : "FK"
+  qa_inspections ||--o{ qa_schedule_items : "FK"
+  users ||--o{ qa_schedule_items : "→認證權限"
+  qa_sop_documents ||--o{ qa_sop_acknowledgments : "FK"
+  users ||--o{ qa_sop_acknowledgments : "→認證權限"
+  users ||--o{ qa_sop_documents : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>通知系統 <span class="cnt">10 表</span></h2>
+      <div class="mermaid">erDiagram
+  attachments { int id }
+  audit_logs { int id }
+  electronic_signatures { int id }
+  jwt_blacklist { int id }
+  notification_routing { int id }
+  notification_settings { int id }
+  notifications { int id }
+  record_annotations { int id }
+  system_settings { int id }
+  user_preferences { int id }
+  roles { ext _ }
+  users { ext _ }
+  users ||--o{ attachments : "→認證權限"
+  users ||--o{ audit_logs : "→認證權限"
+  users ||--o{ electronic_signatures : "→認證權限"
+  roles ||--o{ notification_routing : "→認證權限"
+  users ||--o{ notification_settings : "→認證權限"
+  users ||--o{ notifications : "→認證權限"
+  electronic_signatures ||--o{ record_annotations : "FK"
+  users ||--o{ record_annotations : "→認證權限"
+  users ||--o{ system_settings : "→認證權限"
+  users ||--o{ user_preferences : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>認證權限 <span class="cnt">10 表</span></h2>
+      <div class="mermaid">erDiagram
+  invitation_roles { int id }
+  invitations { int id }
+  password_reset_tokens { int id }
+  permissions { int id }
+  pi_account_invites { int id }
+  refresh_tokens { int id }
+  role_permissions { int id }
+  roles { int id }
+  user_roles { int id }
+  users { int id }
+  protocols { ext _ }
+  invitations ||--o{ invitation_roles : "FK"
+  roles ||--o{ invitation_roles : "FK"
+  users ||--o{ invitations : "FK"
+  users ||--o{ password_reset_tokens : "FK"
+  protocols ||--o{ pi_account_invites : "→實驗計畫AUP"
+  users ||--o{ pi_account_invites : "FK"
+  users ||--o{ refresh_tokens : "FK"
+  permissions ||--o{ role_permissions : "FK"
+  roles ||--o{ role_permissions : "FK"
+  roles ||--o{ user_roles : "FK"
+  users ||--o{ user_roles : "FK"</div>
+    </section>
+    <section class="domain">
+      <h2>設備 <span class="cnt">9 表</span></h2>
+      <div class="mermaid">erDiagram
+  equipment { int id }
+  equipment_annual_plans { int id }
+  equipment_calibrations { int id }
+  equipment_disposals { int id }
+  equipment_idle_requests { int id }
+  equipment_maintenance_records { int id }
+  equipment_status_logs { int id }
+  equipment_suppliers { int id }
+  training_records { int id }
+  electronic_signatures { ext _ }
+  partners { ext _ }
+  reference_standards { ext _ }
+  users { ext _ }
+  equipment ||--o{ equipment_annual_plans : "FK"
+  equipment ||--o{ equipment_calibrations : "FK"
+  partners ||--o{ equipment_calibrations : "→ERP庫存會計"
+  reference_standards ||--o{ equipment_calibrations : "→GLP合規"
+  electronic_signatures ||--o{ equipment_disposals : "→通知系統"
+  equipment ||--o{ equipment_disposals : "FK"
+  users ||--o{ equipment_disposals : "→認證權限"
+  electronic_signatures ||--o{ equipment_idle_requests : "→通知系統"
+  equipment ||--o{ equipment_idle_requests : "FK"
+  users ||--o{ equipment_idle_requests : "→認證權限"
+  electronic_signatures ||--o{ equipment_maintenance_records : "→通知系統"
+  equipment ||--o{ equipment_maintenance_records : "FK"
+  partners ||--o{ equipment_maintenance_records : "→ERP庫存會計"
+  users ||--o{ equipment_maintenance_records : "→認證權限"
+  equipment ||--o{ equipment_status_logs : "FK"
+  users ||--o{ equipment_status_logs : "→認證權限"
+  equipment ||--o{ equipment_suppliers : "FK"
+  partners ||--o{ equipment_suppliers : "→ERP庫存會計"
+  users ||--o{ training_records : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>基礎設施 <span class="cnt">7 表</span></h2>
+      <div class="mermaid">erDiagram
+  audit_chain_known_breaks { int id }
+  data_retention_policies { int id }
+  event_outbox { int id }
+  ip_blocklist { int id }
+  pdf_artifacts { int id }
+  signature_bridge_sessions { int id }
+  user_mcp_keys { int id }
+  attachments { ext _ }
+  electronic_signatures { ext _ }
+  users { ext _ }
+  users ||--o{ event_outbox : "→認證權限"
+  users ||--o{ ip_blocklist : "→認證權限"
+  attachments ||--o{ pdf_artifacts : "→通知系統"
+  electronic_signatures ||--o{ pdf_artifacts : "→通知系統"
+  users ||--o{ pdf_artifacts : "→認證權限"
+  users ||--o{ signature_bridge_sessions : "→認證權限"
+  users ||--o{ user_mcp_keys : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>安全稽核 <span class="cnt">7 表</span></h2>
+      <div class="mermaid">erDiagram
+  login_events { int id }
+  security_alert_config { int id }
+  security_alerts { int id }
+  security_notification_channels { int id }
+  user_activity_aggregates { int id }
+  user_activity_logs { int id }
+  user_sessions { int id }
+  refresh_tokens { ext _ }
+  users { ext _ }
+  users ||--o{ login_events : "→認證權限"
+  login_events ||--o{ security_alerts : "FK"
+  users ||--o{ security_alerts : "→認證權限"
+  users ||--o{ user_activity_aggregates : "→認證權限"
+  users ||--o{ user_activity_logs : "→認證權限"
+  refresh_tokens ||--o{ user_sessions : "→認證權限"
+  users ||--o{ user_sessions : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>設施 <span class="cnt">6 表</span></h2>
+      <div class="mermaid">erDiagram
+  buildings { int id }
+  departments { int id }
+  facilities { int id }
+  pens { int id }
+  species { int id }
+  zones { int id }
+  users { ext _ }
+  facilities ||--o{ buildings : "FK"
+  users ||--o{ departments : "→認證權限"
+  zones ||--o{ pens : "FK"
+  buildings ||--o{ zones : "FK"</div>
+    </section>
+    <section class="domain">
+      <h2>獸醫巡檢 <span class="cnt">5 表</span></h2>
+      <div class="mermaid">erDiagram
+  vet_patrol_entries { int id }
+  vet_patrol_entry_animals { int id }
+  vet_patrol_entry_photos { int id }
+  vet_patrol_photos { int id }
+  vet_patrol_reports { int id }
+  animals { ext _ }
+  users { ext _ }
+  animals ||--o{ vet_patrol_entries : "→動物管理"
+  vet_patrol_reports ||--o{ vet_patrol_entries : "FK"
+  animals ||--o{ vet_patrol_entry_animals : "→動物管理"
+  vet_patrol_entries ||--o{ vet_patrol_entry_animals : "FK"
+  users ||--o{ vet_patrol_entry_photos : "→認證權限"
+  vet_patrol_entries ||--o{ vet_patrol_entry_photos : "FK"
+  users ||--o{ vet_patrol_photos : "→認證權限"
+  vet_patrol_reports ||--o{ vet_patrol_photos : "FK"
+  users ||--o{ vet_patrol_reports : "→認證權限"</div>
+    </section>
+    <section class="domain">
+      <h2>訊息 <span class="cnt">4 表</span></h2>
+      <div class="mermaid">erDiagram
+  message_attachments { int id }
+  message_thread_participants { int id }
+  message_threads { int id }
+  messages { int id }
+  users { ext _ }
+  messages ||--o{ message_attachments : "FK"
+  users ||--o{ message_attachments : "→認證權限"
+  message_threads ||--o{ message_thread_participants : "FK"
+  users ||--o{ message_thread_participants : "→認證權限"
+  users ||--o{ message_threads : "→認證權限"
+  message_threads ||--o{ messages : "FK"
+  users ||--o{ messages : "→認證權限"</div>
+    </section>
+</div>
+<script>mermaid.initialize({startOnLoad:true,theme:"default",er:{useMaxWidth:false},flowchart:{useMaxWidth:false},maxTextSize:90000,maxEdges:600});</script>
+</body></html>

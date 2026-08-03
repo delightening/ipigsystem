@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dialog 寬度標準化提案 — 預覽</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#7c3aed; --accent-soft:#ede9fe; --ok:#16a34a; --warn:#d97706;
+    --radius:10px; font-synthesis:none;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans CJK TC","Noto Sans TC",system-ui,sans-serif;line-height:1.6;}
+  header{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;padding:28px 32px;}
+  header h1{margin:0 0 6px;font-size:22px;}
+  header p{margin:0;opacity:.9;font-size:14px;}
+  .wrap{max-width:1280px;margin:0 auto;padding:24px 32px 80px;}
+  section{margin-top:32px;}
+  h2{font-size:17px;border-left:4px solid var(--accent);padding-left:10px;margin:0 0 14px;}
+  .note{font-size:13px;color:var(--muted);margin:0 0 16px;}
+  /* viewport simulator */
+  .sim-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;}
+  .sim-bar label{font-size:13px;font-weight:600;}
+  .sim-bar input[type=range]{flex:1;min-width:200px;accent-color:var(--accent);}
+  .sim-bar .vw{font-variant-numeric:tabular-nums;font-weight:700;color:var(--accent);min-width:84px;}
+  .stage{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;overflow:hidden;}
+  .viewport{margin:0 auto;background:#eef1f5;border:1px dashed #c7ccd4;border-radius:8px;
+    position:relative;transition:width .15s ease;min-height:120px;padding:18px 0;}
+  .viewport::before{content:attr(data-w);position:absolute;top:6px;left:10px;font-size:11px;color:var(--muted);}
+  .dlg{margin:24px auto 8px;background:#fff;border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 10px 30px rgba(0,0,0,.12);padding:16px 18px;transition:max-width .15s ease,width .15s ease;}
+  .dlg h4{margin:0 0 4px;font-size:14px;}
+  .dlg .meta{font-size:12px;color:var(--muted);}
+  .dlg .bar{height:8px;background:var(--accent-soft);border-radius:4px;margin:10px 0;}
+  .dlg .bar.s{width:60%} .dlg .bar.t{width:85%}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:#f3f4f6;
+    border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;user-select:none;}
+  .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .chip .dot{width:9px;height:9px;border-radius:50%;}
+  /* scale cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
+  .scard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .scard .name{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;}
+  .scard .px{font-variant-numeric:tabular-nums;color:var(--accent);font-weight:700;}
+  .scard .tw{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f3f4f6;border-radius:5px;
+    padding:1px 6px;display:inline-block;margin-top:6px;}
+  .scard .use{font-size:13px;color:var(--ink);margin-top:8px;}
+  .scard .abs{font-size:12px;color:var(--muted);margin-top:6px;}
+  .scard .cnt{font-size:12px;font-weight:600;color:var(--warn);margin-top:8px;}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);overflow:hidden;font-size:13px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{background:#f3f4f6;font-weight:600;}
+  td code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f3f4f6;border-radius:4px;padding:1px 5px;}
+  .arrow{color:var(--accent);font-weight:700;}
+  .hl{background:#fff7ed;}
+  .pill{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--ok);border-radius:999px;padding:1px 8px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dialog 寬度標準化提案</h1>
+  <p>現況散落 ~16 種寬度（159 個 dialog） → 收斂為 5 種標準尺寸。拖動下方滑桿模擬不同螢幕寬度，點尺寸 chip 切換預覽。</p>
+</header>
+<div class="wrap">
+
+  <section>
+    <h2>1. 互動模擬：拖滑桿看各標準尺寸在不同螢幕下的表現</h2>
+    <p class="note">桌面置中、寬度受 max-width 限制；視窗變窄時自動縮成滿版（手機端 base 元件已是 bottom-sheet）。</p>
+    <div class="sim-bar">
+      <label>螢幕寬度</label>
+      <input id="vw" type="range" min="360" max="1920" value="1440" step="10">
+      <span class="vw" id="vwLabel">1440px</span>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="stage">
+      <div class="viewport" id="viewport" data-w="">
+        <div class="dlg" id="dlg">
+          <h4 id="dlgName">md · 標準表單</h4>
+          <div class="meta" id="dlgMeta">max-w-lg · 512px</div>
+          <div class="bar t"></div><div class="bar s"></div>
+          <div class="meta">（示意內容）實際寬度 = min(螢幕寬 − 邊距, max-width)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. 五種標準尺寸</h2>
+    <p class="note">semantic 名稱 → Tailwind <code>max-w-*</code> → 像素 → 用途。未來只透過 <code>&lt;DialogContent size="…"&gt;</code> 指定，不再各處硬編。</p>
+    <div class="grid" id="cards"></div>
+  </section>
+
+  <section>
+    <h2>3. 現有 16 種 → 5 標準 對照</h2>
+    <table>
+      <thead><tr><th>現有寬度</th><th></th><th>歸入標準</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr><td><code>max-w-sm</code> / <code>max-w-md</code> / 硬編 425·450·500px</td><td class="arrow">→</td><td><b>sm</b> (448px)</td><td>確認框、2FA、刪除原因、單欄極簡</td></tr>
+        <tr class="hl"><td><code>max-w-lg</code>（預設+顯式，~103 處）/ 硬編 600px</td><td class="arrow">→</td><td><b>md</b> (512px) <span class="pill">預設</span></td><td>絕大多數 CRUD 表單，維持現狀</td></tr>
+        <tr><td><code>max-w-xl</code> / <code>max-w-2xl</code> / <code>max-w-3xl</code> / 硬編 860px</td><td class="arrow">→</td><td><b>lg</b> (672px)</td><td>較大 / 雙欄表單（新增動物等）</td></tr>
+        <tr><td><code>max-w-4xl</code> / 硬編 900·1100px</td><td class="arrow">→</td><td><b>xl</b> (896px)</td><td>寬內容 / 多欄 / 含表格 — <b>匯入體重 dialog 落這</b></td></tr>
+        <tr><td><code>max-w-5xl</code> / 硬編 1200px / <code>w-[90vw]</code></td><td class="arrow">→</td><td><b>2xl</b> (1152px)</td><td>資料密集檢視（稽核紀錄、計畫比對）</td></tr>
+      </tbody>
+    </table>
+    <p class="note">註：3xl(768px) 6 個 detail dialog 歸 lg 或 xl 視內容於遷移時逐一決定；其餘為機械式對應。</p>
+  </section>
+
+  <section>
+    <h2>4. 匯入體重 dialog 建議</h2>
+    <p class="note">每列「耳號 + 前 3 次測量 + 今天輸入」約 6 欄，建議 <b>xl (896px)</b>。在 1280px 螢幕約佔 70%、1440px 約 62%。若你覺得還要更寬可選 <b>2xl (1152px)</b> — 用上方滑桿+chip 比對後告訴我。</p>
+  </section>
+
+</div>
+<script>
+  const SIZES=[
+    {key:'sm', tw:'max-w-md', px:448, dot:'#94a3b8', name:'sm · 確認/極簡', use:'確認框、2FA、刪除原因、單欄極簡', abs:'吸收 max-w-sm/md、425/450/500px', cnt:'~17 處'},
+    {key:'md', tw:'max-w-lg', px:512, dot:'#7c3aed', name:'md · 標準表單（預設）', use:'絕大多數 CRUD 表單', abs:'吸收 max-w-lg 預設+顯式、600px', cnt:'~104 處'},
+    {key:'lg', tw:'max-w-2xl', px:672, dot:'#2563eb', name:'lg · 較大/雙欄', use:'較大或雙欄表單', abs:'吸收 xl/2xl/3xl、860px', cnt:'~24 處'},
+    {key:'xl', tw:'max-w-4xl', px:896, dot:'#0891b2', name:'xl · 寬內容/多欄', use:'多欄/含表格（匯入體重）', abs:'吸收 4xl、900/1100px', cnt:'~10 處'},
+    {key:'2xl', tw:'max-w-6xl', px:1152, dot:'#16a34a', name:'2xl · 資料密集檢視', use:'稽核紀錄、計畫比對', abs:'吸收 5xl、1200px、90vw', cnt:'~6 處'},
+  ];
+  const PAD=32; // viewport 左右內距示意
+  let cur='md';
+  const vw=document.getElementById('vw'), vwLabel=document.getElementById('vwLabel');
+  const viewport=document.getElementById('viewport'), dlg=document.getElementById('dlg');
+  const dlgName=document.getElementById('dlgName'), dlgMeta=document.getElementById('dlgMeta');
+  const legend=document.getElementById('legend'), cards=document.getElementById('cards');
+
+  // legend chips
+  SIZES.forEach(s=>{
+    const c=document.createElement('span'); c.className='chip'+(s.key===cur?' active':'');
+    c.dataset.key=s.key;
+    c.innerHTML='<span class="dot" style="background:'+s.dot+'"></span>'+s.key+' · '+s.px+'px';
+    c.onclick=()=>{cur=s.key;render();};
+    legend.appendChild(c);
+  });
+  // scale cards
+  SIZES.forEach(s=>{
+    const d=document.createElement('div'); d.className='scard';
+    d.innerHTML='<div class="name"><span class="dot" style="width:11px;height:11px;border-radius:50%;background:'+s.dot+'"></span>'+s.key+'</div>'+
+      '<div class="px">'+s.px+'px</div>'+
+      '<div class="tw">'+s.tw+'</div>'+
+      '<div class="use">'+s.use+'</div>'+
+      '<div class="abs">'+s.abs+'</div>'+
+      '<div class="cnt">現有約 '+s.cnt+'</div>';
+    cards.appendChild(d);
+  });
+
+  function render(){
+    const w=parseInt(vw.value,10);
+    vwLabel.textContent=w+'px';
+    const avail=Math.min(w, 1280); // 受 app container 約束示意
+    viewport.style.width=avail+'px';
+    viewport.dataset.w=w+'px 螢幕';
+    const s=SIZES.find(x=>x.key===cur);
+    const isMobile=w<768;
+    const dlgW=isMobile? (avail-16) : Math.min(s.px, avail-PAD*2);
+    dlg.style.width=dlgW+'px';
+    dlg.style.maxWidth='none';
+    dlgName.textContent=s.name;
+    dlgMeta.textContent=s.tw+' · '+s.px+'px'+(isMobile?'　→ 手機：滿版 bottom-sheet':'　實際 '+Math.round(dlgW)+'px（佔螢幕 '+Math.round(dlgW/w*100)+'%）');
+    document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c.dataset.key===cur));
+  }
+  vw.addEventListener('input',render);
+  render();
+</script>
+</body>
+</html>

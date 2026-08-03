@@ -1,0 +1,126 @@
+version: 2
+
+updates:
+  # Rust / Cargo
+  - package-ecosystem: "cargo"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "chore(deps):"
+    # L6: 安全更新優先處理
+    groups:
+      patch-updates:
+        update-types:
+          - "patch"
+
+  # npm / Frontend
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps):"
+    # R29-6: 高風險 major 套件單獨成 PR（避免 group bump 一紅就要拆）。
+    # 規則：dependabot 由上而下匹配，先列高風險 → 群組（不互斥；patterns 命中先群組就退出）。
+    groups:
+      # MAJOR-only PRs（不混入 dev-dependencies group）：
+      # 任何匹配下列 patterns 的套件升級，都會自己一個 PR，方便個別 review / rebase。
+      typescript-major:
+        patterns:
+          - "typescript"
+          - "@types/node"
+          - "@typescript-eslint/*"
+        update-types:
+          - "major"
+      tailwindcss-major:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "postcss"
+          - "autoprefixer"
+        update-types:
+          - "major"
+      react-router-major:
+        patterns:
+          - "react-router"
+          - "react-router-dom"
+        update-types:
+          - "major"
+      eslint-major:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+        update-types:
+          - "major"
+      vite-major:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+        update-types:
+          - "major"
+      i18next-major:
+        patterns:
+          - "i18next"
+          - "react-i18next"
+          - "i18next-*"
+        update-types:
+          - "major"
+      # 一般分組（patch / minor 為主）
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "patch"
+          - "minor"
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "@types/react*"
+        update-types:
+          - "patch"
+          - "minor"
+      patch-updates:
+        update-types:
+          - "patch"
+
+  # Docker
+  # 本 repo 根目錄沒有 Dockerfile，全部散在子目錄；先前設 directory: "/" 導致 updater
+  # 每次都以 dependency_file_not_found 中止（"No Dockerfiles nor Kubernetes YAML found in /"），
+  # base image 更新從未被提出。改用 directories（複數）逐一指名實際存放位置。
+  # Dependabot docker 的檔名比對是子字串 /dockerfile|containerfile/i（dependabot-core
+  # docker/lib/dependabot/docker/file_fetcher.rb），故 Dockerfile.dev /
+  # Dockerfile.outbox-worker / Dockerfile.backup 等變體檔名亦會被涵蓋。
+  - package-ecosystem: "docker"
+    directories:
+      - "/backend" # Dockerfile, Dockerfile.dev, Dockerfile.outbox-worker
+      - "/frontend" # Dockerfile
+      - "/services/print-pdf" # Dockerfile
+      - "/scripts/backup" # Dockerfile.backup
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker):"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci):"

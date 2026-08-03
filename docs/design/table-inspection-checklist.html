@@ -1,0 +1,177 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>表格盤點清單</title>
+<style>
+  *{box-sizing:border-box}
+  :root{--ink:#161a1d;--mut:#6b7480;--line:#e4e7eb;--bg:#f4f6f8;--teal:#0e766a;--ok:#15803d;--bad:#c0392b}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;font-size:14px;line-height:1.5}
+  header{background:var(--ink);color:#fff;padding:20px 0 16px;position:sticky;top:0;z-index:10}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 18px}
+  h1{margin:0 0 4px;font-size:20px}
+  .sub{color:#9aa4ae;font-size:12.5px;margin:0}
+  .bar{height:8px;background:#2a3138;border-radius:99px;margin-top:12px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--teal);width:0;transition:width .2s}
+  .barlbl{font-size:12px;color:#cbd5e1;margin-top:6px;display:flex;justify-content:space-between}
+  .barlbl button{background:#2a3138;color:#cbd5e1;border:1px solid #3a424a;border-radius:6px;padding:2px 10px;font-size:11.5px;cursor:pointer;font-family:inherit}
+  main{padding:18px 0 60px}
+  .grp{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow:hidden}
+  .grp > h2{margin:0;font-size:14px;padding:11px 16px;background:#f0f2f4;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .grp .path{font-size:11.5px;color:var(--mut);font-weight:400}
+  .row{display:flex;align-items:flex-start;gap:11px;padding:9px 16px;border-bottom:1px solid #eef0f2}
+  .row:last-child{border-bottom:none}
+  .row:hover{background:#f9fafb}
+  .row.done{background:#f2f9f4}
+  .row input{margin-top:3px;width:17px;height:17px;flex-shrink:0;cursor:pointer;accent-color:var(--teal)}
+  .row .nm{font-weight:600}
+  .row.done .nm{color:var(--ok);text-decoration:line-through;text-decoration-color:#9ecbaf}
+  .row .hint{font-size:12px;color:var(--mut);margin-top:1px}
+  .row .hint b{color:#8a5a00;font-weight:700}
+  .flag{margin-left:auto;font-size:11px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;color:var(--mut);flex-shrink:0;font-family:inherit}
+  .flag.on{background:#fbeae7;color:var(--bad);border-color:#f0d0c9}
+  .note{color:var(--teal);font-size:12px}
+</style></head><body>
+<header><div class="wrap">
+  <h1>表格盤點清單</h1>
+  <p class="sub">依側邊欄順序逐區盤點。勾＝這張表看過、標準化正常。<b style="color:#e8956b">⚑</b> 標問題。進度自動存本瀏覽器。</p>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="barlbl"><span id="cnt">0 / 0</span><button onclick="if(confirm('清除所有勾選？')){localStorage.removeItem(KEY);location.reload()}">清除進度</button></div>
+</div></header>
+<main class="wrap" id="list"></main>
+
+<script>
+const KEY='ipig-table-inspect-v1';
+// 檢查重點通用：列高緊湊 / 表頭灰底 / 狀態 badge 實心 / 空·載入態。特殊者於 hint 標。
+const G = '列高緊湊·表頭灰底·badge 實心·空/載入正常';
+const DATA = [
+ {grp:'儀表板', path:'/dashboard', items:[
+   {n:'ERP 小表 widget（趨勢/近期單據/維修）', h:'widget 內小表 badge 實心即可（載入/空維持 widget 樣式）'},
+ ]},
+ {grp:'實驗動物管理', path:'側邊欄「實驗動物管理」', items:[
+   {n:'動物列表', h:'/animals；'+G},
+   {n:'預約與試驗規劃', h:'/animals/reservation-planning；★<b>chip 配色：需求藍/實驗中綠/已完成紫/已預約黃/缺紅</b>；每列狀態標籤同色'},
+   {n:'巡場報告清單', h:G},
+   {n:'血檢分析（異常值）', h:'報表型，異常列底色'},
+   {n:'血檢項目（分類/常用組合）', h:G},
+   {n:'來源管理', h:'狀態 StatusBadge 實心'},
+   {n:'修正審核', h:G},
+ ]},
+ {grp:'動物詳情 · 各 Tab', path:'開任一動物 → 分頁', items:[
+   {n:'體重紀錄', h:'新增/儲存鈕現為紫/綠 token；'+G},
+   {n:'疫苗/驅蟲', h:G},
+   {n:'血液檢查', h:'表格/卡片雙視圖；'+G},
+   {n:'病理報告附件', h:G},
+   {n:'手術紀錄', h:'★展開明細子表（原生→共用）；展開看一眼'},
+   {n:'疼痛評估', h:G},
+   {n:'觀察試驗紀錄', h:'展開列；'+G},
+   {n:'獸醫師建議', h:G},
+ ]},
+ {grp:'AUP / 計畫書', path:'側邊欄「AUP」/ 計畫書', items:[
+   {n:'計畫書清單', h:G},
+   {n:'我的變更申請', h:G},
+   {n:'變更申請 Tab', h:G},
+   {n:'版本歷史 Tab', h:'空狀態現為 TableEmptyRow'},
+   {n:'審查委員 Tab', h:G},
+   {n:'附件 Tab', h:G},
+   {n:'審查意見', h:G},
+   {n:'計畫人員', h:G},
+   {n:'委員投票名冊', h:G},
+   {n:'PI 帳號開通', h:G},
+   {n:'計畫書範本版本', h:G},
+   {n:'申請須知版本', h:'載入現為 TableSkeleton'},
+ ]},
+ {grp:'人員管理 (HR)', path:'側邊欄「人員管理」', items:[
+   {n:'出勤歷史', h:'StatusBadge 實心；'+G},
+   {n:'全部加班紀錄', h:'載入現為 TableSkeleton'},
+   {n:'特休額度 / 過期待補償', h:'雙表；載入/空維持原（容器級）'},
+   {n:'日曆衝突', h:'載入現為 TableSkeleton'},
+ ]},
+ {grp:'ERP / 庫存', path:'側邊欄「ERP」', items:[
+   {n:'庫存查詢', h:G},
+   {n:'低庫存彙總', h:'狀態呈現'},
+   {n:'庫存流水', h:G},
+   {n:'產品主檔', h:'★載入 TableSkeleton、空 TableEmptyRow(保留建立CTA)；'+G},
+   {n:'夥伴清單', h:G},
+   {n:'血檢範本', h:'分組摺疊；'+G},
+   {n:'單據清單 / 明細', h:G},
+   {n:'品項選擇器（Dialog）', h:'選擇器樣式'},
+   {n:'儲位庫存（3 表）', h:'密集佈局'},
+ ]},
+ {grp:'系統管理 · 主檔/稽核', path:'側邊欄「系統管理」', items:[
+   {n:'使用者管理', h:'★<b>基準表</b>；操作欄手機 ⋯、電腦 2×3；顯示停用帳號開關'},
+   {n:'部門管理', h:G},
+   {n:'邀請管理', h:G},
+   {n:'稽核日誌 / 操作/登入/Session/警示', h:'5 表；'+G},
+   {n:'IP 封鎖清單', h:G},
+   {n:'通知路由 / 固定通知', h:'空狀態現為 TableEmptyRow'},
+ ]},
+ {grp:'系統管理 · 設施管理', path:'系統管理 → 設施', items:[
+   {n:'欄舍 (Pen)', h:'★載入/空現為共用元件；'+G},
+   {n:'區域 (Zone)', h:'★欄舍色票維持（data-viz 例外）；'+G},
+   {n:'物種 (Species)', h:G},
+   {n:'設施 (Facility)', h:G},
+   {n:'建築 (Building)', h:G},
+ ]},
+ {grp:'系統管理 · GLP/合規', path:'系統管理 → GLP 各頁', items:[
+   {n:'變更控制', h:'★<b>狀態 badge 改實心 variant</b>（原硬編色）'},
+   {n:'文件控制', h:'★<b>badge 實心 variant</b>；載入/空共用元件'},
+   {n:'風險登記簿', h:'★<b>風險分數 badge 實心</b>（低綠/中黃/高紅）'},
+   {n:'管理審查', h:'★<b>狀態 badge 實心</b>'},
+   {n:'配製紀錄', h:'★載入/空共用元件'},
+   {n:'能力評鑑', h:'★<b>結果 badge 實心</b>（合格綠/不合格紅）'},
+   {n:'研究最終報告', h:'★<b>badge 實心</b>；載入/空共用元件'},
+   {n:'訓練紀錄', h:'★載入/空共用元件'},
+   {n:'年度校正計畫', h:'矩陣型'},
+   {n:'環境監控', h:'★<b>啟用/超標 badge 實心</b>；載入/空共用'},
+ ]},
+ {grp:'QAU 品質保證', path:'側邊欄「QAU 品質保證」', items:[
+   {n:'SOP 文件', h:G},
+   {n:'稽查排程', h:'★展開明細子表（原生→共用）'},
+   {n:'不符合事項 (NC)', h:'★展開 CAPA 子表（原生→共用）'},
+   {n:'稽查報告', h:G},
+   {n:'QAU 儀表板（3 小表）', h:'空狀態現為 TableEmptyRow'},
+ ]},
+ {grp:'報表中心', path:'側邊欄「報表中心」', items:[
+   {n:'庫存現況', h:G},
+   {n:'成本摘要', h:G},
+   {n:'銷貨明細', h:G},
+   {n:'採購明細', h:G},
+   {n:'進銷貨彙總', h:G},
+   {n:'血檢費用', h:G},
+   {n:'庫存流水報表', h:G},
+   {n:'會計傳票', h:G},
+   {n:'試算表 / 損益表', h:G},
+   {n:'應付/應收帳齡', h:G},
+   {n:'血檢分析（圖+表）', h:'圖表色維持（data-viz 例外）'},
+ ]},
+];
+
+let state = JSON.parse(localStorage.getItem(KEY) || '{}');
+function save(){localStorage.setItem(KEY, JSON.stringify(state))}
+function id(gi,ii){return gi+'-'+ii}
+function render(){
+  let total=0, done=0, html='';
+  DATA.forEach((g,gi)=>{
+    html += `<div class="grp"><h2>${g.grp} <span class="path">${g.path}</span></h2>`;
+    g.items.forEach((it,ii)=>{
+      total++; const k=id(gi,ii); const st=state[k]||{};
+      if(st.done) done++;
+      html += `<div class="row ${st.done?'done':''}" data-k="${k}">
+        <input type="checkbox" ${st.done?'checked':''} onchange="toggle('${k}',this.checked)">
+        <div style="flex:1">
+          <div class="nm">${it.n}</div>
+          <div class="hint">${it.h}</div>
+        </div>
+        <button class="flag ${st.flag?'on':''}" onclick="flag('${k}')">⚑ 問題</button>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  document.getElementById('list').innerHTML = html;
+  document.getElementById('cnt').textContent = done+' / '+total+' 張已盤';
+  document.getElementById('fill').style.width = (total?done/total*100:0)+'%';
+}
+function toggle(k,v){state[k]=state[k]||{};state[k].done=v;save();render()}
+function flag(k){state[k]=state[k]||{};state[k].flag=!state[k].flag;save();render()}
+render();
+</script>
+</body></html>

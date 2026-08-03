@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ipig ERP 單據運作總結</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --ink:#1a1d21; --muted:#5b6470; --line:#e3e7ec;
+    --accent:#2f6df6; --ok:#1a8f4c; --warn:#b26a00; --bad:#c0392b;
+    --chip:#eef2f8; --code:#f0f2f5;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0f1216;--card:#171b21;--ink:#e8ebef;--muted:#9aa4b0;--line:#2a2f38;
+      --accent:#5b8bff;--ok:#3ecf7a;--warn:#e0a44a;--bad:#ef6b5c;--chip:#1f2530;--code:#1b2029;}
+  }
+  :root[data-theme="dark"]{--bg:#0f1216;--card:#171b21;--ink:#e8ebef;--muted:#9aa4b0;--line:#2a2f38;
+    --accent:#5b8bff;--ok:#3ecf7a;--warn:#e0a44a;--bad:#ef6b5c;--chip:#1f2530;--code:#1b2029;}
+  :root[data-theme="light"]{--bg:#f7f8fa;--card:#fff;--ink:#1a1d21;--muted:#5b6470;--line:#e3e7ec;
+    --accent:#2f6df6;--ok:#1a8f4c;--warn:#b26a00;--bad:#c0392b;--chip:#eef2f8;--code:#f0f2f5;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI","Microsoft JhengHei",system-ui,sans-serif;line-height:1.65;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px;}
+  h1{font-size:1.7rem;margin:0 0 4px;}
+  h2{font-size:1.25rem;margin:36px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--line);}
+  h3{font-size:1.02rem;margin:20px 0 8px;}
+  p{margin:8px 0;} .sub{color:var(--muted);margin:0 0 20px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0;}
+  code{background:var(--code);padding:1px 6px;border-radius:5px;font-size:.88em;
+    font-family:"Cascadia Code",Consolas,monospace;}
+  table{border-collapse:collapse;width:100%;font-size:.92rem;}
+  .scroll{overflow-x:auto;}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--chip);font-weight:600;white-space:nowrap;}
+  .chip{display:inline-block;padding:1px 9px;border-radius:999px;font-size:.8rem;font-weight:600;}
+  .c-ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok);}
+  .c-warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn);}
+  .c-bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad);}
+  .c-mut{background:var(--chip);color:var(--muted);}
+  .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:12px 0;}
+  .node{flex:1 1 150px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:10px;padding:12px 14px;min-width:150px;}
+  .node b{display:block;font-size:.98rem;} .node span{color:var(--muted);font-size:.84rem;}
+  .arrow{align-self:center;color:var(--muted);font-size:1.3rem;padding:0 2px;}
+  ul{margin:8px 0;padding-left:22px;} li{margin:4px 0;}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.92rem;}
+  .kv dt{color:var(--muted);white-space:nowrap;} .kv dd{margin:0;}
+  .lead{border-left:4px solid var(--accent);padding:10px 16px;background:var(--card);border-radius:0 10px 10px 0;}
+  .foot{color:var(--muted);font-size:.82rem;margin-top:40px;border-top:1px solid var(--line);padding-top:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ipig ERP 單據系統 — 運作總結</h1>
+  <p class="sub">採購單 / 採購入庫的串接、庫存如何變動、以及本次稽核「各項目顯示是否正確」的結論 · 2026-07-18</p>
+
+  <div class="lead">
+    <b>一句話：</b>單據是「決策紀錄」，庫存是「事實帳」。單據<b>核准（approved）</b>那一刻才真正動到庫存與會計；
+    草稿/送審中的單據只是計畫，不影響任何數字。你遇到的 PO-260422-01「已核准未入庫」正是這個原理 —— 它的入庫單還是草稿。
+  </div>
+
+  <h2>1 · 單據怎麼流動</h2>
+  <div class="flow">
+    <div class="node"><b>採購單 PO</b><span>跟供應商下單。<u>不動庫存</u>，只記「要進多少」。</span></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>採購入庫 GRN</b><span>貨到了收貨。核准後<u>庫存 +、寫會計傳票</u>。用 <code>source_doc_id</code> 指回 PO。</span></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>庫存帳</b><span><code>stock_ledger</code>（倉庫層流水）＋<code>storage_location_inventory</code>（貨架層）。</span></div>
+  </div>
+  <p>反向出貨為 <b>SO 一段式</b>（2026-07 起）：<code>SO 銷貨單核准 →</code> 逐行照儲位所屬倉 <u>庫存 −、寫會計傳票</u>；
+  同一張 SO 可跨多倉出貨（明細層級倉庫）。舊制 <code>DO 銷貨出庫</code> 已棄用，僅保留舊單查詢。其餘還有調撥、盤點、調整、退貨等。</p>
+
+  <h2>2 · 十一種單據型別（DocType）</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>代碼</th><th>名稱</th><th>動庫存?</th><th>儲位（貨架）要求</th></tr></thead>
+      <tbody>
+        <tr><td><code>PO</code></td><td>採購單 Purchase Order</td><td><span class="chip c-mut">否</span></td><td>不需要（還沒入庫）</td></tr>
+        <tr><td><code>GRN</code></td><td>採購入庫 Goods Receipt</td><td><span class="chip c-ok">是（+）</span></td><td><span class="chip c-warn">軟擋</span> 可先收貨、事後上架</td></tr>
+        <tr><td><code>PR</code></td><td>採購退貨 Purchase Return</td><td><span class="chip c-ok">是（−）</span></td><td>—</td></tr>
+        <tr><td><code>SO</code></td><td>銷貨單 Sales Order（一段式）</td><td><span class="chip c-ok">是（−，核准時）</span></td><td>硬性必填（逐行；倉庫=儲位所屬倉）</td></tr>
+        <tr><td><code>DO</code></td><td>銷貨出庫 Delivery Order（<b>已棄用</b>，封鎖新建）</td><td><span class="chip c-mut">舊單相容</span></td><td>—</td></tr>
+        <tr><td><code>TR</code></td><td>調撥單 Transfer</td><td><span class="chip c-ok">是（移）</span></td><td>來源/目標儲位另記</td></tr>
+        <tr><td><code>STK</code></td><td>盤點單 Stocktake</td><td><span class="chip c-ok">是（校正）</span></td><td>硬性必填</td></tr>
+        <tr><td><code>ADJ</code></td><td>調整單 Stock Adjustment</td><td><span class="chip c-ok">是</span></td><td>硬性必填</td></tr>
+        <tr><td><code>RM</code></td><td>退料單 Return Material</td><td><span class="chip c-ok">是</span></td><td>—</td></tr>
+        <tr><td><code>SR / RTN</code></td><td>銷貨退貨 / 退貨（相容舊資料）</td><td><span class="chip c-ok">是</span></td><td>硬性必填</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub">「軟擋」= 建議填但缺了不擋，核准後列入「未上架待辦」；缺儲位的 GRN 核准會使倉庫總量上升、但貨架層是「未分配」（見 §4）。</p>
+
+  <h2>3 · 狀態流：什麼時候才「當真」</h2>
+  <div class="flow">
+    <div class="node"><b>draft 草稿</b><span>隨便改、隨便刪。<u>不影響任何數字</u>。</span></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>submitted 送審</b><span>等核准。仍未動帳。</span></div>
+    <div class="arrow">→</div>
+    <div class="node" style="border-left-color:var(--ok)"><b>approved 核准</b><span>此刻才寫庫存 + 會計傳票。</span></div>
+    <div class="arrow">／</div>
+    <div class="node" style="border-left-color:var(--muted)"><b>cancelled 作廢</b></div>
+  </div>
+  <p><b>關鍵：</b>採購單的「入庫進度」<code>receipt_status</code> <u>只統計已核准（approved）的 GRN</u>。草稿 GRN 一律不算 —— 這是設計上正確的，避免「還沒真的收貨就顯示已入庫」。</p>
+
+  <h2>4 · PO ↔ GRN 串接與「入庫進度」三態</h2>
+  <div class="card">
+    <p>系統把某張 PO 底下所有<b>已核准</b> GRN 的數量加總（<code>total_received</code>），跟 PO 訂購量（<code>total_ordered</code>）比較：</p>
+    <div class="scroll"><table>
+      <thead><tr><th>條件</th><th>receipt_status</th><th>畫面顯示</th></tr></thead>
+      <tbody>
+        <tr><td><code>total_received == 0</code></td><td><code>pending</code></td><td><span class="chip c-warn">未入庫</span></td></tr>
+        <tr><td><code>0 &lt; received &lt; ordered</code></td><td><code>partial</code></td><td><span class="chip c-warn">部分入庫</span></td></tr>
+        <tr><td><code>received &ge; ordered</code></td><td><code>complete</code></td><td><span class="chip c-ok">已入庫</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h3>實例：PO-260422-01（斯特普科技）</h3>
+    <dl class="kv">
+      <dt>狀態</dt><dd>approved（已核准）</dd>
+      <dt>掛的 GRN</dt><dd>2 張 —— GRN-260717-01、GRN-260718-01，<b>都還是草稿（draft）</b></dd>
+      <dt>已核准入庫量</dt><dd>0（草稿不算）→ <code>receipt_status = pending</code></dd>
+      <dt>畫面</dt><dd><span class="chip c-warn">已核准未入庫</span> ← <b>顯示正確，不是 bug</b></dd>
+    </dl>
+    <p><b>要真正入庫怎麼做：</b>把其中一張 GRN <u>核准</u>（草稿→approved），系統就會寫庫存、把 PO 更新為已入庫。兩張是重複建立，另一張刪掉即可。</p>
+  </div>
+
+  <h2>5 · 稽核結論：各項目顯示是否正確</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>項目</th><th>原本</th><th>結論 / 處置</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>PO「已核准未入庫」</td>
+          <td>疑似漏顯示</td>
+          <td><span class="chip c-ok">顯示正確</span> 入庫單還是草稿，非 bug（§4）</td>
+        </tr>
+        <tr>
+          <td>品項頁「相關單據」分頁</td>
+          <td><span class="chip c-bad">永遠空白</span></td>
+          <td>根因：從未實作（寫死 EmptyState）。<b>已修</b>（PR #984）：串 <code>/documents?product_id=</code> 顯示該品項所有單據</td>
+        </tr>
+        <tr>
+          <td>庫存跨倉不對帳</td>
+          <td><span class="chip c-bad">9 筆錯帳</span></td>
+          <td>倉庫層流水的 warehouse ≠ 貨架所屬倉庫。<b>已對帳</b>（流水跟隨貨架）＋加驗證防再發（PR #984）</td>
+        </tr>
+        <tr>
+          <td>WH002–009 空殼倉庫</td>
+          <td><span class="chip c-warn">8 個誤建</span></td>
+          <td>早期把「大倉庫的貨架」誤建成獨立倉庫。<b>將於部署刪除</b>（migration 133，三重 NOT EXISTS 保護）</td>
+        </tr>
+        <tr>
+          <td>倉庫版面沒有網址篩選</td>
+          <td>切倉庫不進網址</td>
+          <td><b>已加</b> <code>?warehouse=id</code> query param，可分享/回退（PR #984）</td>
+        </tr>
+        <tr>
+          <td>admin 無法刪 PO 殘單</td>
+          <td><span class="chip c-bad">FK 擋刪 + 無 UI 入口</span></td>
+          <td><b>已修</b>（PR #985）：連動刪草稿下游、擋已核准/已入庫下游、列表對 admin 開刪除鈕、全程寫 audit</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>6 · 新增的刪除安全規則（PR #985）</h2>
+  <ul>
+    <li><b>連動刪草稿下游：</b>刪 PO 會把它掛的草稿 GRN 一起刪（掃描整條下游鏈，各自寫 audit）。</li>
+    <li><b>擋已核准下游：</b>下游有任何非草稿單據 → 擋下並列出單號，不默默移除。</li>
+    <li><span class="chip c-bad">硬擋</span> <b>已寫庫存/會計的單據絕不可刪：</b>只要有 <code>stock_ledger</code> 或 <code>journal_entries</code>（例如已核准並入庫的 GRN），一律擋刪 —— 避免孤兒化庫存/帳。</li>
+    <li><b>權限：</b>硬刪已核准單據僅限 admin；每筆刪除都寫 <code>DOC_HARD_DELETE</code> / <code>DOC_DELETE</code> 稽核紀錄。</li>
+  </ul>
+
+  <p class="foot">
+    來源：<code>backend/src/models/document.rs</code>（DocType/DocStatus）、<code>services/document/grn.rs</code>（receipt_status）、
+    <code>services/document/crud.rs</code>（delete）。時間 GMT+8。此檔為本次稽核總結，未進版控。
+  </p>
+
+</div>
+</body>
+</html>

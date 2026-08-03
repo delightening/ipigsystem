@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>動物病程時間軸 — 重設計比較稿 (A / B / C)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== DESIGN.md tokens (HSL) ===== */
+  :root{
+    --background:0 0% 100%; --foreground:222.2 84% 4.9%;
+    --card:0 0% 100%; --border:214.3 31.8% 91.4%;
+    --primary:217.2 91.2% 59.8%; --muted:210 40% 96.1%;
+    --muted-foreground:215.4 16.3% 46.9%;
+    --success:142 76% 36%; --success-bg:142 60% 94%;
+    --destructive:0 84.2% 60.2%; --destructive-bg:0 86% 96%;
+    --warning:38 92% 50%; --warning-bg:38 92% 95%;
+    --info:200 90% 45%; --info-bg:200 90% 95%;
+    --animal:180 55% 38%; --animal-bg:180 45% 94%; /* 動物子系統 180° */
+    --radius:0.5rem;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Noto Sans TC','Inter',system-ui,sans-serif;
+    background:hsl(210 40% 97%); color:hsl(var(--foreground));
+    font-size:16px; line-height:1.5; padding:0 0 80px;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:0 16px}
+  header.top{
+    background:linear-gradient(135deg,hsl(222 47% 14%),hsl(217 60% 28%));
+    color:#fff;padding:22px 0 18px;margin-bottom:18px;
+  }
+  header.top .wrap{display:flex;flex-direction:column;gap:4px}
+  header.top h1{font-size:20px;font-weight:700;letter-spacing:.3px}
+  header.top p{font-size:13px;opacity:.85}
+  .pigbar{
+    display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    background:hsl(var(--card));border:1px solid hsl(var(--border));
+    border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;
+  }
+  .pigbar .tag{font-weight:700;font-size:17px;color:hsl(var(--animal))}
+  .pigbar .meta{font-size:13px;color:hsl(var(--muted-foreground))}
+  .pigbar .sep{width:1px;height:22px;background:hsl(var(--border))}
+
+  /* ===== controls ===== */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+  .seg{display:inline-flex;background:hsl(var(--muted));border-radius:var(--radius);padding:3px}
+  .seg button{
+    border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;
+    color:hsl(var(--muted-foreground));padding:6px 14px;border-radius:6px;cursor:pointer;
+  }
+  .seg button.on{background:hsl(var(--card));color:hsl(var(--primary));box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{
+    border:1px solid hsl(var(--border));background:hsl(var(--card));
+    font:inherit;font-size:12px;color:hsl(var(--muted-foreground));
+    padding:5px 11px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;
+  }
+  .chip.on{border-color:hsl(var(--primary));color:hsl(var(--primary));background:hsl(var(--primary)/.07);font-weight:600}
+  .chip .ic{width:13px;height:13px}
+  .density{margin-left:auto}
+  .note{font-size:12.5px;color:hsl(var(--muted-foreground));background:hsl(var(--info-bg));
+    border-left:3px solid hsl(var(--info));border-radius:6px;padding:9px 12px;margin-bottom:16px}
+  .note b{color:hsl(var(--foreground))}
+
+  svg.ic{display:block}
+  /* day header */
+  .day{position:sticky;top:0;z-index:5;background:hsl(210 40% 97%);
+    padding:14px 0 6px;display:flex;align-items:center;gap:10px}
+  .day .d{font-size:13px;font-weight:700;color:hsl(var(--foreground))}
+  .day .rel{font-size:12px;color:hsl(var(--muted-foreground))}
+  .day .ln{flex:1;height:1px;background:hsl(var(--border))}
+
+  /* ===== shared rail ===== */
+  .rail{position:relative;padding-left:0}
+  .rail::before{content:'';position:absolute;left:15px;top:6px;bottom:6px;width:2px;background:hsl(var(--border))}
+
+  /* ====== VARIANT A : EHR 病程 ====== */
+  .A .row{position:relative;padding:0 0 4px 44px;margin-bottom:10px}
+  .A .dot{position:absolute;left:6px;top:2px;width:20px;height:20px;border-radius:999px;
+    display:flex;align-items:center;justify-content:center;border:2px solid hsl(var(--card));
+    background:hsl(var(--muted));color:hsl(var(--muted-foreground));box-shadow:0 0 0 1px hsl(var(--border))}
+  .A .dot svg{width:11px;height:11px}
+  /* milestone emphasised */
+  .A .row.ms .dot{width:30px;height:30px;left:1px;top:0}
+  .A .row.ms .dot svg{width:15px;height:15px}
+  .A .row.ms{padding-left:44px}
+  .A .card{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius);
+    padding:10px 13px;transition:box-shadow .15s}
+  .A .card:hover{box-shadow:0 2px 8px rgba(0,0,0,.07)}
+  .A .row.ms .card{border-width:1px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  /* 顏色沿用原配色：dot + 時間 badge 以 inline style 依型別上色（見 colors()）；
+     里程碑僅以「尺寸放大 + 粗體」強調，不再抽換顏色。 */
+  .A .hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .A .ti{font-weight:600;font-size:14px}
+  .A .row.ms .ti{font-size:15px;font-weight:700}
+  .A .tm{font-size:12px;margin-left:auto;padding:2px 9px;border-radius:999px;font-weight:600}
+  .A .ct{font-size:13px;color:hsl(215 16% 38%);margin-top:3px}
+  .A .ac{font-size:12px;color:hsl(var(--muted-foreground));margin-top:7px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .A .acts{display:inline-flex;gap:2px;flex-shrink:0}
+  .A .acts button{border:0;background:transparent;color:hsl(var(--muted-foreground));padding:4px;border-radius:5px;cursor:pointer;display:flex}
+  .A .acts button:hover{background:hsl(var(--muted))}
+  .A .acts button svg{width:14px;height:14px}
+  .A .acts button.del:hover{color:hsl(var(--destructive))}
+  .A .vet{display:inline-block;font-size:11px;font-weight:600;color:hsl(var(--success));
+    background:hsl(var(--success-bg));border-radius:999px;padding:1px 7px;margin-left:6px}
+  /* weight trend card */
+  .trend{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius);
+    padding:10px 13px;margin-bottom:10px;margin-left:44px;position:relative}
+  .trend .dot2{position:absolute;left:-38px;top:2px;width:20px;height:20px;border-radius:999px;
+    background:hsl(var(--info-bg));color:hsl(var(--info));display:flex;align-items:center;justify-content:center;border:2px solid hsl(var(--card));box-shadow:0 0 0 1px hsl(var(--border))}
+  .trend .dot2 svg{width:11px;height:11px}
+  .trend .th{display:flex;align-items:baseline;gap:8px}
+  .trend .th b{font-size:14px}
+  .trend .th span{font-size:12px;color:hsl(var(--muted-foreground))}
+  .trend .th .latest{margin-left:auto;font-size:13px;font-weight:700;color:hsl(var(--info))}
+  .spark{margin-top:8px}
+  .spark text{font-size:9px;fill:hsl(var(--muted-foreground))}
+
+  /* ====== VARIANT B : compact feed ====== */
+  .B .row{position:relative;padding:6px 0 6px 40px;cursor:pointer;border-radius:6px}
+  .B .row:hover{background:hsl(var(--muted)/.6)}
+  .B .dot{position:absolute;left:8px;top:8px;width:16px;height:16px;border-radius:999px;
+    background:hsl(var(--card));border:2px solid hsl(var(--border));display:flex;align-items:center;justify-content:center}
+  .B .dot svg{width:9px;height:9px;color:hsl(var(--muted-foreground))}
+  .B .row.crit .dot{background:hsl(var(--destructive));border-color:hsl(var(--destructive))}
+  .B .row.crit .dot svg{color:#fff}
+  .B .row.ms .dot{background:hsl(var(--primary));border-color:hsl(var(--primary))}
+  .B .row.ms .dot svg{color:#fff}
+  .B .row.surg .dot{border-color:hsl(var(--warning))}
+  .B .row.surg .dot svg{color:hsl(38 80% 38%)}
+  .B .line{display:flex;align-items:baseline;gap:7px;font-size:13.5px;line-height:1.45}
+  .B .line .ti{font-weight:600;white-space:nowrap}
+  .B .row.crit .ti{color:hsl(var(--destructive))}
+  .B .line .ct{color:hsl(215 16% 40%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .B .line .tm{color:hsl(var(--muted-foreground));font-size:12px;white-space:nowrap;margin-left:auto}
+  .B .line .who{color:hsl(var(--muted-foreground));font-size:12px;white-space:nowrap}
+  .B .detail{display:none;font-size:12.5px;color:hsl(215 16% 40%);
+    margin-top:6px;padding:8px 10px;background:hsl(var(--muted)/.5);border-radius:6px}
+  .B .row.open .detail{display:block}
+  .B .vet{color:hsl(var(--success));font-size:11px;font-weight:600;white-space:nowrap}
+
+  /* ====== VARIANT C : cards + single rail (near current) ====== */
+  .C .row{position:relative;padding:0 0 14px 44px}
+  .C .dot{position:absolute;left:4px;top:0;width:24px;height:24px;border-radius:999px;
+    display:flex;align-items:center;justify-content:center;background:hsl(var(--muted));
+    color:hsl(var(--muted-foreground));border:2px solid hsl(var(--card));box-shadow:0 0 0 1px hsl(var(--border))}
+  .C .dot svg{width:12px;height:12px}
+  .C .row.crit .dot{background:hsl(var(--destructive));color:#fff}
+  .C .card{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius);
+    padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .C .row.crit .card{border-color:hsl(var(--destructive)/.4)}
+  .C .hd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .C .hd .ti{font-weight:700;font-size:14px}
+  .C .hd .tm{margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground))}
+  .C .ct{font-size:13px;color:hsl(215 16% 38%)}
+  .C .ac{font-size:12px;color:hsl(var(--muted-foreground));margin-top:7px;display:flex;align-items:center;gap:8px}
+  .C .vet{font-size:11px;font-weight:600;color:hsl(var(--success));background:hsl(var(--success-bg));border-radius:999px;padding:1px 7px}
+
+  .hidden{display:none!important}
+  .empty{text-align:center;color:hsl(var(--muted-foreground));padding:40px;font-size:14px}
+  footer{max-width:920px;margin:30px auto 0;padding:16px;font-size:12.5px;color:hsl(var(--muted-foreground));border-top:1px solid hsl(var(--border))}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <h1>動物病程時間軸 — 重設計比較稿</h1>
+  <p>3 種變體並排比較 · DESIGN.md token · 異種移植研究豬範例資料 · 切換上方按鈕即時預覽</p>
+</div></header>
+
+<div class="wrap">
+  <div class="pigbar">
+    <span class="tag">耳號 592</span>
+    <span class="sep"></span>
+    <span class="meta">PIG-115012 · 蘭嶼豬 · 公 · 實驗中</span>
+    <span class="sep"></span>
+    <span class="meta">進場 2026-03-01（進場 25.4 kg）· 第 117 天</span>
+  </div>
+
+  <div class="controls">
+    <div class="seg" id="variant">
+      <button data-v="A" class="on">A · 病程 (EHR)</button>
+      <button data-v="B">B · 精簡 feed</button>
+      <button data-v="C">C · 卡片(近現狀)</button>
+    </div>
+    <div class="seg density" id="density">
+      <button data-d="detailed" class="on">詳細</button>
+      <button data-d="compact">精簡</button>
+    </div>
+  </div>
+
+  <div class="chips" id="filters" style="margin-bottom:14px">
+    <button class="chip on" data-f="all">全部</button>
+    <button class="chip" data-f="obs">觀察</button>
+    <button class="chip" data-f="surgery">手術</button>
+    <button class="chip" data-f="weight">體重</button>
+    <button class="chip" data-f="crit">犧牲/死亡</button>
+    <button class="chip" data-f="other">其他事件</button>
+  </div>
+
+  <div class="note" id="note"></div>
+
+  <div id="stage" class="rail"></div>
+</div>
+
+<footer>
+  比較重點：①單側左軸取代左右交錯（垂直快速掃讀）②依日期分組吸頂 ③里程碑（進場/手術/犧牲/死亡）強調、例行（觀察/體重）輕量
+  ④顏色克制，紅色只給死亡/危急 ⑤體重收斂成趨勢圖（A）而非逐筆洗版 ⑥型別篩選 + 密度切換。<br>
+  此為靜態 mockup，互動僅含變體/密度/篩選切換與 B 變體點擊展開。選定方向後再實作 React。
+</footer>
+
+<script>
+/* ---- icons (lucide-ish inline) ---- */
+const I = {
+  clipboard:'<path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1z"/>',
+  scissors:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+  scale:'<path d="M16 16l3-8 3 8c-2 1.5-4 1.5-6 0z"/><path d="M2 16l3-8 3 8c-2 1.5-4 1.5-6 0z"/><path d="M7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  skull:'<circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20v2h8v-2M12 2a8 8 0 0 0-8 8c0 3 2 5 4 6v4h8v-4c2-1 4-3 4-6a8 8 0 0 0-8-8z"/>',
+  zap:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  swap:'<path d="M16 3l4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/>',
+  edit:'<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  check:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  pill:'<path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7z"/><line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/>',
+  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  trash:'<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+};
+/* 原配色：依事件型別給 dot 與時間 badge 的底色/字色（沿用 AnimalTimelineView 配色） */
+function colors(e){
+  const m={
+    clipboard:{db:'210 40% 94%',df:'215 16% 42%', bb:'263 60% 95%',bf:'263 55% 45%'}, /* 觀察：dot 灰 / badge 紫(原) */
+    pill:     {db:'210 40% 94%',df:'215 16% 42%', bb:'263 60% 95%',bf:'263 55% 45%'},
+    scissors: {db:'38 92% 90%', df:'30 80% 32%',  bb:'38 92% 90%', bf:'30 80% 32%'},  /* 手術：琥珀 */
+    scale:    {db:'200 90% 92%',df:'200 90% 36%', bb:'200 90% 92%',bf:'200 90% 36%'}, /* 體重：藍 */
+    calendar: {db:'142 55% 90%',df:'142 70% 28%', bb:'142 55% 90%',bf:'142 70% 28%'}, /* 進場：綠 */
+    skull:    {db:'0 86% 93%',  df:'0 72% 45%',   bb:'0 86% 93%',  bf:'0 72% 45%'},   /* 犧牲/安樂死：紅 */
+    zap:      {db:'0 86% 93%',  df:'0 72% 45%',   bb:'0 86% 93%',  bf:'0 72% 45%'},   /* 猝死：紅 */
+    swap:     {db:'200 90% 92%',df:'200 90% 36%', bb:'200 90% 92%',bf:'200 90% 36%'}, /* 轉讓：藍 */
+    edit:     {db:'38 92% 90%', df:'30 80% 32%',  bb:'38 92% 90%', bf:'30 80% 32%'},  /* IACUC 變更：琥珀 */
+  };
+  return m[e.ic]||m.clipboard;
+}
+function svg(name,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[name]||I.clipboard}</svg>`}
+
+/* ---- realistic dataset (newest computed below; we store ISO) ---- */
+/* cat: obs | surgery | weight | crit | other ; kind: milestone|routine */
+const TODAY = new Date('2026-06-26T09:00:00+08:00');
+const EV = [
+  {d:'2026-06-24',t:'健康觀察',cat:'obs',kind:'routine',ic:'clipboard',c:'術後第 101 天，精神食慾良好，切口癒合佳，無排斥徵象。',who:'林獸醫',vet:true},
+  {d:'2026-06-20',t:'體重測量',cat:'weight',kind:'routine',ic:'scale',c:'48.2 kg',who:'陳技術員',w:48.2},
+  {d:'2026-06-12',t:'用藥紀錄',cat:'obs',kind:'routine',ic:'pill',c:'免疫抑制劑 Tacrolimus 劑量調整至 0.1 mg/kg，續觀察血中濃度。',who:'林獸醫',vet:true},
+  {d:'2026-06-05',t:'體重測量',cat:'weight',kind:'routine',ic:'scale',c:'46.5 kg',who:'陳技術員',w:46.5},
+  {d:'2026-05-28',t:'異常觀察',cat:'obs',kind:'routine',ic:'clipboard',c:'食慾略降、體溫 39.8°C，疑似輕微感染，已採血送檢並予支持療法。',who:'林獸醫',vet:true},
+  {d:'2026-05-20',t:'體重測量',cat:'weight',kind:'routine',ic:'scale',c:'45.1 kg',who:'陳技術員',w:45.1},
+  {d:'2026-05-02',t:'IACUC No. 變更',cat:'other',kind:'routine',ic:'edit',c:'PIG-115012-A → PIG-115012（核准編號定版）',who:'王秘書'},
+  {d:'2026-04-28',t:'體重測量',cat:'weight',kind:'routine',ic:'scale',c:'41.0 kg',who:'陳技術員',w:41.0},
+  {d:'2026-04-15',t:'追蹤手術',cat:'surgery',kind:'milestone',ic:'scissors',c:'第二次手術：移植腎切片採樣 + 血管吻合處檢視，術中生命徵象穩定。',who:'張外科醫師',vet:true},
+  {d:'2026-04-02',t:'體重測量',cat:'weight',kind:'routine',ic:'scale',c:'37.8 kg',who:'陳技術員',w:37.8},
+  {d:'2026-03-18',t:'健康觀察',cat:'obs',kind:'routine',ic:'clipboard',c:'術後第 3 天，傷口乾淨無滲液，排尿正常，移植腎超音波灌流良好。',who:'林獸醫',vet:true},
+  {d:'2026-03-15',t:'首次手術',cat:'surgery',kind:'milestone',ic:'scissors',c:'異種腎臟移植主手術：植入基因編輯供腎，手術歷時 4 小時 20 分，順利完成。',who:'張外科醫師',vet:true},
+  {d:'2026-03-10',t:'體重測量',cat:'weight',kind:'routine',ic:'scale',c:'31.5 kg',who:'陳技術員',w:31.5},
+  {d:'2026-03-05',t:'術前健康評估',cat:'obs',kind:'routine',ic:'clipboard',c:'血液生化、心電圖、胸腔 X 光皆正常，符合手術收案標準。',who:'林獸醫',vet:true},
+  {d:'2026-03-01',t:'資料建立 · 進場',cat:'other',kind:'milestone',ic:'calendar',c:'耳號 592 進場，進場體重 25.4 kg，分配欄位 A12。',who:'系統',w:25.4},
+];
+
+const FILTER_GROUPS = {all:null, obs:['obs'], surgery:['surgery'], weight:['weight'], crit:['crit'], other:['other']};
+
+let state={v:'A',density:'detailed',filter:'all'};
+
+const noteText={
+  A:'<b>A · EHR 病程（定案方向）：</b>顏色沿用原每型別配色；里程碑（進場/手術/結局）以<b>尺寸放大 + 粗體</b>強調，<b>體重收斂成趨勢小圖</b>不逐筆洗版；觀察/手術保留<b>編輯/檢視/刪除</b>操作按鈕（其餘唯讀）。',
+  B:'<b>B · 精簡 feed：</b>單行高密度（GitHub/Linear 風），一眼掃完整段歷史，點任一列展開細節。資訊密度最高、最快略讀。',
+  C:'<b>C · 卡片(近現狀)：</b>保留卡片但改單側左軸 + 日期分組 + 收斂顏色（紅只給死亡/危急）+ 不截斷全文。離目前改動最小、風險最低。'
+};
+
+function relDay(iso){
+  const d=new Date(iso+'T00:00:00+08:00');
+  const days=Math.round((TODAY.setHours(0,0,0,0)-d.getTime())/864e5);
+  if(days<=0)return'今天'; if(days===1)return'昨天';
+  if(days<7)return days+' 天前'; if(days<30)return Math.floor(days/7)+' 週前';
+  return Math.floor(days/30)+' 個月前';
+}
+function fmtDate(iso){const d=new Date(iso+'T00:00:00+08:00');return `${d.getMonth()+1}月${d.getDate()}日`}
+function fmtFull(iso){return iso.replaceAll('-','/')+'（GMT+8）'}
+
+function passFilter(e){
+  if(state.filter==='all')return true;
+  return FILTER_GROUPS[state.filter].includes(e.cat);
+}
+function visibleEvents(){return EV.filter(passFilter)}
+
+/* group by month-day label but we group by date here */
+function groupByDay(list){
+  const map=new Map();
+  list.forEach(e=>{const k=e.d; if(!map.has(k))map.set(k,[]); map.get(k).push(e)});
+  return [...map.entries()]; /* already newest-first because EV is */
+}
+
+function rowClass(e){
+  let c=[];
+  if(e.cat==='crit')c.push('crit');
+  if(e.cat==='surgery')c.push('surg');
+  if(e.kind==='milestone')c.push('ms');
+  return c.join(' ');
+}
+
+/* ---------- VARIANT A ---------- */
+function renderA(){
+  const list=visibleEvents();
+  if(!list.length)return emptyHtml();
+  let html='';
+  for(const [day,items] of groupByDay(list)){
+    /* split weights vs others within a day? we render weights inline as trend across whole timeline instead.
+       Simpler: render day header, then non-weight rows; weights handled by a single trend card placed once. */
+    const nonW=items.filter(e=>e.cat!=='weight');
+    const wts=items.filter(e=>e.cat==='weight');
+    html+=dayHeader(day);
+    for(const e of nonW){
+      const compact=state.density==='compact';
+      const c=colors(e);
+      const editable=(e.cat==='obs'||e.cat==='surgery');
+      const acts=(editable&&!compact)
+        ?`<span class="acts"><button title="編輯">${svg('edit')}</button><button title="檢視">${svg('eye')}</button><button class="del" title="刪除">${svg('trash')}</button></span>`:'';
+      html+=`<div class="row ${rowClass(e)}">
+        <div class="dot" style="background:hsl(${c.db});color:hsl(${c.df})">${svg(e.ic)}</div>
+        <div class="card">
+          <div class="hd"><span class="ti">${e.t}</span><time class="tm" style="background:hsl(${c.bb});color:hsl(${c.bf})" title="${fmtFull(e.d)}">${fmtDate(e.d)}</time></div>
+          ${compact?'':`<div class="ct">${e.c}</div>`}
+          ${compact?'':`<div class="ac"><span>記錄者：${e.who}${e.vet?'<span class="vet">獸醫已讀</span>':''}</span>${acts}</div>`}
+        </div></div>`;
+    }
+    /* trend card: show once, on the latest day that has a weight, summarizing ALL weights */
+    if(wts.length && day===latestWeightDay()){
+      html+=weightTrendCard();
+    }else{
+      for(const e of wts){ /* if filtered to weight only, show them as rows */
+        if(state.filter==='weight'){
+          html+=`<div class="row"><div class="dot">${svg('scale')}</div>
+            <div class="card"><div class="hd"><span class="ti">體重測量</span><span class="tm">${fmtDate(e.d)}</span></div>
+            <div class="ct">${e.c}</div></div></div>`;
+        }
+      }
+    }
+  }
+  return html;
+}
+function latestWeightDay(){const w=visibleEvents().find(e=>e.cat==='weight');return w?w.d:null}
+function weightTrendCard(){
+  if(state.filter!=='all'&&state.filter!=='weight')return'';
+  const ws=EV.filter(e=>e.cat==='weight').slice().reverse(); /* oldest->newest */
+  if(ws.length<2)return'';
+  const vals=ws.map(e=>e.w), min=Math.min(...vals),max=Math.max(...vals);
+  const W=540,H=46,pad=4;
+  const x=i=>pad+i*(W-2*pad)/(ws.length-1);
+  const y=v=>H-pad-((v-min)/(max-min||1))*(H-2*pad);
+  const pts=ws.map((e,i)=>`${x(i).toFixed(1)},${y(e.w).toFixed(1)}`).join(' ');
+  const dots=ws.map((e,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(e.w).toFixed(1)}" r="2.5" fill="hsl(200 90% 45%)"/>`).join('');
+  const latest=ws[ws.length-1];
+  return `<div class="trend">
+    <div class="dot2">${svg('scale')}</div>
+    <div class="th"><b>體重趨勢</b><span>${ws.length} 筆 · ${ws[0].d.slice(5)}→${latest.d.slice(5)}</span><span class="latest">最新 ${latest.w} kg</span></div>
+    <svg class="spark" width="100%" viewBox="0 0 ${W} ${H+12}" preserveAspectRatio="none">
+      <polyline points="${pts}" fill="none" stroke="hsl(200 90% 45%)" stroke-width="2"/>
+      ${dots}
+      <text x="0" y="${H+10}">${ws[0].w}kg</text>
+      <text x="${W}" y="${H+10}" text-anchor="end">${latest.w}kg</text>
+    </svg></div>`;
+}
+
+/* ---------- VARIANT B ---------- */
+function renderB(){
+  const list=visibleEvents();
+  if(!list.length)return emptyHtml();
+  let html='';
+  for(const [day,items] of groupByDay(list)){
+    html+=dayHeader(day);
+    for(const e of items){
+      html+=`<div class="row ${rowClass(e)}" onclick="this.classList.toggle('open')">
+        <div class="dot">${svg(e.ic)}</div>
+        <div class="line">
+          <span class="ti">${e.t}</span>
+          <span class="ct">${e.c}</span>
+          ${e.vet?'<span class="vet">獸醫已讀</span>':''}
+          <span class="who">${e.who}</span>
+          <span class="tm" title="${fmtFull(e.d)}">${fmtDate(e.d)}</span>
+        </div>
+        <div class="detail">${e.c}　·　記錄者：${e.who}　·　${fmtFull(e.d)}</div>
+      </div>`;
+    }
+  }
+  return html;
+}
+
+/* ---------- VARIANT C ---------- */
+function renderC(){
+  const list=visibleEvents();
+  if(!list.length)return emptyHtml();
+  let html='';
+  for(const [day,items] of groupByDay(list)){
+    html+=dayHeader(day);
+    for(const e of items){
+      html+=`<div class="row ${e.cat==='crit'?'crit':''}">
+        <div class="dot">${svg(e.ic)}</div>
+        <div class="card">
+          <div class="hd"><span class="ti">${e.t}</span><span class="tm" title="${fmtFull(e.d)}">${fmtDate(e.d)} · ${relDay(e.d)}</span></div>
+          <div class="ct">${e.c}</div>
+          <div class="ac">記錄者：${e.who}${e.vet?'<span class="vet">獸醫已讀</span>':''}</div>
+        </div></div>`;
+    }
+  }
+  return html;
+}
+
+function dayHeader(day){
+  return `<div class="day"><span class="d">${day.replaceAll('-','/')}</span><span class="rel">${relDay(day)}</span><span class="ln"></span></div>`;
+}
+function emptyHtml(){return '<div class="empty">此篩選下尚無紀錄</div>'}
+
+function render(){
+  const stage=document.getElementById('stage');
+  document.getElementById('note').innerHTML=noteText[state.v];
+  /* density only meaningful for A */
+  document.getElementById('density').style.visibility = state.v==='A' ? 'visible':'hidden';
+  let h;
+  if(state.v==='A')h=renderA();
+  else if(state.v==='B')h=renderB();
+  else h=renderC();
+  stage.className='rail '+state.v;
+  stage.innerHTML=h;
+}
+
+/* ---- wiring ---- */
+document.getElementById('variant').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  state.v=b.dataset.v;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+document.getElementById('density').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  state.density=b.dataset.d;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+document.getElementById('filters').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  state.filter=b.dataset.f;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+render();
+</script>
+</body>
+</html>

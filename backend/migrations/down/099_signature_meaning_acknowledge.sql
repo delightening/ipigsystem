@@ -1,0 +1,3 @@
+-- PostgreSQL 不支援 ALTER TYPE ... DROP VALUE；此 migration 不可逆（保留 ACKNOWLEDGE 值）。
+-- 如需完全移除，須重建整個 signature_meaning type（見 043 模式）並處理依賴欄位，非例行 down。
+-- no-op

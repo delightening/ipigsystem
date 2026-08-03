@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>版本名冊欄位總表 C(=D) / E / F</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --ink:#1b1f24; --muted:#5b6672; --line:#d3dae2;
+    --core:#2f6f4f; --core-bg:#eaf3ee; --cd:#33608f; --cd-bg:#e8f0f8;
+    --f:#8a5a1c; --f-bg2:#f7efe1; --e:#3a7d7d; --e-bg:#e6f2f2;
+    --warn:#9a6b00; --head:#eceff3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12161b; --panel:#1b2128; --ink:#e8edf2; --muted:#9aa7b4; --line:#38424e;
+      --core:#5fbf8c; --core-bg:#1a2620; --cd:#6fa6df; --cd-bg:#182231;
+      --f:#d8a25a; --f-bg2:#2a2318; --e:#5fb3b3; --e-bg:#152525;
+      --warn:#e0b050; --head:#222b34;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","Segoe UI",system-ui,sans-serif;line-height:1.5;padding:26px 16px 60px}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:1.35rem;margin:0 0 3px}
+  .sub{color:var(--muted);font-size:.88rem;margin:0 0 18px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.8rem;color:var(--muted);margin:0 0 16px}
+  .legend i{font-style:normal;display:inline-flex;align-items:center;gap:6px}
+  .sw{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid var(--line)}
+  .cards{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+  .card{flex:1 1 150px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .card b{font-size:1.25rem} .card small{display:block;color:var(--muted);font-size:.78rem}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  table{border-collapse:collapse;width:100%;min-width:620px;font-size:.87rem;background:var(--panel)}
+  th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--head);position:sticky;top:0;font-size:.82rem}
+  td.v{text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sec td{background:var(--head);font-weight:700;font-size:.83rem;color:var(--muted);letter-spacing:.03em}
+  .yes{color:var(--core);font-weight:700}
+  .no{color:var(--muted)}
+  tr[data-k="core"]{border-left:4px solid var(--core)}
+  tr[data-k="cd"]{border-left:4px solid var(--cd);background:var(--cd-bg)}
+  tr[data-k="f"]{border-left:4px solid var(--f);background:var(--f-bg2)}
+  tr[data-k="e"]{border-left:4px solid var(--e);background:var(--e-bg)}
+  .note{color:var(--muted);font-size:.82rem}
+  .warn{color:var(--warn)}
+  .foot{font-size:.8rem;color:var(--muted);margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+  code{background:var(--head);padding:1px 5px;border-radius:4px;font-size:.85em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>版本名冊欄位總表　C(=D) · E · F</h1>
+  <p class="sub">超集 × 版本矩陣 · 2026-07-09 三 subagent 實讀 114003(C)/113002·114009(D)/115001(E)/115012(F) · 先不動 code</p>
+
+  <div class="legend">
+    <i><span class="sw" style="border-left:4px solid var(--core)"></span>共同核心（各版都有，下游會計/豬計數依賴）</i>
+    <i><span class="sw" style="border-left:4px solid var(--cd);background:var(--cd-bg)"></span>C/D 特有（E/F 已移除＝孤兒欄位）</i>
+    <i><span class="sw" style="border-left:4px solid var(--f);background:var(--f-bg2)"></span>F 新增（C/D/E 無）</i>
+    <i><span class="sw" style="border-left:4px solid var(--e);background:var(--e-bg)"></span>E 起才有 / 逐版遞增</i>
+    <i>✓ 有　— 無　數字＝選項數　<span class="warn">⚠ 待逐段確認</span></i>
+  </div>
+
+  <div class="cards">
+    <div class="card"><b>3</b><small>實際結構數（C=D 共用一張名冊）</small></div>
+    <div class="card"><b>9</b><small>C/D 版顯示的孤兒欄位列（藍列；含 E/F 已砍與 F 移除項）</small></div>
+    <div class="card"><b>10</b><small>F 新增欄位（C/D/E 無）</small></div>
+    <div class="card"><b>27</b><small>補登筆數 C5 / D4 / E17 / F1</small></div>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>欄位</th><th class="v">C／D</th><th class="v">E</th><th class="v">F</th><th>備註</th></tr></thead>
+    <tbody>
+      <tr class="sec"><td colspan="5">Section 1　研究資料</td></tr>
+      <tr data-k="core"><td>研究名稱（中／英）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>GLP／非GLP 開關</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>申請／核准 雙編號＋雙日期</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>主持人 電話／email／地址</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">各版皆無「分機」欄</td></tr>
+      <tr data-k="f"><td>　└ PI 職稱（Position）</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增</td></tr>
+      <tr data-k="e"><td>　└ SD／PI 角色分離（＋SD email）</td><td class="v no">—</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">C/D 只有單一「研究主持人」</td></tr>
+      <tr data-k="core"><td>委託單位 名稱／代表／電話／email</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="e"><td>　└ 委託單位 聯絡人</td><td class="v no">—</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">E 起新增</td></tr>
+      <tr data-k="cd"><td>　└ 委託單位 地址</td><td class="v yes">✓</td><td class="v no">—</td><td class="v no">—</td><td class="note">E 起移除（agent 實讀確認）＝孤兒欄位</td></tr>
+      <tr data-k="core"><td>試驗機構＋動物飼養場所</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="cd"><td>試驗單位 Test Unit 多站塊<br>（委派階段／名稱／地址／PI）</td><td class="v yes">✓</td><td class="v no">—</td><td class="v no">—</td><td class="note">孤兒欄位</td></tr>
+      <tr data-k="core"><td>試驗時程 起訖</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">日期格式不同（民國↔mm/dd/yyyy）</td></tr>
+      <tr data-k="core"><td>簽章角色列數</td><td class="v">3 列</td><td class="v">2 列</td><td class="v">2 列</td><td class="note">C/D＝SD＋委託者＋機構；E/F＝PI＋機構</td></tr>
+
+      <tr class="sec"><td colspan="5">分類</td></tr>
+      <tr data-k="f"><td>計畫類型</td><td class="v">5 項</td><td class="v">5 項</td><td class="v">6 項</td><td class="note">F 加「6.其他」</td></tr>
+      <tr data-k="core"><td>計畫種類</td><td class="v">12</td><td class="v">12</td><td class="v">12</td><td class="note">—</td></tr>
+      <tr data-k="cd"><td>試驗物質類型</td><td class="v">9 項</td><td class="v">9 項</td><td class="v no">—</td><td class="note">F 移除</td></tr>
+      <tr data-k="cd"><td>技術類別</td><td class="v">9 項</td><td class="v">9 項</td><td class="v no">—</td><td class="note">F 移除</td></tr>
+      <tr data-k="core"><td>經費來源</td><td class="v">6</td><td class="v">6</td><td class="v">6</td><td class="note">標籤微調（農委會→農業部／環保署→環境部）</td></tr>
+      <tr data-k="cd"><td>預定註冊權責機關（GLP）</td><td class="v">5 項</td><td class="v">5 項</td><td class="v no">—</td><td class="note">FDA/CE/TFDA/CFDA/其他；F 移除</td></tr>
+
+      <tr class="sec"><td colspan="5">Section 2　研究目的／計畫摘要</td></tr>
+      <tr data-k="core"><td>目的及重要性<span class="note">（F 改稱「計畫摘要 Abstract」）</span></td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">標題不同</td></tr>
+      <tr data-k="core"><td>替代—必要性／物種理由</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="e"><td>替代—搜尋平台勾選</td><td class="v no">內文</td><td class="v">3 平台</td><td class="v">8 平台</td><td class="note">C/D 寫內文非勾選；E 3、F 8</td></tr>
+      <tr data-k="e"><td>替代—搜尋關鍵字＋結論</td><td class="v no">—</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">E 起結構化</td></tr>
+      <tr data-k="f"><td>是否重複他人試驗</td><td class="v">2 選項</td><td class="v">2 選項</td><td class="v">4 選項</td><td class="note">F 擴為 否/不適用/延續/重複</td></tr>
+      <tr data-k="core"><td>減量—實驗設計／理由</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="f"><td>減量—特殊照護</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增</td></tr>
+      <tr data-k="f"><td>減量—單獨飼養（9 原因）</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增</td></tr>
+      <tr data-k="f"><td>減量—動物再應用（5 計畫）</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增</td></tr>
+      <tr data-k="core"><td>精緻化原則（Refinement）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">C/D/E 併入「研究設計與方法」節框架；F 拆為獨立欄</td></tr>
+
+      <tr class="sec"><td colspan="5">Section 3　試驗物質與對照物質</td></tr>
+      <tr data-k="core"><td>是否使用試驗物質 開關</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>試驗物質／對照物質 基本欄<br>（名稱／效期／是否滅菌／用途／保存）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">共同 5 欄</td></tr>
+      <tr data-k="cd"><td>　└ 成份／來源／特徵／留樣／留樣地點／COA</td><td class="v yes">✓</td><td class="v no">—</td><td class="v no">—</td><td class="note">C/D 額外 6 欄＝孤兒欄位</td></tr>
+
+      <tr class="sec"><td colspan="5">Section 4　研究設計與方法</td></tr>
+      <tr data-k="core"><td>麻醉 是否＋類型（存活/非存活/氣麻/畜舒坦）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>試驗內容及流程</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="cd"><td>試驗動物飼養環境 SOP 塊</td><td class="v yes">✓</td><td class="v no">—</td><td class="v no">—</td><td class="note">孤兒欄位</td></tr>
+      <tr data-k="core"><td>疼痛等級 B/C/D/E</td><td class="v">短描述</td><td class="v">短描述</td><td class="v">細項勾選</td><td class="note">F 改為各級細項勾選清單</td></tr>
+      <tr data-k="f"><td>痛苦症狀（17 項勾選）</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增（Table 20）</td></tr>
+      <tr data-k="f"><td>緩解措施（4 項勾選）</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增（Table 21）</td></tr>
+      <tr data-k="core"><td>飲食／飲水限制</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>實驗終點＋人道終點</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>最終處置＋安樂死方式（KCl/220V/其他+轉讓+其他）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>屍體處理</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>非藥用級物質</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>危害性物質（生物/放射/化學）＋施用/保護/廢棄</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="core"><td>管制藥品</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+
+      <tr class="sec"><td colspan="5">結果分析／文件歸檔（GLP 專用）</td></tr>
+      <tr data-k="cd"><td>結果分析（允收標準／統計／判定）</td><td class="v yes">✓</td><td class="v no">—</td><td class="v no">—</td><td class="note">孤兒欄位</td></tr>
+      <tr data-k="cd"><td>研究文件與歸檔</td><td class="v yes">✓</td><td class="v no">—</td><td class="v no">—</td><td class="note">孤兒欄位</td></tr>
+
+      <tr class="sec"><td colspan="5">Section 5　相關規範及參考文獻</td></tr>
+      <tr data-k="core"><td>法源依據＋參考文獻（單一自由欄）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+      <tr data-k="f"><td>資料庫搜尋 A~L（12 項勾選）</td><td class="v no">—</td><td class="v no">—</td><td class="v yes">✓</td><td class="note">F 新增（Table 31）</td></tr>
+
+      <tr class="sec"><td colspan="5">Section 6–8　手術／動物／人員</td></tr>
+      <tr data-k="core"><td>手術計畫書 6.1–6.10（無菌 5 項／術後照護骨科·非骨科／用藥表）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">用藥表列數不同，非結構</td></tr>
+      <tr data-k="core"><td>實驗動物資料（物種/品系/性別/數量/年齡/體重/來源/場所）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">下游豬計數依賴</td></tr>
+      <tr data-k="core"><td>試驗人員（姓名/職稱/工作內容 a–i/年資/訓練 A–E/證書）</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="v yes">✓</td><td class="note">—</td></tr>
+
+      <tr class="sec"><td colspan="5">Section 9–10　附件／簽名</td></tr>
+      <tr data-k="core"><td>附件上傳</td><td class="v">系統級</td><td class="v">系統級</td><td class="v">系統級</td><td class="note">系統機制，全版本可用（2026-07-09 決）</td></tr>
+      <tr data-k="core"><td>電子簽名</td><td class="v">系統級</td><td class="v">系統級</td><td class="v">系統級</td><td class="note">系統機制，全版本可用；原紙本簽章存掃描</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="foot">
+    讀法：<b>綠列</b>＝共同核心，每版名冊都含，下游會計與豬隻計數只吃這區、不受版本影響。
+    <b>藍列</b>＝C/D 特有（E/F 已砍）＝孤兒欄位，須進超集、歸 C/D 名冊。
+    <b>橙列</b>＝F 新增，只在 F 名冊。<b>青列</b>＝E 起才有。
+    採 (Y) 每版一張名冊後，某案選其版本即只顯示對應欄位，<b>結構性「不適用」徽章不需要</b>。
+    S1/S2 的三處 ⚠ 已釐清：委託單位地址（E 起移除，實讀確認）、E 版精緻化（存在，併入研究設計節）、附件/簽名（歸系統級，全版本可用）。
+    完整記錄見同資料夾 <code>version-manifest-backfill-plan.md</code>。
+  </p>
+</div>
+</body>
+</html>

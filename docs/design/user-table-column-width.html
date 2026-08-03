@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>使用者管理表格 — 欄寬設計互動預覽</title>
+<style>
+  :root {
+    --border:#e2e8f0; --muted:#f1f5f9; --muted-fg:#64748b; --card:#fff; --fg:#0f172a;
+    --primary:#2563eb; --ok-bg:#dcfce7; --ok-fg:#166534; --off-bg:#fee2e2; --off-fg:#991b1b;
+    --badge-bg:#f1f5f9; --badge-fg:#334155; --warn:#b91c1c;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:"Noto Sans TC","Inter",system-ui,sans-serif;margin:0;padding:24px;background:#f8fafc;color:var(--fg);}
+  h1{font-size:20px;margin:0 0 4px;}
+  p.note{color:var(--muted-fg);font-size:13px;margin:0 0 16px;line-height:1.6;}
+  code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:12px;}
+
+  .controls{display:flex;flex-wrap:wrap;gap:20px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;}
+  .controls label{font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;}
+  input[type=range]{width:280px;}
+  .readout{font-family:ui-monospace,monospace;font-size:13px;color:var(--primary);font-weight:600;}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .seg button{border:0;background:#fff;padding:6px 12px;font-size:13px;cursor:pointer;color:#475569;}
+  .seg button.on{background:var(--primary);color:#fff;}
+  .chips{display:flex;gap:6px;font-size:12px;color:var(--muted-fg);flex-wrap:wrap;}
+  .chip{padding:2px 8px;border-radius:999px;background:var(--muted);}
+  .chip.hide{opacity:.35;text-decoration:line-through;}
+
+  /* container-query context */
+  .stage{border:2px dashed #94a3b8;border-radius:12px;padding:14px;background:#fff;overflow:auto;}
+  .cq{container-type:inline-size;margin:0 auto;}
+  .tbl-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card);}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  thead tr{background:var(--muted);}
+  th{text-align:left;font-weight:500;color:var(--muted-fg);padding:11px 14px;font-size:13px;}
+  td{padding:12px 14px;border-top:1px solid var(--border);vertical-align:middle;}
+  .sort{display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted-fg);}
+  .arrow{font-size:11px;opacity:.6;}
+
+  /* 欄寬規則 */
+  th.c-name,td.c-name{white-space:nowrap;}                 /* 名稱：全顯示、不折 */
+  td.c-email{font-weight:500;}
+  th.c-status,td.c-status{width:1%;white-space:nowrap;}
+  th.c-login,td.c-login{width:1%;white-space:nowrap;}
+  th.c-actions,td.c-actions{width:1%;white-space:nowrap;text-align:right;}
+
+  .badge{display:inline-block;padding:2px 9px;border-radius:6px;font-size:12px;font-weight:500;background:var(--badge-bg);color:var(--badge-fg);}
+  .badge.ok{background:var(--ok-bg);color:var(--ok-fg);}
+  .badge.off{background:var(--off-bg);color:var(--off-fg);}
+  /* 狀態欄直書：表頭 + pill 皆字元上下排列 */
+  .vert{writing-mode:vertical-rl;text-orientation:upright;letter-spacing:2px;line-height:1;}
+  .badge.vert{padding:8px 3px;}
+  th.c-status .vlabel{display:inline-flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;}
+  th.c-status,td.c-status{text-align:center;}
+  .roles{display:flex;gap:4px;flex-wrap:wrap;}
+  .roles.stack{flex-direction:column;align-items:flex-start;gap:3px;}   /* 角色上下堆疊 */
+  .muted{color:var(--muted-fg);}
+  .warn{color:var(--warn);font-weight:500;}
+
+  /* 操作：他人 6 顆→2×3；本人 4 顆→2×2 */
+  .acts{display:inline-grid;grid-template-columns:repeat(3,auto);gap:4px;justify-content:end;}
+  .acts.self{grid-template-columns:repeat(2,auto);}
+  .ic{width:34px;height:34px;border-radius:7px;border:0;background:transparent;color:#475569;display:inline-flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;}
+  .ic:hover{background:var(--muted);}
+  .ic.pri{color:var(--primary);} .ic.warn{color:#b45309;} .ic.danger{color:#dc2626;} .ic.ok{color:#16a34a;}
+
+  /* 斷點：最後登入 @560 · 角色 @720 · 狀態 @900 */
+  th.c-role,td.c-role{display:none;}
+  th.c-login,td.c-login{display:none;}
+  th.c-status,td.c-status{display:none;}
+  @container (min-width:560px){ th.c-login,td.c-login{display:table-cell;} }
+  @container (min-width:720px){ th.c-role,td.c-role{display:table-cell;} }
+  @container (min-width:900px){ th.c-status,td.c-status{display:table-cell;} }
+
+  .legend{font-size:12px;color:var(--muted-fg);margin-top:10px;line-height:1.7;}
+  .q{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:13px;margin-top:14px;color:#92400e;}
+</style>
+</head>
+<body>
+  <h1>使用者管理表格 — 欄寬設計互動預覽</h1>
+  <p class="note">
+    拖動下方滑桿改變<strong>容器寬度</strong>，觀察欄位依序隱藏。<br>
+    隱藏順序（變窄時）：<strong>狀態</strong>（<code>@900</code> 先藏）→ <strong>角色</strong>（<code>@720</code>）→ <strong>最後登入</strong>（<code>@560</code> 最後藏）。永遠保留：Email · 名稱 · 操作。
+  </p>
+
+  <div class="controls">
+    <label>容器寬度
+      <input id="w" type="range" min="360" max="1180" value="1080" />
+      <span class="readout"><span id="wv">1080</span> px</span>
+    </label>
+    <label>角色排列
+      <span class="seg">
+        <button id="rWrap">水平 wrap（甲）</button>
+        <button id="rStack" class="on">上下堆疊（乙，定案）</button>
+      </span>
+    </label>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="stage">
+    <div class="cq" id="cq" style="width:1080px;">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th class="c-email">Email</th>
+            <th class="c-name">名稱</th>
+            <th class="c-role"><span class="sort">角色 <span class="arrow">⇅</span></span></th>
+            <th class="c-status" title="點整格切換排序（不顯示箭頭）"><span class="vlabel"><span class="vert">狀態</span></span></th>
+            <th class="c-login"><span class="sort">最後登入 <span class="arrow">⇅</span></span></th>
+            <th class="c-actions">操作</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <strong>圖示對照（操作欄 2×3）：</strong> ↪ 模擬登入 · 🛡 角色 · 🔑 重設密碼 · ✎ 編輯 · ⊘ 停用 · 🗑 刪除。
+    「自己」的帳號少了 ↪ 與 🔑（只剩 4 顆），改用 2 欄 grid 排成整齊的 2×2 —— 見表中最後一列（本人）。
+  </div>
+
+  <div class="q">
+    <strong>✅ 已實作（此預覽＝ UserTable.tsx 現況）：</strong><br>
+    ・<strong>角色</strong>：上下堆疊（乙）。<br>
+    ・<strong>狀態欄直書</strong>：表頭「狀 / 態」與 pill「啟 / 用」「停 / 用」字元上下排列；<strong>不顯示排序箭頭</strong>，點整格切換排序。<br>
+    ・<strong>最後登入</strong>：表頭加上排序 <code>⇅</code>。<br>
+    ・<strong>操作</strong>：他人 6 顆 → 2×3；本人 4 顆 → 2×2。<br>
+    ・隱藏順序（變窄）：狀態 <code>@900</code> → 角色 <code>@720</code> → 最後登入 <code>@560</code>。
+  </div>
+
+<script>
+  const rows = [
+    {email:'maymayblackbear@gmail.com', name:'張乃云', roles:['IACUC_CHAIR','REVIEWER'], active:true,  login:'23 天前', self:false},
+    {email:'yangruchen16@gmail.com',    name:'陳泱儒', roles:['EXPERIMENT_STAFF'],       active:true,  login:'1 小時前', self:false},
+    {email:'molecule1983@gmail.com',    name:'宋世英', roles:['PI'],                     active:false, login:null,      self:false},
+    {email:'admin@ipig.system',         name:'系統管理員', roles:['ADMIN'],              active:true,  login:'剛剛',    self:true },
+  ];
+
+  let roleStack = true;
+
+  function actionsHtml(self){
+    // 他人 6 顆；自己少 ↪(模擬登入) 與 🔑(重設密碼) → 4 顆
+    const btns = [];
+    if(!self) btns.push(['↪','pri']);
+    btns.push(['🛡','']);
+    if(!self) btns.push(['🔑','warn']);
+    btns.push(['✎','']);
+    btns.push(['⊘','danger']);
+    btns.push(['🗑','danger']);
+    return `<span class="acts${self?' self':''}">`+btns.map(b=>`<button class="ic ${b[1]}">${b[0]}</button>`).join('')+'</span>';
+  }
+
+  function rolesHtml(roles){
+    const cls = 'roles'+(roleStack?' stack':'');
+    return `<div class="${cls}">`+roles.map(r=>`<span class="badge">${r}</span>`).join('')+'</div>';
+  }
+
+  function loginHtml(login){
+    if(!login) return '<span class="muted">從未登入</span>';
+    return `<span>${login}</span>`;
+  }
+
+  function render(){
+    document.getElementById('tbody').innerHTML = rows.map(r=>`
+      <tr>
+        <td class="c-email">${r.email}</td>
+        <td class="c-name">${r.name}${r.self?' <span class="muted" style="font-size:11px">（本人）</span>':''}</td>
+        <td class="c-role">${rolesHtml(r.roles)}</td>
+        <td class="c-status">${r.active?'<span class="badge ok vert">啟用</span>':'<span class="badge off vert">停用</span>'}</td>
+        <td class="c-login">${loginHtml(r.login)}</td>
+        <td class="c-actions">${actionsHtml(r.self)}</td>
+      </tr>`).join('');
+  }
+
+  function updateChips(w){
+    const cols = [
+      ['最後登入', w>=560],
+      ['角色',     w>=720],
+      ['狀態',     w>=900],
+    ];
+    document.getElementById('chips').innerHTML =
+      '<span class="chip">Email ✓</span><span class="chip">名稱 ✓</span>'+
+      cols.map(c=>`<span class="chip ${c[1]?'':'hide'}">${c[0]} ${c[1]?'✓':'✕'}</span>`).join('')+
+      '<span class="chip">操作 ✓</span>';
+  }
+
+  const wEl = document.getElementById('w'), cq = document.getElementById('cq');
+  function setW(v){ cq.style.width=v+'px'; document.getElementById('wv').textContent=v; updateChips(+v); }
+  wEl.addEventListener('input', e=>setW(e.target.value));
+
+  document.getElementById('rWrap').addEventListener('click', ()=>{roleStack=false;toggleRoleBtn();render();});
+  document.getElementById('rStack').addEventListener('click', ()=>{roleStack=true;toggleRoleBtn();render();});
+  function toggleRoleBtn(){
+    document.getElementById('rWrap').classList.toggle('on',!roleStack);
+    document.getElementById('rStack').classList.toggle('on',roleStack);
+  }
+
+  render(); setW(1080);
+</script>
+</body>
+</html>

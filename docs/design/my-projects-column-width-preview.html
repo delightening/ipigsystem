@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>我的計畫 — 表格欄寬提案（討論版）</title>
+<style>
+  :root {
+    --primary: hsl(217.2 91.2% 59.8%);
+    --border: hsl(214 32% 91%);
+    --muted: hsl(210 40% 98%);
+    --muted-fg: hsl(215 16% 47%);
+    --fg: hsl(222 47% 11%);
+    --warning-text: hsl(25 80% 38%);
+    --warning-bg: hsl(38 92% 92%);
+    --success-text: hsl(142 60% 30%);
+    --success-bg: hsl(142 60% 92%);
+    --secondary-bg: hsl(210 40% 94%);
+    --secondary-text: hsl(215 16% 40%);
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Noto Sans TC", "Inter", system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    color: var(--fg); background: hsl(210 40% 96%);
+    padding: 32px 24px 80px; line-height: 1.5;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted-fg); font-size: 14px; margin: 0 0 28px; }
+  .scheme { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 20px 20px 24px; margin-bottom: 28px; box-shadow: 0 1px 2px hsl(215 25% 27% / 0.04); }
+  .scheme-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .tag { background: var(--primary); color: #fff; font-weight: 700; font-size: 13px; padding: 2px 10px; border-radius: 999px; }
+  .tag.alt { background: hsl(215 16% 47%); }
+  .scheme h2 { font-size: 17px; margin: 0; }
+  .desc { color: var(--muted-fg); font-size: 13px; margin: 6px 0 16px; }
+  .desc code { background: var(--muted); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+  .tbl-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+  thead th { background: var(--muted); text-align: left; font-weight: 600; color: var(--fg); padding: 11px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: bottom; line-height: 1.25; }
+  tbody td { padding: 13px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  .iacuc { font-family: "SFMono-Regular", ui-monospace, Menlo, monospace; color: var(--warning-text); font-weight: 600; }
+  .nowrap { white-space: nowrap; }
+  .title-cell { color: var(--fg); word-break: break-word; }
+  .period { color: var(--muted-fg); font-size: 13px; }
+  .period .end { display: block; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+  .badge.wrap { white-space: normal; }
+  .badge.nowrap { white-space: nowrap; }
+  .b-warning { background: var(--warning-bg); color: var(--warning-text); }
+  .b-success { background: var(--success-bg); color: var(--success-text); }
+  .b-secondary { background: var(--secondary-bg); color: var(--secondary-text); }
+  .b-destructive { background: hsl(0 84% 94%); color: hsl(0 72% 42%); }
+  .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; border: 1px solid var(--border); background: #fff; color: var(--fg); padding: 5px 9px; border-radius: 8px; white-space: nowrap; cursor: default; }
+  th.right, td.right { text-align: right; }
+  .callout { background: hsl(38 92% 96%); border: 1px solid hsl(38 60% 80%); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-top: 14px; color: hsl(25 60% 30%); }
+  .callout b { color: hsl(25 70% 25%); }
+  .mini { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 4px; }
+  .mini .box { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .mini h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted-fg); font-weight: 600; }
+  .mini table { font-size: 13px; }
+  @media (max-width: 820px){ .mini { grid-template-columns: 1fr; } }
+
+  /* 欄寬（提案版） */
+  col.c-iacuc   { width: 9%; }
+  col.c-prog    { width: 8%; }
+  col.c-contact { width: 8%; }
+  col.c-org     { width: 15%; }
+  col.c-review  { width: 10%; }
+  col.c-title   { width: 26%; }
+  col.c-period  { width: 12%; }
+  col.c-act     { width: 12%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>我的計畫 — 表格欄寬提案（討論版）</h1>
+  <p class="sub">依你的想法：窄欄用「標題／內容換行」壓縮並固定寬度，把省下的空間讓給<b>計畫書標題</b>。以下是提案版，下面幾個變體點請你拍板。</p>
+
+  <!-- 提案版 -->
+  <section class="scheme">
+    <div class="scheme-head"><span class="tag">提案版</span><h2>窄欄換行 + 標題吃剩餘空間</h2></div>
+    <p class="desc">
+      · IACUC No. 欄標題兩行「IACUC／No.」，值單行 &nbsp;
+      · 進度／聯絡人 固定窄欄 &nbsp;
+      · 審查狀態 欄標題兩行「審查／狀態」 &nbsp;
+      · 執行期間 在 <code>~</code> 後斷行成兩行 &nbsp;
+      · 計畫書標題 吃最大空間（~26%）
+    </p>
+    <div class="tbl-scroll" id="tbl-main"></div>
+    <div class="callout">
+      ⚠️ <b>審查狀態欄的現實：</b>系統共 15 種狀態，最長標籤是「<b>行政預審補件</b>」「獸醫要求修訂」（6 字）。上表最後一列刻意放了長標籤——欄標題雖然能壓成兩行，但 <b>Badge 本身的寬度由最長標籤決定</b>，所以這欄沒辦法壓到跟「進度」一樣窄，除非採下方「Badge 換行」或「縮寫」方案。
+    </div>
+  </section>
+
+  <!-- 變體 1：審查 Badge 處理 -->
+  <section class="scheme">
+    <div class="scheme-head"><span class="tag alt">討論點 1</span><h2>審查狀態長 Badge 怎麼處理</h2></div>
+    <div class="mini">
+      <div class="box">
+        <h3>A. Badge 單行（欄寬遷就最長標籤）</h3>
+        <table><colgroup><col style="width:60%"><col style="width:40%"></colgroup>
+          <thead><tr><th>審查<br>狀態</th><th>計畫書標題</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge b-secondary nowrap">草稿</span></td><td>短</td></tr>
+            <tr><td><span class="badge b-destructive nowrap">行政預審補件</span></td><td>短</td></tr>
+          </tbody>
+        </table>
+        <p class="desc" style="margin:8px 0 0">欄至少要容 6 字 Badge，壓不太窄。</p>
+      </div>
+      <div class="box">
+        <h3>B. Badge 允許換行（欄可更窄）</h3>
+        <table><colgroup><col style="width:40%"><col style="width:60%"></colgroup>
+          <thead><tr><th>審查<br>狀態</th><th>計畫書標題</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge b-secondary wrap">草稿</span></td><td>更寬的標題空間</td></tr>
+            <tr><td><span class="badge b-destructive wrap">行政預審補件</span></td><td>更寬的標題空間</td></tr>
+          </tbody>
+        </table>
+        <p class="desc" style="margin:8px 0 0">欄最窄，但長 Badge 變兩行、外型變高。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 變體 2：IACUC 值 -->
+  <section class="scheme">
+    <div class="scheme-head"><span class="tag alt">討論點 2</span><h2>IACUC No. 的值要不要斷行</h2></div>
+    <div class="mini">
+      <div class="box">
+        <h3>A. 值單行（推薦）</h3>
+        <table><colgroup><col style="width:45%"><col style="width:55%"></colgroup>
+          <thead><tr><th>IACUC<br>No.</th><th>計畫書標題</th></tr></thead>
+          <tbody>
+            <tr><td class="iacuc nowrap">PIG-110000</td><td>標題空間</td></tr>
+            <tr><td class="iacuc nowrap">—</td><td>標題空間</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="box">
+        <h3>B. 值也斷兩行</h3>
+        <table><colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+          <thead><tr><th>IACUC<br>No.</th><th>計畫書標題</th></tr></thead>
+          <tbody>
+            <tr><td class="iacuc">PIG-<br>110000</td><td>更寬的標題空間</td></tr>
+            <tr><td class="iacuc">—</td><td>更寬的標題空間</td></tr>
+          </tbody>
+        </table>
+        <p class="desc" style="margin:8px 0 0">欄更窄，但 monospace 編號斷行較不好讀。</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const rows = [
+    { iacuc:'PIG-110013', prog:['進行中','b-success'], contact:'陳玉婷', org:'國家實驗研究院',
+      review:['已核准','b-success'], title:'迷你豬慢性心衰竭模型建立與長期追蹤研究',
+      start:'2025/03/01', end:'2026/12/31', act:'結案' },
+    { iacuc:'—', prog:['申請中','b-warning'], contact:'王志鵬', org:'生物技術開發中心',
+      review:['草稿','b-secondary'], title:'AAV2 核酸藥物之豬隻視網膜下注射初步局部毒性試驗',
+      start:'2026/07/01', end:'2027/12/31', act:'刪除' },
+    { iacuc:'—', prog:['申請中','b-warning'], contact:'王子瑄', org:'—',
+      review:['行政預審補件','b-destructive'], title:'豬隻血管內血壓與穿戴式電訊號校正試驗計畫書',
+      start:'2026/08/01', end:'2027/06/30', act:'刪除' },
+  ];
+  const cols = ['c-iacuc','c-prog','c-contact','c-org','c-review','c-title','c-period','c-act'];
+  function tableHTML(){
+    const cg = '<colgroup>'+cols.map(c=>`<col class="${c}">`).join('')+'</colgroup>';
+    const head = `<thead><tr>
+      <th>IACUC<br>No.</th><th>進度</th><th>聯絡人</th><th>單位名稱</th>
+      <th>審查<br>狀態</th><th>計畫書標題</th><th>執行期間</th><th class="right">操作</th>
+    </tr></thead>`;
+    const body = '<tbody>'+rows.map(r=>`<tr>
+      <td class="iacuc nowrap">${r.iacuc}</td>
+      <td><span class="badge nowrap ${r.prog[1]}">${r.prog[0]}</span></td>
+      <td class="nowrap">${r.contact}</td>
+      <td>${r.org}</td>
+      <td><span class="badge nowrap ${r.review[1]}">${r.review[0]}</span></td>
+      <td class="title-cell">${r.title}</td>
+      <td class="period nowrap">📅 ${r.start} ~<span class="end">${r.end}</span></td>
+      <td class="right"><div class="actions"><span class="btn">👁 檢視</span><span class="btn">✕ ${r.act}</span></div></td>
+    </tr>`).join('')+'</tbody>';
+    return `<table>${cg}${head}${body}</table>`;
+  }
+  document.getElementById('tbl-main').innerHTML = tableHTML();
+</script>
+</body>
+</html>

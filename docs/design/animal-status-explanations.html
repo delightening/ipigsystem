@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>豬隻狀態說明（(i) 圖示）· 六狀態文案預覽</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --ink:#161a1d; --ink2:#3a424a; --mut:#6b7480; --line:#e4e7eb; --bg:#f4f6f8; --card:#fff;
+    /* status tokens（同 frontend/src/index.css light 值） */
+    --success-bg:hsl(142 76% 95%); --success-text:hsl(142 76% 30%); --success-border:hsl(142 76% 85%); --success-solid:hsl(142 76% 36%);
+    --warning-bg:hsl(38 92% 95%);  --warning-text:hsl(38 92% 30%);  --warning-border:hsl(38 92% 85%);  --warning-solid:hsl(38 92% 50%);
+    --error-bg:hsl(0 84% 95%);     --error-text:hsl(0 84% 40%);     --error-border:hsl(0 84% 85%);     --error-solid:hsl(0 84% 60%);
+    --error-strong:hsl(0 74% 42%);
+    --info-bg:hsl(217 91% 95%);    --info-text:hsl(217 91% 40%);    --info-border:hsl(217 91% 85%);    --info-solid:hsl(217 91% 60%);
+    --neutral-bg:hsl(215 16% 95%); --neutral-text:hsl(215 16% 46%); --neutral-border:hsl(215 16% 85%); --neutral-solid:hsl(215 16% 47%);
+    --purple-bg:hsl(263 70% 95%);  --purple-text:hsl(263 70% 40%);  --purple-border:hsl(263 70% 85%);  --purple-solid:hsl(263 70% 50%);
+  }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.55; }
+  .mono { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.9em; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 20px 60px; }
+  header { background:var(--ink); color:#fff; padding:26px 0 22px; margin-bottom:22px; }
+  header .wrap { padding-bottom:0; }
+  h1 { margin:0 0 4px; font-size:22px; letter-spacing:.01em; }
+  .sub { color:#9aa4ae; font-size:13px; margin:0; }
+  h2 { font-size:16px; margin:34px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+  section.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:14px 0; }
+  p { margin:8px 0; }
+  .lead { color:var(--ink2); }
+  code { background:#eef1f4; padding:1px 5px; border-radius:5px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.88em; }
+  .note { font-size:12.5px; color:var(--mut); margin-top:6px; }
+
+  /* badge renderers（soft，對齊表格/詳情頁慣例） */
+  .badge { display:inline-flex; align-items:center; gap:6px; border-radius:999px; border:1px solid transparent;
+    padding:2px 10px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .badge.soft { font-weight:600; }
+  .b-neutral { background:var(--neutral-bg); color:var(--neutral-text); border-color:var(--neutral-border); }
+  .b-warning { background:var(--warning-bg); color:var(--warning-text); border-color:var(--warning-border); }
+  .b-success { background:var(--success-bg); color:var(--success-text); border-color:var(--success-border); }
+  .b-error   { background:var(--error-bg);   color:var(--error-text);   border-color:var(--error-border); }
+  .b-purple  { background:var(--purple-bg);  color:var(--purple-text);  border-color:var(--purple-border); }
+
+  /* (i) 圖示 + 彈出說明 */
+  .info-wrap { position:relative; display:inline-flex; vertical-align:middle; }
+  .info-btn { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px;
+    border:0; background:transparent; color:var(--mut); cursor:pointer; padding:0; border-radius:999px; }
+  .info-btn:hover, .info-btn:focus-visible { color:var(--info-solid); background:var(--info-bg); outline:none; }
+  .info-btn svg { width:15px; height:15px; }
+  .pop { position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%) translateY(-4px);
+    width:300px; max-width:78vw; background:var(--card); border:1px solid var(--line); border-radius:10px;
+    box-shadow:0 8px 28px rgba(20,26,29,.14); padding:12px 14px; z-index:20;
+    opacity:0; visibility:hidden; transition:opacity .14s ease, transform .14s ease; text-align:left; }
+  .info-wrap:hover .pop, .info-btn:focus-visible + .pop, .pop:hover { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
+  .pop::before { content:""; position:absolute; top:-6px; left:50%; transform:translateX(-50%) rotate(45deg);
+    width:10px; height:10px; background:var(--card); border-left:1px solid var(--line); border-top:1px solid var(--line); }
+  .pop .p-title { display:flex; align-items:center; gap:8px; font-weight:700; font-size:13px; margin-bottom:6px; }
+  .pop .p-life { font-size:11.5px; font-weight:700; padding:1px 8px; border-radius:999px; }
+  .life-alive { background:var(--success-bg); color:var(--success-text); }
+  .life-dead  { background:var(--error-bg);   color:var(--error-text); }
+  .life-left  { background:var(--purple-bg);  color:var(--purple-text); }
+  .pop .p-def { font-size:12.5px; color:var(--ink2); margin:0 0 8px; }
+  .pop .p-next { font-size:12px; color:var(--mut); margin:0; }
+  .pop .p-next b { color:var(--ink2); font-weight:600; }
+  .pop .p-warn { margin-top:8px; font-size:12px; background:var(--warning-bg); border-left:3px solid var(--warning-solid);
+    border-radius:6px; padding:7px 9px; color:#7a4c07; }
+
+  /* 詳情頁 header 模擬 */
+  .detail-mock { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .detail-mock .hd { background:linear-gradient(180deg,#fafbfc,#f3f5f7); padding:16px 18px; border-bottom:1px solid var(--line); }
+  .detail-mock .title-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .detail-mock .pig-id { font-size:18px; font-weight:800; letter-spacing:.02em; }
+  .detail-mock .meta { color:var(--mut); font-size:12.5px; margin-top:4px; }
+  .status-cluster { display:inline-flex; align-items:center; gap:4px; }
+
+  /* 六狀態卡片 grid */
+  .grid6 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:720px){ .grid6{grid-template-columns:1fr;} }
+  .scard { border:1px solid var(--line); border-radius:11px; padding:14px 15px; background:var(--card); }
+  .scard .top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .scard .en { margin-left:auto; font-size:11px; color:var(--mut); }
+  .scard .life { font-size:11.5px; font-weight:700; padding:1px 8px; border-radius:999px; }
+  .scard dl { margin:0; display:grid; grid-template-columns:52px 1fr; gap:5px 10px; font-size:12.5px; }
+  .scard dt { color:var(--mut); font-weight:700; }
+  .scard dd { margin:0; color:var(--ink2); }
+  .scard.hot { border-color:var(--info-border); box-shadow:0 0 0 3px var(--info-bg); }
+  .warn-inline { margin-top:9px; font-size:12px; background:var(--warning-bg); border-left:3px solid var(--warning-solid);
+    border-radius:6px; padding:7px 9px; color:#7a4c07; }
+
+  /* 混淆處理表 */
+  table { width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
+  th, td { text-align:left; padding:9px 11px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mut); font-weight:700; font-size:12px; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:6px; }
+  .tag-a { background:var(--warning-bg); color:var(--warning-text); }
+  .tag-b { background:var(--info-bg); color:var(--info-text); }
+  .tag-c { background:var(--error-bg); color:var(--error-text); }
+
+  .contrast { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:560px){ .contrast{grid-template-columns:1fr;} }
+  .ct { border:1px solid var(--line); border-radius:11px; padding:15px 16px; }
+  .ct.alive { border-color:var(--success-border); background:linear-gradient(180deg,var(--success-bg),#fff 60%); }
+  .ct.dead  { border-color:var(--error-border);   background:linear-gradient(180deg,var(--error-bg),#fff 60%); }
+  .ct h3 { margin:0 0 4px; font-size:15px; display:flex; align-items:center; gap:8px; }
+  .ct .big { font-size:13px; font-weight:700; margin:6px 0; }
+  .ct ul { margin:8px 0 0; padding-left:18px; font-size:12.5px; color:var(--ink2); }
+  .ct li { margin:3px 0; }
+  .hint { background:var(--info-bg); border:1px solid var(--info-border); border-radius:8px; padding:8px 12px;
+    font-size:12.5px; color:var(--info-text); display:inline-flex; align-items:center; gap:8px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>豬隻狀態說明 · (i) 圖示點開設計</h1>
+  <p class="sub">六狀態文案 + 呈現方式預覽 · 對齊 DESIGN.md §3 色彩 token · 供拍板文案與樣式後改 code</p>
+</div></header>
+
+<div class="wrap">
+
+  <section class="card">
+    <p class="lead" style="margin-top:0"><b>做法（你已選）：</b>每個狀態徽章旁加一個 <b>(i) 圖示</b>，滑鼠移上或點按（手機可 tap）展開一段固定說明；<b>六個狀態全補</b>；三個混淆點都在文案內處理。</p>
+    <p class="lead" style="margin-bottom:0"><span class="hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      本頁的 (i) 圖示<b>可互動</b>：移上去或用鍵盤 Tab 聚焦即可看到實際彈出說明。</span></p>
+  </section>
+
+  <h2>一、核心對比：實驗完成 vs 已安樂死</h2>
+  <section class="card">
+    <div class="contrast">
+      <div class="ct alive">
+        <h3><span class="badge soft b-success">實驗完成</span></h3>
+        <div class="big">🟢 做完實驗，但動物<u>還活著</u></div>
+        <ul>
+          <li>仍在場內、仍可登錄體重</li>
+          <li>非終點：後續還要「轉讓」或「安樂死」處置</li>
+          <li>徽章：綠色（success）</li>
+        </ul>
+      </div>
+      <div class="ct dead">
+        <h3><span class="badge soft b-error">已安樂死</span></h3>
+        <div class="big">🔴 已執行安樂死／犧牲，動物<u>已死亡</u></div>
+        <ul>
+          <li>終點狀態，不可再變更</li>
+          <li>不可再登錄體重等就地操作</li>
+          <li>徽章：紅色（error）</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note" style="margin-top:12px">一句話：<b>「實驗完成」＝做完但還活著；「已安樂死」＝已經死亡。</b>兩者最常被混為一談，是這次補說明的主因。</p>
+  </section>
+
+  <h2>二、實際長相：詳情頁 header 的 (i) 圖示</h2>
+  <section class="card">
+    <div class="detail-mock">
+      <div class="hd">
+        <div class="title-row">
+          <span class="pig-id">PIG-0342</span>
+          <span class="status-cluster">
+            <span class="badge soft b-success">實驗完成</span>
+            <span class="info-wrap">
+              <button class="info-btn" aria-label="說明：實驗完成" tabindex="0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              </button>
+              <span class="pop" role="tooltip">
+                <span class="p-title"><span class="badge soft b-success">實驗完成</span><span class="p-life life-alive">存活</span></span>
+                <p class="p-def">豬隻存活走完實驗流程（「存活完成」），仍在場內、可繼續登錄體重。</p>
+                <p class="p-next"><b>後續：</b>可辦理轉讓；或執行犧牲／安樂死 → 「已安樂死」。</p>
+                <p class="p-warn">⚠️「實驗完成」代表<b>實驗做完</b>，不代表動物已死亡。</p>
+              </span>
+            </span>
+          </span>
+        </div>
+        <div class="meta">迷你豬 · 母 · 迷你豬計畫 A · 欄位 B-12</div>
+      </div>
+    </div>
+    <p class="note">↑ 移到藍色 (i) 上即可看到彈出說明。列表頁 / 篩選頁籤旁也放同一顆 (i)（同文案、較小尺寸）。手機無 hover → 改為 tap 展開（focus 觸發）。</p>
+  </section>
+
+  <h2>三、六狀態完整文案</h2>
+  <section class="card">
+    <div class="grid6">
+
+      <div class="scard">
+        <div class="top"><span class="badge soft b-neutral">未分配</span><span class="life life-alive">存活</span><span class="en mono">unassigned</span></div>
+        <dl>
+          <dt>定義</dt><dd>已登錄但尚未指派到任何實驗計畫。</dd>
+          <dt>後續</dt><dd>指派進入「實驗中」；或記錄犧牲／猝死。</dd>
+        </dl>
+      </div>
+
+      <div class="scard">
+        <div class="top"><span class="badge soft b-warning">實驗中</span><span class="life life-alive">存活</span><span class="en mono">in_experiment</span></div>
+        <dl>
+          <dt>定義</dt><dd>已納入實驗計畫、正在執行中。</dd>
+          <dt>後續</dt><dd>存活結束 → 「實驗完成」；犧牲／安樂死 → 「已安樂死」；非計畫死亡 → 「猝死」。</dd>
+        </dl>
+      </div>
+
+      <div class="scard hot">
+        <div class="top"><span class="badge soft b-success">實驗完成</span><span class="life life-alive">存活</span><span class="en mono">completed</span></div>
+        <dl>
+          <dt>定義</dt><dd>存活走完實驗流程（「存活完成」），仍在場內、可繼續登錄體重。</dd>
+          <dt>後續</dt><dd>可辦理轉讓；或執行犧牲／安樂死 → 「已安樂死」。</dd>
+        </dl>
+        <div class="warn-inline">⚠️「實驗完成」＝實驗做完，<b>不等於動物已死亡</b>；仍需後續轉讓或安樂死處置。</div>
+      </div>
+
+      <div class="scard hot">
+        <div class="top"><span class="badge soft b-error">已安樂死</span><span class="life life-dead">已死亡</span><span class="en mono">euthanized</span></div>
+        <dl>
+          <dt>定義</dt><dd>已依規範執行人道安樂死或犧牲，動物已死亡。</dd>
+          <dt>後續</dt><dd>終點狀態，不可再變更。</dd>
+        </dl>
+      </div>
+
+      <div class="scard">
+        <div class="top"><span class="badge soft b-error">猝死</span><span class="life life-dead">已死亡</span><span class="en mono">sudden_death</span></div>
+        <dl>
+          <dt>定義</dt><dd>非計畫性死亡（自然或意外，非執行安樂死）。</dd>
+          <dt>後續</dt><dd>終點狀態，不可再變更。</dd>
+        </dl>
+      </div>
+
+      <div class="scard">
+        <div class="top"><span class="badge soft b-purple">已轉讓</span><span class="life" style="background:var(--purple-bg);color:var(--purple-text)">場內·流程中</span><span class="en mono">transferred</span></div>
+        <dl>
+          <dt>定義</dt><dd>轉讓流程<b>進行中的中間態</b>——把動物改掛到另一個 IACUC 計畫（換計畫／換 PI）。內部轉讓時動物<b>仍在場內</b>。</dd>
+          <dt>後續</dt><dd>完成 → 回「實驗中」（掛新計畫）；被拒 → 回「實驗完成」。</dd>
+        </dl>
+        <div class="warn-inline">⚠️ 轉讓＝<b>換計畫，不是實體離場</b>。目前只有院內 internal 轉讓；未來若真轉出院外（external），將<b>新增專屬「已轉出院外」終態</b>表達實體離場，而非沿用「實驗中」——見下方未來方向。</div>
+      </div>
+
+    </div>
+    <p class="note">「存活 / 已死亡 / 場內·流程中」小標＝每個彈窗最上方的一眼判讀（對映後端 <span class="mono">is_terminal</span> / <span class="mono">is_active_in_facility</span>）。<b>「已轉讓」是轉讓流程的中間態、動物仍在場內</b>，非實體離場。文案可逐字調整。</p>
+  </section>
+
+  <h2>四、三個混淆點各自怎麼被處理</h2>
+  <section class="card">
+    <table>
+      <thead><tr><th style="width:130px">混淆</th><th>這次怎麼處理</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-a">a</span> 以為「實驗完成」＝死亡</td>
+          <td>每個彈窗最上方標「<b>存活 / 已死亡</b>」一眼判讀；「實驗完成」彈窗加 ⚠️ 明說「不等於動物已死亡」。</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-b">b</span> 不知道完成後要做什麼</td>
+          <td>每個狀態都有「<b>後續</b>」一行，寫清楚可轉去哪些狀態（轉讓 / 安樂死…）。</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-c">c</span> 「已犧牲」位置 vs「已安樂死」狀態看似矛盾</td>
+          <td>
+            成因：列表<b>位置</b>欄在 <span class="mono">completed</span> 且無欄位時顯示「已犧牲」（<span class="mono">constants.ts:71</span>），但<b>狀態</b>仍是「實驗完成」。<br>
+            處理：彈窗點明「<b>動物生死以『狀態』欄為準</b>；位置顯示『已犧牲』僅代表已離開原欄位」。
+            <div class="warn-inline" style="margin-top:8px">需你裁決：(c) 是否更進一步<b>改該位置文案</b>（例如離欄改顯示「已離欄 / —」而非「已犧牲」）？這屬 code 語意調整，建議另議、非本次 UI 說明範圍。</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>五、未來方向（已定調 · 非本次施作）</h2>
+  <section class="card">
+    <p class="lead" style="margin-top:0">關於「離場」，經討論後的結論：</p>
+    <ul style="margin:6px 0 0; padding-left:20px; font-size:13px; color:var(--ink2)">
+      <li><b>目前只有院內 internal 轉讓</b>（計劃間互轉），動物一律在場內；external（轉出院外）<b>歷史上從未發生、目前純假設無時程</b>。</li>
+      <li><b>單一場地</b>為主、無多院區規劃 → <b>不採</b>「在場/離場」正交維度（方案 B 屬過度設計，擱置）。</li>
+      <li>未來 external 真要用時：<b>新增專屬「已轉出院外」終態</b>（方案 A），比照「已安樂死／猝死」為終點，不再退回顯示「實驗中」。屆時屬 schema／狀態機改動，<b>會先出設計提案再動 code</b>。</li>
+    </ul>
+    <p class="note">此段為未來 backlog 方向記錄，本次不施作；可掛 issue #180（移除 transferred 中間態的重構）旁一併考量。</p>
+  </section>
+
+  <h2>六、本次實作範圍（(i) 說明層）</h2>
+  <section class="card">
+    <ul style="margin:6px 0 0; padding-left:20px; font-size:13px; color:var(--ink2)">
+      <li>新增小元件（暫名 <span class="mono">StatusInfoPopover</span>）：一顆 (i) 圖示 + Radix <span class="mono">Tooltip/Popover</span>，吃 <span class="mono">AnimalStatus</span> 給對應文案。</li>
+      <li>文案集中放 i18n（<span class="mono">zh-TW.json</span> / <span class="mono">en.json</span> 的 <span class="mono">animals.statusLabels.*</span> 旁新增 <span class="mono">statusHelp.*</span>），中英雙語。</li>
+      <li>掛載點：動物詳情頁 header 徽章旁（<span class="mono">detailStatusColors</span> 用處）＋列表篩選頁籤（<span class="mono">AnimalFilters.tsx</span>）。</li>
+      <li>a11y：(i) 為可聚焦 <span class="mono">button</span>、<span class="mono">aria-label</span>、鍵盤與 tap 皆可展開；用 info token 色。</li>
+      <li>不動狀態機、不動 DB；純前端說明層。<span class="mono">(c)</span> 的位置文案調整另開討論。</li>
+    </ul>
+    <p class="note">確認文案與 (i) 呈現後，我再照 DESIGN.md 走 <span class="mono">StatusBadge</span>／Radix 慣例實作，並補 <span class="mono">tsc</span> + eslint 驗證。</p>
+  </section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>儀表板「重設佈局」最佳化重排 — 方法比較</title>
+<style>
+  :root { font-family: system-ui, "Noto Sans TC", sans-serif; }
+  body { margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  .controls { margin-bottom: 16px; font-size: 13px; }
+  .controls label { margin-right: 16px; cursor: pointer; }
+  .methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px; }
+  .card h2 { display: flex; align-items: baseline; gap: 8px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .tag.rec { background: #16a34a; color: #fff; }
+  .desc { color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 6px 0 10px; min-height: 48px; }
+  .metrics { display: flex; gap: 14px; font-size: 12px; margin-bottom: 10px; }
+  .metrics b { color: #fff; font-size: 15px; display: block; }
+  .metrics span { color: #94a3b8; }
+  .grid-wrap { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 4px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-auto-rows: 24px;
+    gap: 3px;
+  }
+  .cell {
+    border-radius: 4px;
+    font-size: 10px;
+    padding: 3px 4px;
+    overflow: hidden;
+    color: #0f172a;
+    font-weight: 600;
+    line-height: 1.2;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .cell small { display: block; font-weight: 400; opacity: .7; font-size: 9px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 24px; }
+  th, td { border: 1px solid #334155; padding: 8px 10px; text-align: left; }
+  th { background: #1e293b; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .note { background: #1e293b; border-left: 3px solid #38bdf8; padding: 12px 16px; border-radius: 6px; margin-top: 24px; font-size: 13px; line-height: 1.7; }
+  .note h2 { color: #38bdf8; }
+  code { background: #334155; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>儀表板「重設佈局」最佳化重排 — 方法比較</h1>
+<div class="sub">12 欄網格 · 預設可見 widget（共 <span id="wcount"></span> 個，含預設隱藏的「即將到期假期」已排除）· 每個 widget 用其預設寬高</div>
+
+<div class="controls">
+  欄數模擬：
+  <label><input type="radio" name="cols" value="12" checked> 12 欄（桌機 lg）</label>
+  <label><input type="radio" name="cols" value="9"> 9 欄（md）</label>
+  <label><input type="radio" name="cols" value="6"> 6 欄（sm）</label>
+</div>
+
+<div class="methods" id="methods"></div>
+
+<table id="summary">
+  <thead><tr><th>方法</th><th>用掉行數（越少越緊湊）</th><th>空洞格數（越少越好）</th><th>填充率</th><th>是否保留語意順序</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<div class="note">
+  <h2>排版規則說明 + 取捨</h2>
+  <p><b>共同基礎</b>：在 N 欄網格上掃描，由上而下、由左而右，把每個 widget 放進「放得下、且 y 最小、其次 x 最小」的位置，不重疊。窄螢幕（9/6 欄）時寬度夾到欄數內。差別只在「餵進去的順序」。</p>
+  <ul>
+    <li><b>A 預設順序（保序 + 垂直壓實）</b>：依 <code>DEFAULT_DASHBOARD_LAYOUT</code> 的邏輯分組順序打包。等同 react-grid-layout 的 vertical compact。<u>優點</u>：分組語意清楚（快捷列在最上、ERP 警示成群）。<u>缺點</u>：可能留下右側／中間小空洞。</li>
+    <li><b>B 面積大→小（FFD）</b>：先放大塊，小塊填縫。<u>優點</u>：通常最緊密、空洞最少。<u>缺點</u>：語意順序被打散（Google 日曆這種大塊會被推到最前）。</li>
+    <li><b>C 列優先（shelf）</b>：一列填滿才換下一列，列高取該列最高者。<u>優點</u>：行列最整齊、可預期。<u>缺點</u>：右緣與列間易留空，填充率最低。</li>
+    <li><b>D 高度高→矮（FFDH）</b>：高的先放，矮的補。介於 A 與 B 之間，視覺較平衡。</li>
+  </ul>
+  <p><b>關於「顯示/隱藏」如何處理（你問的）</b>，三種語意，建議用第 1 種：</p>
+  <ol>
+    <li><b>完全重設（推薦）</b>：恢復「預設顯示/隱藏」+ 重新最佳化排版。最符合「重設」二字的直覺，一鍵回到乾淨初始狀態。</li>
+    <li><b>保留顯示選擇，只重排</b>：尊重你目前開/關了哪些 widget，只把「目前顯示中」的重新打包。比較像「整理」而非「重設」。</li>
+    <li><b>顯示全部 + 重排</b>：把所有有權限的 widget 都打開再排。通常太擠，不建議當預設。</li>
+  </ol>
+  <p>若想兩者都要，可考慮把按鈕拆成「重設佈局」（語意 1）與「整理排版」（語意 2）兩顆。</p>
+</div>
+
+<script>
+const COLS_DEFAULT = 12;
+// 預設可見 widget 與其預設寬高（取自 DEFAULT_DASHBOARD_LAYOUT；upcoming_leaves 預設隱藏故排除）
+const WIDGETS = [
+  {id:'quick_actions', label:'快捷按鈕', w:12, h:2},
+  {id:'calendar_widget', label:'今日日曆', w:4, h:3},
+  {id:'vet_comments', label:'獸醫評論', w:3, h:3},
+  {id:'animals_on_medication', label:'用藥動物', w:2, h:6},
+  {id:'my_projects', label:'我的計畫', w:4, h:3},
+  {id:'leave_balance', label:'請假餘額', w:3, h:3},
+  {id:'low_stock_alert', label:'低庫存', w:2, h:2},
+  {id:'expiry_alert', label:'即期警示', w:2, h:2},
+  {id:'today_inbound', label:'今日入庫', w:2, h:2},
+  {id:'recent_documents', label:'最近單據', w:5, h:4},
+  {id:'today_outbound', label:'今日出庫', w:2, h:2},
+  {id:'pending_documents', label:'待處理單據', w:2, h:2},
+  {id:'recent_maintenance', label:'維修紀錄', w:3, h:4},
+  {id:'equipment_status', label:'設備狀態', w:3, h:6},
+  {id:'weekly_trend', label:'週趨勢', w:4, h:3},
+  {id:'staff_attendance', label:'員工出勤', w:5, h:3},
+  {id:'google_calendar_events', label:'Google日曆', w:9, h:5},
+];
+document.getElementById('wcount').textContent = WIDGETS.length;
+
+// first-fit 貪婪打包（y 最小、其次 x 最小），寬度夾到欄數內
+function pack(items, cols){
+  const occ = [];
+  const fits = (x,y,w,h) => {
+    for(let yy=y; yy<y+h; yy++){
+      const row = occ[yy]; if(!row) continue;
+      for(let xx=x; xx<x+w; xx++) if(row[xx]) return false;
+    }
+    return true;
+  };
+  const mark = (x,y,w,h) => {
+    for(let yy=y; yy<y+h; yy++){
+      if(!occ[yy]) occ[yy] = new Array(cols).fill(false);
+      for(let xx=x; xx<x+w; xx++) occ[yy][xx] = true;
+    }
+  };
+  const placed = [];
+  for(const it of items){
+    const w = Math.min(it.w, cols);
+    let done = false;
+    for(let y=0; !done; y++){
+      for(let x=0; x<=cols-w; x++){
+        if(fits(x,y,w,it.h)){ mark(x,y,w,it.h); placed.push({...it,x,y,w}); done=true; break; }
+      }
+    }
+  }
+  return placed;
+}
+
+// 列優先 shelf
+function shelf(items, cols){
+  const placed = []; let x=0, y=0, rowH=0;
+  for(const it of items){
+    const w = Math.min(it.w, cols);
+    if(x + w > cols){ y += rowH; x = 0; rowH = 0; }
+    placed.push({...it, x, y, w});
+    x += w; rowH = Math.max(rowH, it.h);
+  }
+  return placed;
+}
+
+const area = (a) => a.w * a.h;
+const METHODS = [
+  { key:'A', name:'A · 預設順序（保序+壓實）', rec:true, semantic:true,
+    desc:'依預設邏輯分組順序打包；等同 react-grid-layout 垂直壓實。分組語意最清楚。',
+    run:(cols)=>pack(WIDGETS, cols) },
+  { key:'B', name:'B · 面積大→小（FFD）', rec:false, semantic:false,
+    desc:'先放大塊、小塊填縫，通常最緊密；但語意順序被打散。',
+    run:(cols)=>pack([...WIDGETS].sort((a,b)=>area(b)-area(a)), cols) },
+  { key:'C', name:'C · 列優先（shelf）', rec:false, semantic:true,
+    desc:'一列填滿才換列；最整齊但右緣易留空、填充率最低。',
+    run:(cols)=>shelf(WIDGETS, cols) },
+  { key:'D', name:'D · 高度高→矮（FFDH）', rec:false, semantic:false,
+    desc:'高的先放、矮的補；視覺較平衡，介於 A 與 B 之間。',
+    run:(cols)=>pack([...WIDGETS].sort((a,b)=> b.h-a.h || area(b)-area(a)), cols) },
+];
+
+function metrics(placed, cols){
+  const rows = Math.max(...placed.map(p=>p.y+p.h));
+  const used = placed.reduce((s,p)=>s+p.w*p.h, 0);
+  const total = rows * cols;
+  return { rows, holes: total-used, fill: Math.round(used/total*100) };
+}
+
+function hue(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))%360; return h; }
+
+function renderGrid(placed, cols){
+  const wrap = document.createElement('div'); wrap.className='grid-wrap';
+  const g = document.createElement('div'); g.className='grid';
+  g.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  for(const p of placed){
+    const el = document.createElement('div'); el.className='cell';
+    el.style.gridColumn = `${p.x+1} / span ${p.w}`;
+    el.style.gridRow = `${p.y+1} / span ${p.h}`;
+    el.style.background = `hsl(${hue(p.id)} 70% 65%)`;
+    el.innerHTML = `${p.label}<small>${p.w}×${p.h}</small>`;
+    g.appendChild(el);
+  }
+  wrap.appendChild(g); return wrap;
+}
+
+function render(cols){
+  const root = document.getElementById('methods'); root.innerHTML='';
+  const tbody = document.querySelector('#summary tbody'); tbody.innerHTML='';
+  for(const m of METHODS){
+    const placed = m.run(cols);
+    const mt = metrics(placed, cols);
+    const card = document.createElement('div'); card.className='card';
+    card.innerHTML = `<h2>${m.name} ${m.rec?'<span class="tag rec">建議</span>':''}</h2>
+      <div class="desc">${m.desc}</div>
+      <div class="metrics">
+        <div><b>${mt.rows}</b><span>用掉行數</span></div>
+        <div><b>${mt.holes}</b><span>空洞格數</span></div>
+        <div><b>${mt.fill}%</b><span>填充率</span></div>
+      </div>`;
+    card.appendChild(renderGrid(placed, cols));
+    root.appendChild(card);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${m.name}</td><td class="num">${mt.rows}</td><td class="num">${mt.holes}</td><td class="num">${mt.fill}%</td><td>${m.semantic?'✅ 是':'❌ 否'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+document.querySelectorAll('input[name=cols]').forEach(r=>{
+  r.addEventListener('change', e=> render(parseInt(e.target.value)));
+});
+render(COLS_DEFAULT);
+</script>
+</body>
+</html>
