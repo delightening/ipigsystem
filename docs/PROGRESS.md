@@ -193,6 +193,29 @@ v1.0 / v1.1 里程碑。詳見 [TODO.md](TODO.md)（待辦與優先級）、[IMP
 > **格式規範：** 反向時間序（新→舊）。每個條目：`### YYYY-MM-DD 標題` + `- ✅ **粗體摘要**：細節`。
 > 此處為全專案唯一的變更日誌，TODO.md 變更紀錄已封存。
 
+### 2026-08-03 merge 閘門兩個 fail-open 缺口修正（#16）
+
+- ✅ **bot 閘對純依賴更新結構性失效**：CodeRabbit 預設以 `!**/*.lock` 排除 lockfile，於是 #14（只改 `backend/Cargo.lock`）拿到 commit status `state=success` / `desc=Review completed`，**PR 留言卻是 `Review skipped due to path filters`——它一個檔案都沒看**。原 (e) 判準只看 status description，在這條路上靜默 fail-open，與 2026-07-24 記錄的「額度耗盡」是同一問題的第二個入口。CLAUDE.md 授權節新增 **(f)**：純依賴更新（diff 僅 lockfile／版本號、零 code 變更）改以「CI 全綠 + `cargo audit`／`pnpm audit` 綠」為閘，不要求 bot review；並明記「status 顯示 completed 但留言為 path-filter skipped」等同未審。
+- ✅ **純文件 PR 被 required checks 鎖死**：`ci.yml` 原以 workflow 層級 `paths-ignore`（`**.md` / `docs/**`）讓純文件變更完全不觸發 CI，代價是**連一個 check-run 都不產生**，branch protection 的 required checks 永遠不會變綠（#16 自己就是受害者，狀態 `blocked` 且無解）。改為移除 `paths-ignore` + `changes` job 新增純文件分支且**排在 `backend/*` 之前**——只做前者會讓文件落入 `*)`「保守全跑」，純文件 PR 反而跑滿整套，比原本更糟。
+- ✅ **動機不只解卡**：文件裡誤貼 token 是常見洩漏途徑，純文件 PR 反而更該掃 secret——本次外洩事故中，外洩的正是「不是 code 的檔案」。
+- ⚠️ **#16 自己也撞上第三種形態**：CI 全綠但 CodeRabbit 回 `Review rate limited`，依 (e) 不算乾淨章，最終由使用者明確放行才合。三種 fail-open 形態（path-filter skipped／不理 Dependabot PR／額度耗盡）在同一天內全數出現。
+
+### 2026-08-03 依賴安全修補：20+ 已知漏洞 + 部署（#11 / #13 / #14）
+
+- ✅ **漏洞一直存在、只是看不見**：舊 repo 的 Dependabot alerts 為**關閉**狀態，遷移至新 repo 並啟用後立即掃出 20+ 個有 CVE 的漏洞。Pillow 9 high + 3 medium（heap OOB write、`WindowsViewer` OS 命令注入、decompression bomb）、rust-openssl 6 high + 2 medium + 1 low（`digest_final()` 寫超出呼叫端 buffer、AES key wrap 邊界判斷錯誤）、pypdf 2 high + 2 medium。
+- ✅ **openssl 需手動處理**：它由 `native-tls` 間接引入、非直接依賴，Dependabot 不會替它開 PR。0.10.75 → **0.10.81** 屬同 `0.10.x` semver 相容，僅更新 `Cargo.lock`（#14）。
+- ✅ **部署驗收**：押 `.deploy.lock` → rebuild 全部四個映像（api / web / outbox-worker / print-pdf）→ `up -d` → 健檢。API `HTTP 200 / 4.4ms`、三個容器 healthy、重啟後日誌 0 error、observability 7 容器未受影響。**直接查執行中容器確認修補生效**：`pillow=12.3.0`、`pypdf=6.14.2`（不以 lockfile 內容當證據）。
+- ⚠️ **react-router 的 high alert 判定為不適用**：漏洞屬 RSC mode CSRF bypass，而前端是 `BrowserRouter` library mode + Vite SPA、無 `react-router.config.*`、無 RSC，該路徑不存在。修它需 major 升級 7.18→8.3，已 dismiss 為 `not_used` 並註明理由。
+- ⚠️ **CI 綠 ≠ 可合**：#2 postgres 16→18 CI 全綠但不可合（db-backup 的 postgres 版本須跟 prod DB 主版本綁著升，CI 驗不到跨版本 dump/restore）。#5 sha2／#7 hmac／#8 axum／#9 utoipa 各 8 個 job 失敗，證實是 breaking change 而非單純版本號。
+
+### 2026-08-03 GitHub 歷史外洩事故處置：SMTP 憑證輪替 + repo 遷移至乾淨歷史
+
+- ✅ **外洩規模遠超原記錄**：公開 repo 的 git 歷史含 2026-03-31 prod DB 全量匯出（113 表），公開曝露約 4 個月。除既知的 `token_hash` 外，還有 **`system_settings.smtp_password` 明文**（雜湊比對確認與 prod 當時值相同＝從未輪替）、14 筆員工姓名/email/argon2id、17 家廠商統編/電話/地址、10 筆打卡 GPS 座標、手寫簽名 SVG + 筆劃軌跡。`totp_secret`/`backup_codes` 全 null，MFA 未外洩。
+- ✅ **最危險的是衍生路徑**：系統以個人 Gmail 當 SMTP relay，密碼重設／邀請 token 的副本全留在該信箱寄件備份——SMTP 憑證外洩即可經 IMAP 讀信、在 token 有效期內劫持任意帳號（含 admin），且 **IMAP 讀信不產生登入紀錄**，「登入活動正常」不能當作沒被入侵的證據。已輪替 Google 應用程式密碼並撤銷舊組；SPF 補 `include:_spf.google.com`。根治方向見 TODO `R83-6`（改用 Resend）。
+- ✅ **filter-repo 有漏網，改為換 repo**：先前的歷史重寫遺漏 `backups/ipig_export_20260331_102530_1.json`（2.79 MB，檔名多一個 `_1` 未被路徑清單涵蓋），重寫後仍留在 main 且 **clone 即得**，比需要特定 SHA 的 cached view 更容易取得。與其再重寫一次歷史＋再開一張 GitHub ticket，改為建立 **`delightening/ipigsystem`**（無底線）從乾淨工作樹重新開始，舊 `ipig_system` 轉 **private + archived + Actions 停用**。
+- ✅ **新 repo 的防線**：secret scanning、push protection、Dependabot alerts、security updates **全部啟用**（舊 repo 全關，正是本次事故的根因）。發布前 gitleaks 全樹掃描 12 findings 逐一確認全為誤報；`uploads/` 6 個使用者上傳檔（含 2 個站內信附件）由 `.gitignore` 排除、未發布。
+- ⚠️ **PR 編號自 #1 重新起算**：`TODO.md`／`PROGRESS.md` 內既有 `#N`（393 個相異編號）一律指舊 repo，兩檔開頭已加判讀規則，引用舊 repo 請寫 `ipig_system#N`。**紅線：舊 repo 絕不可轉回 public**——GitHub 端 cache 仍持有那兩份 dump（ticket 4608154 依使用者裁定不再追）。
+
 ### 2026-08-03 並行 session 守衛補主 checkout 缺口 + DISPATCH context 紀律（#1123）
 
 - ✅ **守衛從未生效**：`PARALLEL_SESSIONS.md` §10 自 2026-07-30 宣稱 `guard-parallel-sessions.sh` 掛在 `~/.claude/settings.json` 的 `PreToolUse`，實測該檔**全無 `hooks` 區塊**，腳本從未被呼叫，六條規則一條都沒在執行。本次掛上並實測生效（掛好當下即攔下兩條違規指令），§10 敘述同步更正。
