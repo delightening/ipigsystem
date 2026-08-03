@@ -43,15 +43,32 @@
 | React 表格元件（新增或改） | 強制先跑 `/system_table_chats` skill |
 | 更新 TODO.md / PROGRESS.md / DESIGN.md | `docs/agents/DOCS_PROTOCOL.md` |
 | 多步驟任務 / 大範圍讀取掃描 / 需要 subagent | `docs/agents/DISPATCH.md`（含派工模板 `TEMPLATES.md`） |
+| 猶豫要不要問使用者 / 算不算完成 / 該不該換路 | `docs/agents/JUDGMENT.md` |
 | 建工作區 / 跑本機整合測試 / 部署 / 要碰別的分支 | `docs/agents/PARALLEL_SESSIONS.md`（多 session 並行協議） |
 | 修改本檔或 docs/agents/ 下任何制度檔 | `docs/agents/MAINTENANCE.md` |
-| 除錯 | `/systematic-debugging`；明顯 typo 直接修 |
+| 除錯 | 先 `/investigate`；一輪找不到根因 → `/systematic-debugging`；明顯 typo 直接修 |
 | .docx/.xlsx/.pptx/PDF | 對應 skill（`/docx` `/xlsx` `/pptx`；PDF ≤10頁 `/pdf`，複雜 `/pdf-reading`）；一般文字檔直接 Read |
 
-# 精簡的底線（絕不為省事砍）
+# 核心紀律（濃縮版，全文見 backup）
 
-信任邊界輸入驗證、防資料遺失錯誤處理、安全 / 稽核 / 合規路徑（HMAC chain、權限、CSP、SoD）、
-a11y、使用者明確要求的功能。
+1. **先定義成功再動手**：bug fix 先寫 reproducing test（紅→修→綠）；新功能先寫 acceptance test；
+   refactor 先記 baseline green。缺成功標準的任務（「優化 X」）→ 停下要 success criteria。
+2. **外科手術式變更**：每一行 diff 都要 trace 回使用者請求。無關 dead code / typo → mention 不動。
+   配合既有風格（例：amendment 模組 audit 訊息全中文，不孤立改英文）。
+3. **Reuse ladder**：寫新 code 前依序問——真的需要存在嗎（YAGNI）→ 標準庫 → 框架原生 → 既有 utils/repo/service
+   → 一行解 → 都不行才寫最小可動 code。加新依賴不在此列，要問（見授權）。
+4. **不確定就標註**：自信 <80% 時寫「⚠️ 不確定：{原因}」，不用流暢語氣掩蓋。外部事實（版本號、API 行為）
+   要驗證來源，不靠訓練記憶。
+5. **精簡的底線**（絕不為省事砍）：信任邊界輸入驗證、防資料遺失錯誤處理、安全/稽核/合規路徑
+   （HMAC chain、權限、CSP、SoD）、a11y、使用者明確要求的功能。
+6. **驗證不自驗**：宣告完成前，按 `DISPATCH.md` §5 的「產物類型 → 驗收方式」表驗收
+   （程式碼=測試綠、文件=fresh-context read-back、高風險=第二意見），不以「我改完了」為完成證據，
+   也不自行挑最便宜的驗法。
+
+# 量化門檻（超過即拆）
+
+函數 ≤50 行｜圈複雜度 ≤10｜參數 ≤5（超過封裝 struct/config）｜巢狀 ≤3 層（early return / `?`）｜
+React 元件檔 ≤300 行｜JSX return ≤80 行｜單一 useEffect/handler ≤30 行｜Rust match ≤7 支｜Props ≤6 個
 
 # 授權現況（single source of truth；與記憶衝突時以本節為準）
 
@@ -100,6 +117,7 @@ a11y、使用者明確要求的功能。
 # 測試與品質門檻
 
 - 後端驗證標準與 clippy 門檻：`docs/agents/RULES_BACKEND.md` §7–8。
+- 測試 / 編譯紅燈必停：回報問題，不硬闖、不跳過測試宣告完成。
 - CI「Backend: cargo test」job 若 <2min 早夭於 setup-rust = infra flake，re-run 即可（main 也常中）。
 - CI 狀態 `UNSTABLE` = **已失敗待調查**，不是「還在跑」；看到就去查 log，不可當 pending 繼續等。
 - 抓不到 CI log（`BlobNotFound`）不要重抓第二次：改在本機用同樣旗標重現那個 job
