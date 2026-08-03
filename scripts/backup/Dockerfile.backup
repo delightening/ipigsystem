@@ -2,7 +2,7 @@
 # iPIG 資料庫備份容器
 # 基於 PostgreSQL 16 Alpine，內建 cron 排程
 # ============================================
-FROM postgres:16-alpine
+FROM postgres:18-alpine
 
 # 安裝 rsync（過時但保留）、dcron（排程用）、gnupg（加密）、rclone（R36-5/6/7 異地上傳）
 # rclone 同時支援 R2 (s3 backend) + DS918 SMB share + WebDAV，比 rsync over SSH 維運簡單
