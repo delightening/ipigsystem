@@ -8,21 +8,17 @@ on:
     branches:
       - main
       - 'integration/**'
-    # docs-only push 跳過整個 CI（治本：所有純文件 PR 不再跑 backend / frontend / Trivy）
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
   pull_request:
     branches:
       - main
       - 'integration/**'
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
+  # 2026-08-03：移除原本的 docs-only `paths-ignore`。原設計讓純文件變更完全不觸發
+  # workflow，代價是**一個 check-run 都不會產生**——branch protection 的 required
+  # checks 因此永遠不會變綠，純文件 PR 直接卡死（PR #16 實例）。
+  # 改為：workflow 一律觸發，由下方 `changes` job 判別領域，純文件僅跑
+  # changes / secret-scan / guards 三個輕量 job，backend / frontend / Trivy / E2E
+  # 仍照舊 skip。動機不只是解卡：文件裡誤貼 token 是常見洩漏途徑，純文件 PR
+  # 反而更該掃 secret（2026-08 外洩事故中，外洩的正是「不是 code 的檔案」）。
   workflow_dispatch:
 
 env:
@@ -87,6 +83,12 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
+              # 純文件：不觸發任一 stack。必須排在 backend/frontend 之前，才能保留
+              # 舊 `paths-ignore: '**.md'` 的語意（backend/README.md 也算文件）。
+              # 2026-08-03 起這些檔案不再讓整個 workflow 停跑，只是不觸發 backend /
+              # frontend / Trivy / E2E；changes / secret-scan / guards 仍會跑，
+              # 讓純文件 PR 有 check-run 可供 branch protection 判定，並保有 secret 掃描。
+              *.md|docs/*|LICENSE|.gitignore) ;;
               backend/*) BACKEND=true ;;
               frontend/*) FRONTEND=true ;;
               *) BACKEND=true; FRONTEND=true ;; # 未知領域 → 保守全跑
