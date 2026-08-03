@@ -5,5 +5,5 @@ playwright==1.49.0
 pydantic==2.13.4
 python-multipart==0.0.31
 openpyxl==3.1.5
-pypdf==6.13.3
+pypdf==6.14.2
 Pillow==12.3.0
