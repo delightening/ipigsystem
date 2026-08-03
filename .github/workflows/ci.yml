@@ -803,6 +803,39 @@ jobs:
         run: osv-scanner scan --config=frontend/osv-scanner.toml --lockfile=frontend/pnpm-lock.yaml
 
   # =========================
+  # 🔒 Python 依賴漏洞掃描
+  # 2026-08-04 補：CLAUDE.md 授權節 (f)（純依賴更新免 bot 閘）以「該 stack 的依賴
+  # 漏洞掃描綠」為閘，但當時 CI 只有 Rust 與 Node 兩條線，**Python 完全沒有掃描**
+  # ——services/print-pdf/requirements.txt 因此形同無把關。2026-08-03 合併的
+  # #11 pillow / #13 pypdf 正是踩到這個缺口（結果正確，但靠的是人工進容器驗版本，
+  # 不是規則保證）。用既有的 osv-scanner 補上，不另引入 pip-audit。
+  #
+  # 無 needs/if：requirements.txt 掃描很快，且無條件執行才能保證恆有 check-run，
+  # 可安全地設為 branch protection 的 required check——條件式 job 會 skip，
+  # skip 的 required check 會讓 PR 永遠卡 pending（#16 已踩過一次）。
+  # ⚠️ osv-scanner 不支援單獨的 pyproject.toml（僅認 poetry.lock 等 lockfile），
+  # 根目錄的 pyproject.toml 不在本 job 涵蓋範圍。
+  # =========================
+  python-audit:
+    name: "🔒 Security: Python 依賴掃描"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 下載 osv-scanner（釘版本，供應鏈安全）
+        run: |
+          sudo curl -sSL -o /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64
+          sudo chmod +x /usr/local/bin/osv-scanner
+
+      - name: OSV 依賴漏洞掃描（services/print-pdf/requirements.txt）
+        run: osv-scanner scan --lockfile=services/print-pdf/requirements.txt
+
+  # =========================
   # 🐳 容器安全掃描 (Trivy)
   # .trivyignore 內所列 CVE 均經評估，原因與風險見 docs/security-compliance/security.md（例如 CVE-2026-25646），非漏修。
   # =========================
