@@ -48,6 +48,30 @@ impl AnimalWeightService {
         Ok(weights)
     }
 
+    /// N+1 修復：一次撈多隻動物的體重紀錄，供專案層級匯出／列印使用。
+    /// 回傳已依 `animal_id` 排序，呼叫端自行分組。
+    pub async fn list_for_animals(
+        pool: &PgPool,
+        animal_ids: &[Uuid],
+    ) -> Result<Vec<AnimalWeightResponse>> {
+        let weights = sqlx::query_as::<_, AnimalWeightResponse>(
+            r#"
+            SELECT
+                w.id, w.animal_id, w.measure_date, w.weight,
+                w.created_by, u.display_name as created_by_name, w.created_at
+            FROM animal_weights w
+            LEFT JOIN users u ON w.created_by = u.id
+            WHERE w.animal_id = ANY($1::uuid[]) AND w.deleted_at IS NULL
+            ORDER BY w.animal_id, w.measure_date DESC
+            "#,
+        )
+        .bind(animal_ids)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(weights)
+    }
+
     /// 取得最新體重
     pub async fn get_latest(pool: &PgPool, animal_id: Uuid) -> Result<Option<AnimalWeight>> {
         let weight = sqlx::query_as::<_, AnimalWeight>(

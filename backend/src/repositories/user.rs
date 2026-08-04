@@ -14,6 +14,30 @@ pub async fn find_user_display_name_by_id(pool: &PgPool, user_id: Uuid) -> Resul
     Ok(name)
 }
 
+/// 批次查詢多個使用者的顯示名稱。
+///
+/// N+1 修復：供「一份清單逐列補上姓名」的場景使用（簽章清單、記錄附註），
+/// 取代在迴圈中逐一呼叫 [`find_user_display_name_by_id`]。
+/// `display_name` 為 NULL 或使用者不存在者不會出現在結果中，呼叫端查無即 `None`。
+pub async fn find_user_display_names_by_ids(
+    pool: &PgPool,
+    user_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, String>> {
+    if user_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let rows: Vec<(Uuid, Option<String>)> =
+        sqlx::query_as("SELECT id, display_name FROM users WHERE id = ANY($1::uuid[])")
+            .bind(user_ids)
+            .fetch_all(pool)
+            .await
+            .map_err(AppError::Database)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, name)| name.map(|n| (id, n)))
+        .collect())
+}
+
 /// 查詢使用者帳號狀態 (is_active, expires_at)。
 ///
 /// 使用情境：auth_middleware 每請求驗證帳號狀態。

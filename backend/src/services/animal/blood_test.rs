@@ -931,6 +931,63 @@ impl AnimalBloodTestService {
     // 血液檢查組合 (Panel) 管理
     // ============================================
 
+    /// N+1 修復：一次撈齊所有指定組合的模板項目再於記憶體分組，
+    /// 取代原本「每個組合各查一次」（`list_blood_test_panels` 與
+    /// `list_all_blood_test_panels` 兩處重複同一模式）。
+    ///
+    /// `only_active_items` = 前台用途只收啟用模板；管理用途連停用的一併列出。
+    async fn attach_panel_items(
+        pool: &PgPool,
+        panels: Vec<BloodTestPanel>,
+        only_active_items: bool,
+    ) -> Result<Vec<BloodTestPanelWithItems>> {
+        use std::collections::HashMap;
+
+        #[derive(sqlx::FromRow)]
+        struct PanelItemRow {
+            panel_id: Uuid,
+            #[sqlx(flatten)]
+            template: BloodTestTemplate,
+        }
+
+        if panels.is_empty() {
+            return Ok(Vec::new());
+        }
+        let panel_ids: Vec<Uuid> = panels.iter().map(|p| p.id).collect();
+
+        let rows = sqlx::query_as::<_, PanelItemRow>(
+            r#"
+            SELECT pi.panel_id, t.*
+            FROM blood_test_templates t
+            INNER JOIN blood_test_panel_items pi ON pi.template_id = t.id
+            WHERE pi.panel_id = ANY($1::uuid[])
+              AND (NOT $2::bool OR t.is_active = true)
+            ORDER BY pi.panel_id, pi.sort_order, t.sort_order, t.code
+            "#,
+        )
+        .bind(&panel_ids)
+        .bind(only_active_items)
+        .fetch_all(pool)
+        .await?;
+
+        let mut items_by_panel: HashMap<Uuid, Vec<BloodTestTemplate>> = HashMap::new();
+        for r in rows {
+            items_by_panel
+                .entry(r.panel_id)
+                .or_default()
+                .push(r.template);
+        }
+
+        // 沒有任何項目的組合不會出現在 join 結果中，對應原本查回空 Vec 的行為。
+        Ok(panels
+            .into_iter()
+            .map(|panel| {
+                let items = items_by_panel.remove(&panel.id).unwrap_or_default();
+                BloodTestPanelWithItems { panel, items }
+            })
+            .collect())
+    }
+
     /// 列出所有啟用的組合（含其模板項目）
     pub async fn list_blood_test_panels(pool: &PgPool) -> Result<Vec<BloodTestPanelWithItems>> {
         let panels = sqlx::query_as::<_, BloodTestPanel>(
@@ -939,25 +996,7 @@ impl AnimalBloodTestService {
         .fetch_all(pool)
         .await?;
 
-        let mut result = Vec::new();
-        for panel in panels {
-            let items = sqlx::query_as::<_, BloodTestTemplate>(
-                r#"
-                SELECT t.*
-                FROM blood_test_templates t
-                INNER JOIN blood_test_panel_items pi ON pi.template_id = t.id
-                WHERE pi.panel_id = $1 AND t.is_active = true
-                ORDER BY pi.sort_order, t.sort_order, t.code
-                "#,
-            )
-            .bind(panel.id)
-            .fetch_all(pool)
-            .await?;
-
-            result.push(BloodTestPanelWithItems { panel, items });
-        }
-
-        Ok(result)
+        Self::attach_panel_items(pool, panels, true).await
     }
 
     /// 列出所有組合（含停用）- 管理用
@@ -968,25 +1007,7 @@ impl AnimalBloodTestService {
         .fetch_all(pool)
         .await?;
 
-        let mut result = Vec::new();
-        for panel in panels {
-            let items = sqlx::query_as::<_, BloodTestTemplate>(
-                r#"
-                SELECT t.*
-                FROM blood_test_templates t
-                INNER JOIN blood_test_panel_items pi ON pi.template_id = t.id
-                WHERE pi.panel_id = $1
-                ORDER BY pi.sort_order, t.sort_order, t.code
-                "#,
-            )
-            .bind(panel.id)
-            .fetch_all(pool)
-            .await?;
-
-            result.push(BloodTestPanelWithItems { panel, items });
-        }
-
-        Ok(result)
+        Self::attach_panel_items(pool, panels, false).await
     }
 
     /// 建立血液檢查組合 — Service-driven audit

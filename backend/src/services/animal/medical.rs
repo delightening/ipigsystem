@@ -43,6 +43,23 @@ impl AnimalMedicalService {
         Ok(vaccinations)
     }
 
+    /// N+1 修復：一次撈多隻動物的疫苗紀錄，供專案層級匯出／列印使用。
+    /// 回傳已依 `animal_id` 排序，呼叫端自行分組。
+    pub async fn list_vaccinations_for_animals(
+        pool: &PgPool,
+        animal_ids: &[Uuid],
+    ) -> Result<Vec<AnimalVaccination>> {
+        let vaccinations = sqlx::query_as::<_, AnimalVaccination>(
+            "SELECT * FROM animal_vaccinations WHERE animal_id = ANY($1::uuid[]) \
+             AND deleted_at IS NULL ORDER BY animal_id, administered_date DESC",
+        )
+        .bind(animal_ids)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(vaccinations)
+    }
+
     /// 取得單一疫苗紀錄（SDD before snapshot 用）
     pub async fn get_vaccination_by_id(pool: &PgPool, id: Uuid) -> Result<AnimalVaccination> {
         sqlx::query_as::<_, AnimalVaccination>(
@@ -265,6 +282,22 @@ impl AnimalMedicalService {
         .await?;
 
         Ok(sacrifice)
+    }
+
+    /// N+1 修復：一次撈多隻動物的犧牲紀錄，供專案層級匯出／列印使用。
+    /// 一隻動物至多一筆，呼叫端自行以 `animal_id` 建表查詢。
+    pub async fn get_sacrifices_for_animals(
+        pool: &PgPool,
+        animal_ids: &[Uuid],
+    ) -> Result<Vec<AnimalSacrifice>> {
+        let sacrifices = sqlx::query_as::<_, AnimalSacrifice>(
+            "SELECT * FROM animal_sacrifices WHERE animal_id = ANY($1::uuid[])",
+        )
+        .bind(animal_ids)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(sacrifices)
     }
 
     /// 建立或更新犧牲紀錄 — Service-driven audit
@@ -747,16 +780,57 @@ impl AnimalMedicalService {
             .collect()
         };
 
+        // N+1 修復：原本每隻動物各打 5 次查詢（觀察／手術／體重／疫苗／犧牲），
+        // 一個計畫 N 隻動物就是 5N 次 round-trip。改為五次批次查詢後在記憶體分組，
+        // 總查詢數固定為 2 + 5。（source name 的 batch 化早在 PR #332 就做過，
+        // 這五個當時沒跟上。）
+        let animal_ids: Vec<Uuid> = animals.iter().map(|a| a.id).collect();
+
+        let mut observations_by_animal: std::collections::HashMap<Uuid, Vec<_>> =
+            std::collections::HashMap::new();
+        for o in super::AnimalObservationService::list_for_animals(pool, &animal_ids).await? {
+            observations_by_animal
+                .entry(o.animal_id)
+                .or_default()
+                .push(o);
+        }
+        let mut surgeries_by_animal: std::collections::HashMap<Uuid, Vec<_>> =
+            std::collections::HashMap::new();
+        for s in super::AnimalSurgeryService::list_for_animals(pool, &animal_ids).await? {
+            surgeries_by_animal.entry(s.animal_id).or_default().push(s);
+        }
+        let mut weights_by_animal: std::collections::HashMap<Uuid, Vec<_>> =
+            std::collections::HashMap::new();
+        for w in super::AnimalWeightService::list_for_animals(pool, &animal_ids).await? {
+            weights_by_animal.entry(w.animal_id).or_default().push(w);
+        }
+        let mut vaccinations_by_animal: std::collections::HashMap<Uuid, Vec<_>> =
+            std::collections::HashMap::new();
+        for v in Self::list_vaccinations_for_animals(pool, &animal_ids).await? {
+            vaccinations_by_animal
+                .entry(v.animal_id)
+                .or_default()
+                .push(v);
+        }
+        let mut sacrifice_by_animal: std::collections::HashMap<Uuid, AnimalSacrifice> =
+            Self::get_sacrifices_for_animals(pool, &animal_ids)
+                .await?
+                .into_iter()
+                .map(|s| (s.animal_id, s))
+                .collect();
+
         let mut animal_data = Vec::new();
         for animal in animals {
-            // get_animal_medical_data 內部又查一次 source name —
-            // 為一次調用不重要；project handler 走 batch 路徑時不會經過此 fn
-            // 用更輕量版避免重複 query：本地組裝 + map lookup
-            let observations = super::AnimalObservationService::list(pool, animal.id, None).await?;
-            let surgeries = super::AnimalSurgeryService::list(pool, animal.id, None).await?;
-            let weights = super::AnimalWeightService::list(pool, animal.id, None).await?;
-            let vaccinations = Self::list_vaccinations(pool, animal.id, None).await?;
-            let sacrifice = Self::get_sacrifice(pool, animal.id).await?;
+            // 查無紀錄的動物不會出現在批次結果中，取空 Vec / None 與原本逐隻查詢等價。
+            let observations = observations_by_animal
+                .remove(&animal.id)
+                .unwrap_or_default();
+            let surgeries = surgeries_by_animal.remove(&animal.id).unwrap_or_default();
+            let weights = weights_by_animal.remove(&animal.id).unwrap_or_default();
+            let vaccinations = vaccinations_by_animal
+                .remove(&animal.id)
+                .unwrap_or_default();
+            let sacrifice = sacrifice_by_animal.remove(&animal.id);
 
             let mut animal_value = serde_json::to_value(&animal).unwrap_or_default();
             if let Some(obj) = animal_value.as_object_mut() {

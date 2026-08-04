@@ -105,25 +105,42 @@ pub async fn list_journal_entries(
     Ok(entries)
 }
 
-/// 查詢指定傳票的分錄明細行
-pub async fn find_journal_entry_lines(
+/// 查詢多張傳票的分錄明細行（附所屬 `journal_entry_id` 供呼叫端分組）。
+///
+/// N+1 修復：原本是「一張傳票查一次」，被傳票清單以 `limit`（最大
+/// `MAX_PAGE_SIZE`）為上限逐筆呼叫；改為一次帶入所有 id。
+pub async fn find_journal_entry_lines_by_entry_ids(
     pool: &PgPool,
-    entry_id: Uuid,
-) -> Result<Vec<JournalEntryLineRow>> {
-    let lines = sqlx::query_as::<_, JournalEntryLineRow>(
+    entry_ids: &[Uuid],
+) -> Result<Vec<(Uuid, JournalEntryLineRow)>> {
+    #[derive(sqlx::FromRow)]
+    struct EntryLineRow {
+        journal_entry_id: Uuid,
+        #[sqlx(flatten)]
+        line: JournalEntryLineRow,
+    }
+
+    if entry_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query_as::<_, EntryLineRow>(
         r#"
-        SELECT jel.id as line_id, jel.line_no, coa.code as account_code, coa.name as account_name,
+        SELECT jel.journal_entry_id,
+               jel.id as line_id, jel.line_no, coa.code as account_code, coa.name as account_name,
                jel.debit_amount, jel.credit_amount, jel.description
         FROM journal_entry_lines jel
         JOIN chart_of_accounts coa ON coa.id = jel.account_id
-        WHERE jel.journal_entry_id = $1
-        ORDER BY jel.line_no
+        WHERE jel.journal_entry_id = ANY($1::uuid[])
+        ORDER BY jel.journal_entry_id, jel.line_no
         "#,
     )
-    .bind(entry_id)
+    .bind(entry_ids)
     .fetch_all(pool)
     .await?;
-    Ok(lines)
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.journal_entry_id, r.line))
+        .collect())
 }
 
 /// 應付帳款帳齡（供應商餘額）
