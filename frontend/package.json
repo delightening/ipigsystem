@@ -105,7 +105,7 @@
     "eslint-plugin-storybook": "^10.5.5",
     "globals": "^17.8.0",
     "jsdom": "^30.0.1",
-    "lint-staged": "^17.2.0",
+    "lint-staged": "^17.3.0",
     "monocart-reporter": "^2.12.4",
     "playwright": "^1.62.1",
     "postcss": "^8.5.25",
