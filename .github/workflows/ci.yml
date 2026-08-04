@@ -791,11 +791,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 下載 osv-scanner（釘版本，供應鏈安全）
-        run: |
-          sudo curl -sSL -o /usr/local/bin/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64
-          sudo chmod +x /usr/local/bin/osv-scanner
+      - uses: ./.github/actions/setup-osv-scanner
 
       - name: OSV 依賴漏洞掃描（frontend/pnpm-lock.yaml）
         # --config 明確指向豁免清單（不倚賴自動尋找）；清單內每條均須附評估理由
@@ -826,11 +822,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 下載 osv-scanner（釘版本，供應鏈安全）
-        run: |
-          sudo curl -sSL -o /usr/local/bin/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64
-          sudo chmod +x /usr/local/bin/osv-scanner
+      - uses: ./.github/actions/setup-osv-scanner
 
       - name: OSV 依賴漏洞掃描（services/print-pdf/requirements.txt）
         run: osv-scanner scan --lockfile=services/print-pdf/requirements.txt
