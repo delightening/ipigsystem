@@ -8,10 +8,13 @@ openpyxl==3.1.5
 pypdf==6.14.2
 Pillow==12.3.0
 
-# --- transitive 依賴的安全性釘版（2026-08-04）---
+# --- transitive 依賴的安全性下限（2026-08-04）---
 # 這兩個並非本服務直接 import，而是由 uvicorn[standard] / httpx 那條線帶進來。
 # 因為未在本檔列出，Dependabot 的 alert 清單看不到它們——是新增的
 # 「🔒 Security: Python 依賴掃描」job（osv-scanner）上線第一次跑才掃出來。
-# 版本取 OSV 標示的 fixed version，日後上游套件自然帶上更高版本即可移除本區塊。
-h11==0.16.0   # PYSEC-2026-348 / GHSA-vqfr-h8mv-ghfj — CVSS 9.1
-idna==3.15    # PYSEC-2026-215 / GHSA-65pc-fj4g-8rjx — CVSS 6.9
+#
+# 用 `>=` 而非本檔其他項目的 `==`：這裡要表達的是「不得低於修補版」，不是
+# 釘死某一版。實測 prod 容器已自然裝到 idna 3.18，若寫 `==3.15` 反而會在
+# 下次 rebuild 時把它降級，並擋掉之後的修補。上限交由上游套件的相依宣告決定。
+h11>=0.16.0   # PYSEC-2026-348 / GHSA-vqfr-h8mv-ghfj — CVSS 9.1
+idna>=3.15    # PYSEC-2026-215 / GHSA-65pc-fj4g-8rjx — CVSS 6.9
