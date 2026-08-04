@@ -5,7 +5,7 @@
 # WeasyPrint 嵌入會破字；Chromium 原生處理（像瀏覽器 / Word）→ 標楷體乾淨紮實，
 # 且 @page 頁眉頁尾 + counter(page) 新版 Chromium 已支援。
 # base image 已含 chromium + 系統依賴。
-FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy AS production
+FROM mcr.microsoft.com/playwright/python:v1.62.0-jammy AS production
 
 # CJK 字型：8 份非 GLP 文件經 base.html 以「Noto Sans CJK TC」名稱引用 → 需系統字型。
 # 3 份 GLP 文件（aup_protocol / vet_patrol / vet_patrol_report）主頁排版用 @font-face
