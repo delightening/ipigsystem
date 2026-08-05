@@ -107,9 +107,24 @@
 ## 7. 共用外部額度
 
 - **CodeRabbit review 額度跨 session 共用**。2026-07-29 實測 #1088 拿到 `Review rate limited`。
+  額度綁「開 PR 的身分」，所有 session 都以 `delightening` 推送＝算同一份。
+- **配額實況（CodeRabbit 官方 2026-08-05 回信 + docs 核對）**：本 repo 走 OSS 方案，
+  PR review 上限是**浮動的 1–10 次／開發者／小時**（依專案社群規模與熱門度，rolling window——
+  舊的逐筆退出視窗，不是整點歸零）。小型新 repo 落在低端。
+  Marketplace 的「Pro Plus 對開源免費」**只指功能集，不含配額**。
+  付費方案為保證值：Pro=5／Pro+=10／Enterprise=12。
+- **bot 開的 PR 不佔人類額度**：bot 被當成獨立 user 計算（也可單獨配 seat）。
+  ⚠️ 因此 `.coderabbit.yaml` 擋 Dependabot **省不到配額**——保留該設定的理由是避免假綠 status，
+  不是省額度（2026-08-04 #21 的原始理由已被推翻，詳見該檔註解）。
+- **PR 開立密度自我節流（使用者 2026-08-05 裁定）**：同一小時內**最多開 3 支自己的 PR**，
+  其餘排隊等前面的 review 老化退出視窗再開。依據：2026-08-04 連開 #16／#17／#18／#20
+  當場四支全撞 `Review rate limited`，撞牆的成本（人工逐支判斷是否放行）遠高於等待。
+  多 session 並行時這條特別重要——三個 session 各開 2 支就已超標。
 - 不得為了趕自己的 PR 反覆 `@coderabbitai review`——那會吃掉別的 session 的 review 額度。同一 PR 最多觸發一次。
 - 判斷 bot 閘要看 commit status 的 **description**：`Review completed` 才算審過；
   `Review rate limited` / `skipped` 都**不是**乾淨章（`state` 兩者都是 `success`，只看 state 會誤判）。
+  ⚠️ 更嚴格的判準見 CLAUDE.md 授權節 (f)：description 顯示 `Review completed` 但 PR 留言是
+  `Review skipped due to path filters` 時＝它一個檔案都沒看，同樣不算乾淨章。
 - CI runner 也是共用的：不要為了「試試看」重跑整套 CI。
 
 ## 8. 記憶檔併發寫入
