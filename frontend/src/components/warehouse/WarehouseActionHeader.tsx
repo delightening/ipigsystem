@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import {
+    Archive,
     Loader2,
     Plus,
     Warehouse as WarehouseIcon,
@@ -39,6 +40,7 @@ import {
 } from 'lucide-react'
 import { useConfirmDialog } from '@/hooks/useConfirmDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { WarehouseInactiveDialog } from './WarehouseInactiveDialog'
 
 interface WarehouseActionHeaderProps {
     selectedWarehouseId: string
@@ -71,20 +73,27 @@ export function WarehouseActionHeader({
     const queryClient = useQueryClient()
     const { dialogState, confirm } = useConfirmDialog()
     const [showWarehouseDialog, setShowWarehouseDialog] = useState(false)
+    const [showInactiveDialog, setShowInactiveDialog] = useState(false)
     const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null)
     const [formData, setFormData] = useState<WarehouseFormData>(initialFormData)
 
-    // 取得所有倉庫（包含停用的，以便編輯）
+    // 取得所有倉庫。GET /warehouses 未帶 is_active 時後端預設只回啟用中的
+    // （services/warehouse.rs `list`），停用的必須另外用 ?is_active=false 撈——
+    // 少了這一支，誤停用的倉庫在 UI 上完全消失、無從復原（2026-08-05 事件）。
     const { data: allWarehouses, isLoading: loadingWarehouses } = useQuery({
         queryKey: ['all-warehouses'],
         queryFn: async () => {
-            const res = await api.get<Warehouse[]>('/warehouses')
-            return res.data
+            const [active, inactive] = await Promise.all([
+                api.get<Warehouse[]>('/warehouses'),
+                api.get<Warehouse[]>('/warehouses?is_active=false'),
+            ])
+            return [...active.data, ...inactive.data]
         },
     })
 
     // 過濾出啟用的倉庫供選擇器使用
     const activeWarehouses = allWarehouses?.filter(w => w.is_active) || []
+    const inactiveWarehouses = allWarehouses?.filter(w => !w.is_active) || []
 
     // 建立倉庫
     const createMutation = useMutation({
@@ -137,7 +146,7 @@ export function WarehouseActionHeader({
             if (selectedWarehouseId === editingWarehouse?.id) {
                 onWarehouseChange('')
             }
-            toast({ title: '成功', description: '倉庫已刪除' })
+            toast({ title: '成功', description: '倉庫已停用' })
             setShowWarehouseDialog(false)
         },
         onError: (error: Error) => {
@@ -179,11 +188,13 @@ export function WarehouseActionHeader({
 
     const handleDelete = async () => {
         if (!editingWarehouse) return
+        // 刪除是軟刪除（is_active = false），原文案寫「無法復原」是錯的；
+        // 現在有「已停用倉庫」入口可復原，文案照實描述。
         const ok = await confirm({
-            title: '刪除倉庫',
-            description: `確定要刪除倉庫「${editingWarehouse.name}」嗎？此操作無法復原。`,
+            title: '停用倉庫',
+            description: `確定要停用倉庫「${editingWarehouse.name}」嗎？停用後不會出現在倉庫清單與庫存查詢，可從「已停用倉庫」復原。`,
             variant: 'destructive',
-            confirmLabel: '確認刪除',
+            confirmLabel: '確認停用',
         })
         if (ok) {
             deleteMutation.mutate(editingWarehouse.id)
@@ -225,6 +236,19 @@ export function WarehouseActionHeader({
                         選擇倉庫
                     </CardTitle>
                     <div className="flex gap-2">
+                        {inactiveWarehouses.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowInactiveDialog(true)}
+                            >
+                                <Archive className="h-4 w-4 mr-1" />
+                                已停用倉庫
+                                <span className="ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-destructive-foreground">
+                                    {inactiveWarehouses.length}
+                                </span>
+                            </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={handleOpenCreate}>
                             <Plus className="h-4 w-4 mr-1" />
                             新增倉庫
@@ -357,6 +381,11 @@ export function WarehouseActionHeader({
                     </form>
                 </DialogContent>
             </Dialog>
+            <WarehouseInactiveDialog
+                open={showInactiveDialog}
+                onOpenChange={setShowInactiveDialog}
+                warehouses={inactiveWarehouses}
+            />
             <ConfirmDialog state={dialogState} />
         </div>
     )
