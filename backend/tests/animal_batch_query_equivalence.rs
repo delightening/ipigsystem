@@ -19,11 +19,11 @@
 //! 比對方式：這些 model 未 derive `PartialEq`，改以 `serde_json::to_value` 比對完整
 //! 結構與順序——不為了測試而去動 production model 的 derive。
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rust_decimal::Decimal;
 use serial_test::serial;
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use erp_backend::services::{AnimalObservationService, AnimalSurgeryService, AnimalWeightService};
@@ -73,6 +73,10 @@ async fn setup_pool() -> PgPool {
 ///
 /// `breed` / `gender` 皆為 DB enum（`animal_breed` = miniature/white/LYD/other、
 /// `animal_gender` = male/female），不可填自由文字。
+///
+/// ⚠️ `ear_tag` 是 `VARCHAR(10)`（`migrations/006_animal_management.sql:39`），
+/// 呼叫端組出來的標籤**含 prefix 不得超過 10 字元**，否則 insert 會以
+/// `22001 value too long` 失敗。現用 3 碼 prefix + `-` 只剩 6 碼可用。
 async fn insert_animal(pool: &PgPool, tag: &str) -> Uuid {
     sqlx::query_scalar::<_, Uuid>(
         r#"INSERT INTO animals (ear_tag, breed, gender, entry_date)
@@ -85,26 +89,85 @@ async fn insert_animal(pool: &PgPool, tag: &str) -> Uuid {
     .expect("insert animal")
 }
 
-/// 測試資料佈局，三種情境一次涵蓋：
+/// 測試資料佈局，四種情境一次涵蓋：
 /// - `rich`：多筆紀錄，且其中一筆為 soft-deleted（驗證排除 + 排序）
 /// - `empty`：完全沒有任何紀錄（驗證不會整隻消失）
 /// - `single`：僅一筆（驗證單筆情境與逐筆版一致）
+/// - `outsider`：**有**紀錄但**不在** `ids()` 請求清單內
+///
+/// `outsider` 是刻意的反例：前三者只能證明「請求的動物拿到正確資料」，若
+/// `list_for_animals` 漏掉 `WHERE animal_id = ANY($1)`，逐筆比對仍會全數通過
+/// （每組資料都還是對的，只是多回了別人的）。加一隻不該出現的動物，才驗得到
+/// 篩選條件本身還在。
 struct Fixture {
     rich: Uuid,
     empty: Uuid,
     single: Uuid,
+    outsider: Uuid,
 }
 
 impl Fixture {
+    /// 送進批次查詢的動物清單——**刻意不含 `outsider`**。
     fn ids(&self) -> Vec<Uuid> {
         vec![self.rich, self.empty, self.single]
     }
+}
+
+/// 對同一隻動物、同一時點各寫一筆 observation / weight / surgery。
+///
+/// 三張表一起寫，三個等價性測試才能共用同一份 fixture；`deleted_at` 傳
+/// `Some(_)` 即為 soft-deleted 列。
+async fn insert_record_triplet(
+    pool: &PgPool,
+    animal: Uuid,
+    at: DateTime<Utc>,
+    weight: Decimal,
+    deleted_at: Option<DateTime<Utc>>,
+) {
+    sqlx::query(
+        r#"INSERT INTO animal_observations
+               (animal_id, event_date, record_type, content, deleted_at)
+           VALUES ($1, $2, 'observation', 'batch-equivalence', $3)"#,
+    )
+    .bind(animal)
+    .bind(at)
+    .bind(deleted_at)
+    .execute(pool)
+    .await
+    .expect("insert observation");
+
+    sqlx::query(
+        r#"INSERT INTO animal_weights
+               (animal_id, measure_date, weight, deleted_at)
+           VALUES ($1, $2, $3, $4)"#,
+    )
+    .bind(animal)
+    .bind(at)
+    .bind(weight)
+    .bind(deleted_at)
+    .execute(pool)
+    .await
+    .expect("insert weight");
+
+    sqlx::query(
+        r#"INSERT INTO animal_surgeries
+               (animal_id, surgery_date, surgery_site, deleted_at)
+           VALUES ($1, $2, 'test-site', $3)"#,
+    )
+    .bind(animal)
+    .bind(at)
+    .bind(deleted_at)
+    .execute(pool)
+    .await
+    .expect("insert surgery");
 }
 
 async fn seed(pool: &PgPool, prefix: &str) -> Fixture {
     let rich = insert_animal(pool, &format!("{prefix}-RICH")).await;
     let empty = insert_animal(pool, &format!("{prefix}-EMPTY")).await;
     let single = insert_animal(pool, &format!("{prefix}-SINGLE")).await;
+    // `-OUT` 而非 `-OUTSIDER`：ear_tag 只有 VARCHAR(10)，3 碼 prefix 後放不下
+    let outsider = insert_animal(pool, &format!("{prefix}-OUT")).await;
 
     let now = Utc::now();
     for (animal, days, deleted) in [
@@ -112,50 +175,24 @@ async fn seed(pool: &PgPool, prefix: &str) -> Fixture {
         (rich, 3, false),
         (rich, 2, true), // soft-deleted：兩版都必須排除
         (single, 5, false),
+        (outsider, 4, false), // 不在請求清單內，批次結果不該出現
     ] {
-        let at = now - Duration::days(days);
-        sqlx::query(
-            r#"INSERT INTO animal_observations
-                   (animal_id, event_date, record_type, content, deleted_at)
-               VALUES ($1, $2, 'observation', 'batch-equivalence', $3)"#,
+        let deleted_at = if deleted { Some(now) } else { None };
+        insert_record_triplet(
+            pool,
+            animal,
+            now - Duration::days(days),
+            Decimal::new(1000 + days, 1),
+            deleted_at,
         )
-        .bind(animal)
-        .bind(at)
-        .bind(if deleted { Some(now) } else { None })
-        .execute(pool)
-        .await
-        .expect("insert observation");
-
-        sqlx::query(
-            r#"INSERT INTO animal_weights
-                   (animal_id, measure_date, weight, deleted_at)
-               VALUES ($1, $2, $3, $4)"#,
-        )
-        .bind(animal)
-        .bind(at)
-        .bind(Decimal::new(1000 + days, 1))
-        .bind(if deleted { Some(now) } else { None })
-        .execute(pool)
-        .await
-        .expect("insert weight");
-
-        sqlx::query(
-            r#"INSERT INTO animal_surgeries
-                   (animal_id, surgery_date, surgery_site, deleted_at)
-               VALUES ($1, $2, 'test-site', $3)"#,
-        )
-        .bind(animal)
-        .bind(at)
-        .bind(if deleted { Some(now) } else { None })
-        .execute(pool)
-        .await
-        .expect("insert surgery");
+        .await;
     }
 
     Fixture {
         rich,
         empty,
         single,
+        outsider,
     }
 }
 
@@ -169,6 +206,27 @@ where
         m.entry(key(&r)).or_default().push(r);
     }
     m
+}
+
+/// 批次結果不得含 `ids()` 以外的動物。
+///
+/// 逐筆等價比對只看得到「請求的動物拿到的資料對不對」，`list_for_animals`
+/// 若漏掉 `WHERE animal_id = ANY($1)`，每一組資料仍然正確、比對照樣全過，
+/// 只是順帶把整張表都撈回來了。`fx.outsider` 是保證存在的反例：它有紀錄、
+/// 但不在請求清單內，篩選一旦失效就會在這裡現形。
+fn assert_outsider_absent<T>(batched: &HashMap<Uuid, Vec<T>>, fx: &Fixture, label: &str) {
+    let requested: HashSet<Uuid> = fx.ids().into_iter().collect();
+    let unexpected: Vec<Uuid> = batched
+        .keys()
+        .copied()
+        .filter(|id| !requested.contains(id))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "{label} 批次結果含未請求的 animal_id {unexpected:?}（fixture outsider={}）：\
+         list_for_animals 的 `animal_id = ANY($1)` 篩選可能已遺失",
+        fx.outsider
+    );
 }
 
 #[tokio::test]
@@ -208,6 +266,7 @@ async fn observation_batch_equals_per_animal() {
         2,
         "soft-deleted 的 observation 未被排除"
     );
+    assert_outsider_absent(&batched, &fx, "observation");
 }
 
 #[tokio::test]
@@ -241,6 +300,7 @@ async fn weight_batch_equals_per_animal() {
         2,
         "soft-deleted 的 weight 未被排除"
     );
+    assert_outsider_absent(&batched, &fx, "weight");
 }
 
 #[tokio::test]
@@ -274,4 +334,5 @@ async fn surgery_batch_equals_per_animal() {
         2,
         "soft-deleted 的 surgery 未被排除"
     );
+    assert_outsider_absent(&batched, &fx, "surgery");
 }
