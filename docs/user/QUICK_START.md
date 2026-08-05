@@ -72,8 +72,8 @@ cargo run
 
 ```powershell
 cd frontend
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 前端：http://localhost:5173
