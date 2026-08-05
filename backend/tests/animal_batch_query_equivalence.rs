@@ -30,17 +30,39 @@ use erp_backend::services::{
     AnimalObservationService, AnimalSurgeryService, AnimalWeightService,
 };
 
-/// **fail-closed**：未設 `TEST_DATABASE_URL` 直接中止，不 fallback 到 `DATABASE_URL`。
+/// **fail-closed**：連線與 migrate 之前先確認目標是測試資料庫，否則中止。
 ///
-/// 既有測試多寫成 `TEST_DATABASE_URL` → `DATABASE_URL` 的 fallback，那正是 CLAUDE.md
-/// 「禁止在 prod 跑 backend 整合測試」的觸發點——未設變數時會對 prod DB 跑 migration
-/// 並寫入測試資料，污染正式表與稽核鏈（已列為 R84-15 待修）。新測試不複製該 pattern。
+/// CLAUDE.md 紅線是「禁止在 prod 跑 backend 整合測試」——未設 `TEST_DATABASE_URL` 時
+/// fallback 到 `DATABASE_URL` 會對 prod DB 跑 migration 並寫入測試資料，污染正式表與
+/// 稽核鏈（R84-15 待修項）。
+///
+/// 但「一律要求 `TEST_DATABASE_URL`」不是正解：CI 的 `backend-test` job **只設
+/// `DATABASE_URL`**，且它指向 postgres service container 內的 `ipig_db_test`——在該
+/// 環境下 fallback 是安全的。真正的危險只存在於本機（本機 `DATABASE_URL` 指向 prod）。
+///
+/// 因此採 R84-15 描述的形式：**允許 fallback，但在 connect 與 migrate 之前先擋掉非
+/// 測試 DSN**。prod 資料庫名為 `ipig_db`，測試庫一律含 `test`（CI 的 `ipig_db_test`、
+/// 本機的 `ipig_db_test_<sid>`），以此為判準。
 async fn setup_pool() -> PgPool {
     dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL").expect(
-        "TEST_DATABASE_URL 必須設定且指向獨立的丟棄用資料庫；\
-         本測試刻意不 fallback 到 DATABASE_URL，避免誤打 prod",
+    let url = std::env::var("TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+        .expect("需設定 TEST_DATABASE_URL 或 DATABASE_URL");
+
+    // 只取 database 名判斷，避免把含密碼的完整 DSN 印進 CI log
+    let db_name = url
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .split('?')
+        .next()
+        .unwrap_or_default();
+    assert!(
+        db_name.contains("test"),
+        "拒絕在非測試資料庫執行整合測試：目標 database 為 `{db_name}`。\
+         請將 TEST_DATABASE_URL 指向獨立的丟棄用資料庫（名稱需含 test）。"
     );
+
     let pool = PgPool::connect(&url).await.expect("connect test db");
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -171,8 +193,8 @@ async fn observation_batch_equals_per_animal() {
         let from_batch = batched.get(&id).cloned().unwrap_or_default();
 
         assert_eq!(
-            serde_json::to_value(&per_item).unwrap(),
-            serde_json::to_value(&from_batch).unwrap(),
+            serde_json::to_value(&per_item).expect("serialize per-item result"),
+            serde_json::to_value(&from_batch).expect("serialize batched result"),
             "observation 批次與逐筆結果不一致（animal_id={id}）"
         );
     }
@@ -210,8 +232,8 @@ async fn weight_batch_equals_per_animal() {
         let from_batch = batched.get(&id).cloned().unwrap_or_default();
 
         assert_eq!(
-            serde_json::to_value(&per_item).unwrap(),
-            serde_json::to_value(&from_batch).unwrap(),
+            serde_json::to_value(&per_item).expect("serialize per-item result"),
+            serde_json::to_value(&from_batch).expect("serialize batched result"),
             "weight 批次與逐筆結果不一致（animal_id={id}）"
         );
     }
@@ -243,8 +265,8 @@ async fn surgery_batch_equals_per_animal() {
         let from_batch = batched.get(&id).cloned().unwrap_or_default();
 
         assert_eq!(
-            serde_json::to_value(&per_item).unwrap(),
-            serde_json::to_value(&from_batch).unwrap(),
+            serde_json::to_value(&per_item).expect("serialize per-item result"),
+            serde_json::to_value(&from_batch).expect("serialize batched result"),
             "surgery 批次與逐筆結果不一致（animal_id={id}）"
         );
     }
