@@ -193,6 +193,16 @@ v1.0 / v1.1 里程碑。詳見 [TODO.md](TODO.md)（待辦與優先級）、[IMP
 > **格式規範：** 反向時間序（新→舊）。每個條目：`### YYYY-MM-DD 標題` + `- ✅ **粗體摘要**：細節`。
 > 此處為全專案唯一的變更日誌，TODO.md 變更紀錄已封存。
 
+### 2026-08-05 倉庫誤停用事故：隱形庫存閘門 + 復原入口 + 稽核補來源
+
+- ✅ **事故本身**：16:06 倉庫「儲藏室 (2)」被停用（軟刪除，`is_active = false`），底下 4 個儲位（儲物架1/2/3、抽屜櫃）**尚有 4,424 單位結存**。倉庫一停用，庫存查詢樹（`list_with_shelves`）與現況報表（`get_report_data`）都只撈 `is_active = true` 的倉庫 → 這批結存從所有畫面消失，但 `stock_ledger` 帳上仍在，即**隱形庫存**。稽核紀錄本身有寫（`WAREHOUSE_DELETE`，operator/時間齊全），資料一筆未失。
+- ✅ **閘門（後端）**：停用前檢查底下結存，有就回 422 `BusinessRule` 並列出儲位與數量。新增 `repositories::warehouse::list_stocked_locations_tx`（刻意不濾儲位 `is_active`——停用儲位上的結存同樣會隱形）。**`update_tx` 走同一道閘門**：「編輯 → 啟用狀態關掉」與「刪除」是同一條 `is_active` 路徑，只擋後者等於沒擋。
+- ✅ **復原入口（前端）**：倉庫頁原本只列啟用中的倉庫，誤停用後 UI 上再也選不到、無法自救（本次只能直接打 API 救）。新增 `WarehouseInactiveDialog`（代碼／名稱／最後更新時間 + 逐列復原），標題列按鈕僅在真的有停用倉庫時出現。`all-warehouses` query 補打 `?is_active=false`——原註解寫「包含停用的」但後端預設只回啟用中的，停用倉庫從未載入。刪除確認文案「此操作無法復原」照實改（它一直都是軟刪除）。
+- ✅ **稽核補來源**：`create` / `update` / `delete` 三個 handler 的 `request_context` 原為 `None`，稽核只記得誰做的、記不到從哪個 IP／瀏覽器做的；三者補上 `ConnectInfo` + `HeaderMap`。
+- ✅ **review 修正（#31，CodeRabbit）**：整合測試的 `setup_pool` 原有 `DATABASE_URL` fallback——這台機器上它指向 prod DB，等同讓測試對正式庫跑 migrate 並寫入資料（CLAUDE.md 明文禁止）；改為只讀 `TEST_DATABASE_URL`，缺少即失敗。⚠️ **既有整合測試檔（如 `api_storage_location_inventory.rs`）仍帶同一個 fallback，未收斂**。另修 `Promise.all`→`allSettled`（停用清單失敗不該連帶讓倉庫選擇器空掉）與復原按鈕的共用 `isPending`。
+- 📌 **未收斂 1**：匯入路徑（`import_warehouses` → `create`）的 IP／UA 仍為 `None`，與批次 summary audit（`WAREHOUSE_IMPORT`）現況一致，待後續一併處理。
+- 📌 **未收斂 2（反向漏洞，CodeRabbit #31 指出）**：本次擋的是「停用時已有結存」，但**停用之後**的入庫路徑（GRN 核准、TR-in、儲位庫存 upsert）都只查 `warehouse_id`、不看倉庫是否已停用，仍可對停用倉庫增加結存 → 同樣產生隱形庫存。要動多條寫入路徑且各需測試覆蓋，範圍超出本 PR，另行處理（2026-08-06 使用者裁定）。
+
 ### 2026-08-03 merge 閘門兩個 fail-open 缺口修正（#16）
 
 - ✅ **bot 閘對純依賴更新結構性失效**：CodeRabbit 預設以 `!**/*.lock` 排除 lockfile，於是 #14（只改 `backend/Cargo.lock`）拿到 commit status `state=success` / `desc=Review completed`，**PR 留言卻是 `Review skipped due to path filters`——它一個檔案都沒看**。原 (e) 判準只看 status description，在這條路上靜默 fail-open，與 2026-07-24 記錄的「額度耗盡」是同一問題的第二個入口。CLAUDE.md 授權節新增 **(f)**：純依賴更新（diff 僅 lockfile／版本號、零 code 變更）改以「CI 全綠 + `cargo audit`／`pnpm audit` 綠」為閘，不要求 bot review；並明記「status 顯示 completed 但留言為 path-filter skipped」等同未審。
