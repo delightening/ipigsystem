@@ -1,7 +1,14 @@
 fastapi==0.136.1
 uvicorn[standard]==0.47.0
 jinja2==3.1.6
-playwright==1.49.0
+# ⚠️ 必須與 Dockerfile 的 base image tag 同版
+# （`mcr.microsoft.com/playwright/python:v<版本>-jammy`）。base image 只預裝它
+# 自己那版的瀏覽器（路徑含版本號，如 chromium_headless_shell-1148），版本一旦
+# 對不上，啟動時 `chromium.launch()` 會以
+# 「Executable doesn't exist at /ms-playwright/...」失敗，整個服務進重啟迴圈。
+# 2026-08-06 prod 事故：#26 由 Dependabot 把 base image 升到 v1.62.0-jammy，
+# 本檔仍是 1.49.0 → print-pdf 部署後起不來。升級任一邊時務必同步另一邊。
+playwright==1.62.0
 pydantic==2.13.4
 python-multipart==0.0.31
 openpyxl==3.1.5
