@@ -127,6 +127,45 @@
   `Review skipped due to path filters` 時＝它一個檔案都沒看，同樣不算乾淨章。
 - CI runner 也是共用的：不要為了「試試看」重跑整套 CI。
 
+### 7.1 判斷 CodeRabbit 是否真的審過（2026-08-06 實戰整理）
+
+CLAUDE.md 授權節 (f) 是判準本身，本節是案例與操作細節。
+
+**訊號可靠度由高到低：**
+
+| 訊號 | 意義 |
+|---|---|
+| status `Review in progress` | ✅ **唯一可靠的正向即時訊號**——審查真的起跑了 |
+| Walkthrough **內容**含「只有最新 commit 才有的特徵」 | ✅ 定案依據 |
+| `Files skipped ... (N)` 且 N == 改動檔數 | ⚠️ 可疑，但**不足以定案**（見下方 #28 反例） |
+| status `Review completed` + `updated_at` | ❌ 單獨不可信 |
+| bot 回覆「已收到，會執行完整審查」 | ❌ **不代表跑了**，折疊區可能藏 `⚠️ Action not completed` |
+
+**2026-08-06 的兩個對照案例：**
+
+- **#22（真的沒審）**：改動 12 檔，`Files skipped ... (12)`，且 Walkthrough 描述的是
+  最新 commit **之前**的狀態——新增的 outsider fixture 與 seed 拆分一個字都沒提。
+- **#28（其實審了，我誤判）**：改動 2 檔，skipped 也是 2，我據此判定「五次都沒審」。
+  實際上 `full review` 那輪真的審了——Walkthrough 精準描述重建後的內容（0235 從加變移除、
+  2024-0370 從留變刪、區分 lockfile scan 與 dependency-graph scan）。
+  **誤判成因**：舊的 `Review limit reached` 區塊不會被新結果取代，而是與新 Walkthrough
+  並存於同一則留言，只掃關鍵字就會看到前者。
+
+→ **教訓：檔數是啟發式，內容才是證據。** 一律讀 Walkthrough 再下結論。
+
+**額度實測（2026-08-06，OSS 方案）：**
+
+- ⚠️ **假綠也照樣佔用一次額度**——#28 那次「兩檔全跳過、零實際審查」仍消耗一次。
+  早一步看穿假綠不只是判斷正確，還能省下實際成本。
+- 恢復時間**隨當日累積用量拉長**：實測 15 → 33 → 56 分鐘。訊息會明寫
+  `Your next included review will be available in N minutes`，照它等，不要硬觸發。
+- `This review may still proceed through usage-based billing if eligible`＝付費可繞過，
+  OSS 免費方案只能等。
+
+**Pre-merge checks**：PR 描述未依 `.github/pull_request_template.md` 補齊 8 個區段，
+`Description check` 會列 ❌ Warning。它不擋 merge，但會讓「bot 0 建議」看起來不乾淨——
+**開 PR 當下就照模板寫**，省一輪來回（#28 / #22 都因此多繞了一圈）。
+
 ## 8. 記憶檔併發寫入
 
 `MEMORY.md` 與 `memory/` 目錄被所有 session 共讀共寫。

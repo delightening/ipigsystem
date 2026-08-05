@@ -91,6 +91,15 @@ a11y、使用者明確要求的功能。
       等同未審，不得當乾淨章（2026-08-03 PR #14 實例：status=success / desc=Review
       completed，實際因 `backend/Cargo.lock` 被路徑過濾而完全跳過）。判斷 bot 是否真的
       審過，要看 PR 留言內容，不能只看 status description。
+      ⚠️ **第二種假綠：整批 skipped（2026-08-06 裁定，PR #22 實例）**——留言出現
+      `Files skipped from review as they are similar to previous changes (N)`。
+      **但檔數相等只是可疑訊號，不足以定案**（同日 #28 的檔數也相等，實際上審了）。
+      **定案依據是讀 Walkthrough 的內容**：找得到「只有最新 commit 才有的特徵」才算
+      真的審過。⚠️ 舊的 `Review limit reached` 區塊**不會被新結果取代、而是並存於
+      同一則留言**，只掃關鍵字或比對 `updated_at` 會誤判（2026-08-06 我因此把
+      #28 誤判成五次未審）。判定未審 → 下 `@coderabbitai full review`（強制重審
+      全部檔案、不做增量比對）；糾正誤判不算 `PARALLEL_SESSIONS.md` §7 的「反覆催促」。
+      **完整案例、配額實測與其他訊號見 `PARALLEL_SESSIONS.md` §7。**
 - merge 落地 main 的本地分支直接刪（判斷靠 distinctive 檔已在 origin/main，非 ahead/behind）。
 - 批次任務完成一項自動做下一項，不問「要繼續嗎？」。
 
