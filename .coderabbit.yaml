@@ -10,11 +10,23 @@ reviews:
     # 理由：這類 PR 的 diff 只有版本號與 lockfile，CodeRabbit 對它結構上
     # 無從置喙——CLAUDE.md 授權節 (f) 已據此免除其 bot 閘，改以「CI 全綠 +
     # 該 stack 的依賴漏洞掃描 job 綠」為判準。既然 bot 的意見不參與決策，
-    # 就不該讓這類 PR 佔用 review 配額。
+    # 就不該讓它在這類 PR 上留下 commit status——`Review rate limited` 與
+    # `Review skipped due to path filters` 的 `state` 都是 `success`，看起來
+    # 像審過、其實一個檔案都沒看，是 (e)/(f) 判斷時的雜訊來源。完全不產生
+    # status 比產生一個假綠的乾淨。
     #
-    # 背景：2026-08-04 一天內 Dependabot 開了 13 支 PR，同期 #16 / #17 /
-    # #18 / #20 全部撞上 "Review rate limited"（Pro Plus 上限 10 reviews／
-    # 開發者／小時，滾動視窗；solo 開發時所有配額算在同一身分上）。
+    # ⚠️ 本設定「省不到 review 配額」——2026-08-04 建檔時的原始理由（避免
+    # Dependabot 佔用配額）已由 CodeRabbit 官方回信（2026-08-05）推翻：
+    #   * bot 開的 PR 走 bot 自己的配額，**不佔人類開發者的額度**（bot 被
+    #     當成另一個 user，也可單獨配 seat）。
+    #   * 當天撞上 "Review rate limited" 的 #16 / #17 / #18 / #20 經查
+    #     **全是 delightening 本人開的**，跟 Dependabot 的 13 支無關；
+    #     真正原因是自己一小時內開太多 PR。
+    #   * 建檔時寫的「Pro Plus 上限 10／開發者／小時」也套錯方案：Marketplace
+    #     的「Pro Plus 對開源免費」只指**功能集**，配額另計。本 repo 走 OSS
+    #     方案，PR review 上限是浮動的 **1–10 次／開發者／小時**（依專案熱門度，
+    #     rolling window），小型新 repo 落在低端。
+    # 詳見官方 docs：https://docs.coderabbit.ai/management/plans#rate-limits
     #
     # ⚠️ 選項語意為 exact match。實際 GitHub login 是 `dependabot[bot]`，
     # 而官方文件範例寫的是 `dependabot`——兩者都列以確保命中。
