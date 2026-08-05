@@ -90,24 +90,6 @@ React 元件檔 ≤300 行｜JSX return ≤80 行｜單一 useEffect/handler ≤
       取不到鎖就停下回報，不等不硬上；完成或失敗都要釋放。程序見 `PARALLEL_SESSIONS.md` §6。
       「bot 0 建議」的判準同時收緊：CodeRabbit commit status 的 description 必須是
       `Review completed`——`Review rate limited` / `skipped` 都不算（兩者 `state` 皆為 `success`）。
-  (f) **純依賴更新 PR 免 bot 閘**（2026-08-03 裁定）：diff 只含 lockfile／版本號、**零 code
-      變更**的 PR（Dependabot 開的，或手動更新 lockfile），閘改為「CI 全綠 +
-      **該 stack 對應的依賴漏洞掃描 job 綠**」，**不要求 bot review**。理由：CodeRabbit
-      預設用 `!**/*.lock` 這類路徑過濾排除這些檔案，結構上無從置喙，等它等不到。
-      對應表（2026-08-04 補全）：Rust=`🔒 Security: cargo audit`／
-      Node=`🔒 Security: pnpm audit`（實作為 osv-scanner 掃 `pnpm-lock.yaml`）／
-      Python=`🔒 Security: Python 依賴掃描`（osv-scanner 掃
-      `services/print-pdf/requirements.txt`）。
-      ⚠️ **某 stack 若尚無對應掃描 job，(f) 對它不成立**，須退回一般閘。本條初立時
-      只寫了 cargo/pnpm，而 CI 當時根本沒有 Python 掃描，等於對 `requirements.txt`
-      的更新完全無把關——2026-08-03 的 #11 pillow／#13 pypdf 正是這樣合進去的
-      （結果正確，但靠人工進容器驗版本，非規則保證）。新增語言/套件管理器時，
-      先確認掃描 job 存在再套用本例外。
-      ⚠️ **同時補上 (e) 判準的漏洞**：CodeRabbit commit status 顯示 `Review completed`
-      **但 PR 留言是 `Review skipped due to path filters`** 時＝**它一個檔案都沒看**，
-      等同未審，不得當乾淨章（2026-08-03 PR #14 實例：status=success / desc=Review
-      completed，實際因 `backend/Cargo.lock` 被路徑過濾而完全跳過）。判斷 bot 是否真的
-      審過，要看 PR 留言內容，不能只看 status description。
 - merge 落地 main 的本地分支直接刪（判斷靠 distinctive 檔已在 origin/main，非 ahead/behind）。
 - 批次任務完成一項自動做下一項，不問「要繼續嗎？」。
 

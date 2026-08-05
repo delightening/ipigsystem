@@ -8,21 +8,17 @@ on:
     branches:
       - main
       - 'integration/**'
-    # docs-only push 跳過整個 CI（治本：所有純文件 PR 不再跑 backend / frontend / Trivy）
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
   pull_request:
     branches:
       - main
       - 'integration/**'
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
+  # 2026-08-03：移除原本的 docs-only `paths-ignore`。原設計讓純文件變更完全不觸發
+  # workflow，代價是**一個 check-run 都不會產生**——branch protection 的 required
+  # checks 因此永遠不會變綠，純文件 PR 直接卡死（PR #16 實例）。
+  # 改為：workflow 一律觸發，由下方 `changes` job 判別領域，純文件僅跑
+  # changes / secret-scan / guards 三個輕量 job，backend / frontend / Trivy / E2E
+  # 仍照舊 skip。動機不只是解卡：文件裡誤貼 token 是常見洩漏途徑，純文件 PR
+  # 反而更該掃 secret（2026-08 外洩事故中，外洩的正是「不是 code 的檔案」）。
   workflow_dispatch:
 
 env:
@@ -87,6 +83,12 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
+              # 純文件：不觸發任一 stack。必須排在 backend/frontend 之前，才能保留
+              # 舊 `paths-ignore: '**.md'` 的語意（backend/README.md 也算文件）。
+              # 2026-08-03 起這些檔案不再讓整個 workflow 停跑，只是不觸發 backend /
+              # frontend / Trivy / E2E；changes / secret-scan / guards 仍會跑，
+              # 讓純文件 PR 有 check-run 可供 branch protection 判定，並保有 secret 掃描。
+              *.md|docs/*|LICENSE|.gitignore) ;;
               backend/*) BACKEND=true ;;
               frontend/*) FRONTEND=true ;;
               *) BACKEND=true; FRONTEND=true ;; # 未知領域 → 保守全跑
@@ -789,16 +791,41 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 下載 osv-scanner（釘版本，供應鏈安全）
-        run: |
-          sudo curl -sSL -o /usr/local/bin/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64
-          sudo chmod +x /usr/local/bin/osv-scanner
+      - uses: ./.github/actions/setup-osv-scanner
 
       - name: OSV 依賴漏洞掃描（frontend/pnpm-lock.yaml）
         # --config 明確指向豁免清單（不倚賴自動尋找）；清單內每條均須附評估理由
         # 與 ignoreUntil 到期日，完整評估紀錄見 docs/security/security.md。
         run: osv-scanner scan --config=frontend/osv-scanner.toml --lockfile=frontend/pnpm-lock.yaml
+
+  # =========================
+  # 🔒 Python 依賴漏洞掃描
+  # 2026-08-04 補：CLAUDE.md 授權節 (f)（純依賴更新免 bot 閘）以「該 stack 的依賴
+  # 漏洞掃描綠」為閘，但當時 CI 只有 Rust 與 Node 兩條線，**Python 完全沒有掃描**
+  # ——services/print-pdf/requirements.txt 因此形同無把關。2026-08-03 合併的
+  # #11 pillow / #13 pypdf 正是踩到這個缺口（結果正確，但靠的是人工進容器驗版本，
+  # 不是規則保證）。用既有的 osv-scanner 補上，不另引入 pip-audit。
+  #
+  # 無 needs/if：requirements.txt 掃描很快，且無條件執行才能保證恆有 check-run，
+  # 可安全地設為 branch protection 的 required check——條件式 job 會 skip，
+  # skip 的 required check 會讓 PR 永遠卡 pending（#16 已踩過一次）。
+  # ⚠️ osv-scanner 不支援單獨的 pyproject.toml（僅認 poetry.lock 等 lockfile），
+  # 根目錄的 pyproject.toml 不在本 job 涵蓋範圍。
+  # =========================
+  python-audit:
+    name: "🔒 Security: Python 依賴掃描"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-osv-scanner
+
+      - name: OSV 依賴漏洞掃描（services/print-pdf/requirements.txt）
+        run: osv-scanner scan --lockfile=services/print-pdf/requirements.txt
 
   # =========================
   # 🐳 容器安全掃描 (Trivy)

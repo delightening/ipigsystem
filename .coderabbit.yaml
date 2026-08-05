@@ -1,0 +1,23 @@
+# CodeRabbit 設定
+# 參考：https://docs.coderabbit.ai/reference/configuration
+#
+# 建立於 2026-08-04。此前本 repo 無設定檔，全部走預設值。
+
+reviews:
+  auto_review:
+    # 不審 Dependabot 開的 PR。
+    #
+    # 理由：這類 PR 的 diff 只有版本號與 lockfile，CodeRabbit 對它結構上
+    # 無從置喙——CLAUDE.md 授權節 (f) 已據此免除其 bot 閘，改以「CI 全綠 +
+    # 該 stack 的依賴漏洞掃描 job 綠」為判準。既然 bot 的意見不參與決策，
+    # 就不該讓這類 PR 佔用 review 配額。
+    #
+    # 背景：2026-08-04 一天內 Dependabot 開了 13 支 PR，同期 #16 / #17 /
+    # #18 / #20 全部撞上 "Review rate limited"（Pro Plus 上限 10 reviews／
+    # 開發者／小時，滾動視窗；solo 開發時所有配額算在同一身分上）。
+    #
+    # ⚠️ 選項語意為 exact match。實際 GitHub login 是 `dependabot[bot]`，
+    # 而官方文件範例寫的是 `dependabot`——兩者都列以確保命中。
+    ignore_usernames:
+      - dependabot[bot]
+      - dependabot
