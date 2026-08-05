@@ -26,9 +26,7 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use erp_backend::services::{
-    AnimalObservationService, AnimalSurgeryService, AnimalWeightService,
-};
+use erp_backend::services::{AnimalObservationService, AnimalSurgeryService, AnimalWeightService};
 
 /// **fail-closed**：連線與 migrate 之前先確認目標是測試資料庫，否則中止。
 ///
