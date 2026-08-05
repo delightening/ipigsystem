@@ -127,11 +127,13 @@ jobs:
         # RUSTSEC-2023-0071: rsa 時序攻擊（jsonwebtoken RS256，無修復版本）
         # RUSTSEC-2024-0370: proc-macro-error 不維護（過渡期保留）
         # RUSTSEC-2026-0173: proc-macro-error2 不維護（validator_derive，純編譯期無攻擊面）
+        # RUSTSEC-2026-0235: rkyv 0.7.46（rust_decimal 的 optional dep，從未啟用、不在建置圖）
         run: >-
           cargo audit
           --ignore RUSTSEC-2023-0071
           --ignore RUSTSEC-2024-0370
           --ignore RUSTSEC-2026-0173
+          --ignore RUSTSEC-2026-0235
 
   # =========================
   # 🛡️ 供應鏈檢查 (授權/漏洞/來源)
