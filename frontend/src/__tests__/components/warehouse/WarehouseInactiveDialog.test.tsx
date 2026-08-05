@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+// 用 fireEvent 而非 user-event：@testing-library/user-event 不在專案依賴內
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const apiPut = vi.fn()
@@ -57,7 +57,7 @@ describe('WarehouseInactiveDialog', () => {
     apiPut.mockResolvedValue({ data: makeWarehouse({ is_active: true }) })
     renderDialog([makeWarehouse()])
 
-    await userEvent.click(screen.getByRole('button', { name: /復原/ }))
+    fireEvent.click(screen.getByRole('button', { name: /復原/ }))
 
     await waitFor(() => {
       expect(apiPut).toHaveBeenCalledWith('/warehouses/wh-1', { is_active: true })
@@ -68,7 +68,7 @@ describe('WarehouseInactiveDialog', () => {
     apiPut.mockRejectedValue(new Error('boom'))
     renderDialog([makeWarehouse()])
 
-    await userEvent.click(screen.getByRole('button', { name: /復原/ }))
+    fireEvent.click(screen.getByRole('button', { name: /復原/ }))
 
     await waitFor(() => {
       expect(toastFn).toHaveBeenCalledWith(
