@@ -22,11 +22,15 @@ use erp_backend::AppError;
 const TEST_IP: &str = "203.0.113.9";
 const TEST_UA: &str = "warehouse-guard-test/1.0";
 
+/// ⚠️ **只讀 `TEST_DATABASE_URL`，缺少時直接失敗**——不可 fallback 到 `DATABASE_URL`。
+/// 這台機器上 `DATABASE_URL` 指向 prod DB，fallback 會讓本測試對正式資料庫跑
+/// `sqlx::migrate!` 並寫入 users / warehouses / products / storage_locations /
+/// storage_location_inventory 與稽核列（本測試無 teardown，殘留會留在該庫）。
+/// 見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。
 async fn setup_pool() -> PgPool {
     dotenvy::dotenv().ok();
     let url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("TEST_DATABASE_URL or DATABASE_URL must be set for integration tests");
+        .expect("TEST_DATABASE_URL must be set for integration tests（不得 fallback 到 DATABASE_URL＝prod DB）");
     let pool = PgPool::connect(&url).await.expect("connect test db");
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -147,10 +151,7 @@ async fn delete_warehouse_blocked_when_stock_remains() {
                 msg.contains("儲物架A"),
                 "錯誤訊息應列出仍有結存的儲位，實際：{msg}"
             );
-            assert!(
-                msg.contains("4424"),
-                "錯誤訊息應帶出結存數量，實際：{msg}"
-            );
+            assert!(msg.contains("4424"), "錯誤訊息應帶出結存數量，實際：{msg}");
         }
         other => panic!("應回 422 BusinessRule，實際：{other:?}"),
     }

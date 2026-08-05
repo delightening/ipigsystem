@@ -26,7 +26,9 @@ const WAREHOUSE_REPORT_FILENAME_SUFFIX: &str = "_倉庫現況報表.pdf";
 
 /// 取 User-Agent header（缺漏或非 ASCII 時為 None，與 auth handler 一致）。
 fn user_agent_of(headers: &HeaderMap) -> Option<&str> {
-    headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok())
+    headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
 }
 
 /// 建立倉庫

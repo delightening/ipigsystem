@@ -82,8 +82,10 @@ export function WarehouseInactiveDialog({
                                     <span className="text-sm font-medium">
                                         {w.code} - {w.name}
                                     </span>
+                                    {/* warehouses 沒有 deactivated_at 欄位；updated_at 是「最後一次
+                                        任何更新」，停用後再改名稱也會動到它，故不寫成「停用於」 */}
                                     <span className="text-xs text-muted-foreground">
-                                        停用於 {formatDateTime(w.updated_at)}
+                                        最後更新 {formatDateTime(w.updated_at)}
                                     </span>
                                 </div>
                                 <Button
@@ -91,7 +93,9 @@ export function WarehouseInactiveDialog({
                                     onClick={() => restoreMutation.mutate(w.id)}
                                     disabled={restoreMutation.isPending}
                                 >
-                                    {restoreMutation.isPending ? (
+                                    {/* 只讓正在復原的那一列轉圈：isPending 是共用的，
+                                        不比對 variables 會整份清單一起顯示 spinner */}
+                                    {restoreMutation.isPending && restoreMutation.variables === w.id ? (
                                         <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                                     ) : (
                                         <RotateCcw className="h-4 w-4 mr-1" />

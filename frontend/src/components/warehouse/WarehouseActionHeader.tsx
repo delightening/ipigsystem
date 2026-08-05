@@ -83,11 +83,17 @@ export function WarehouseActionHeader({
     const { data: allWarehouses, isLoading: loadingWarehouses } = useQuery({
         queryKey: ['all-warehouses'],
         queryFn: async () => {
-            const [active, inactive] = await Promise.all([
+            // 停用清單是輔助資訊，用 allSettled 而非 all：它掛掉不該讓整個 query 失敗，
+            // 否則選擇器一個倉庫都列不出來、匯出鈕也一起被停用。
+            const [active, inactive] = await Promise.allSettled([
                 api.get<Warehouse[]>('/warehouses'),
                 api.get<Warehouse[]>('/warehouses?is_active=false'),
             ])
-            return [...active.data, ...inactive.data]
+            if (active.status === 'rejected') throw active.reason
+            return [
+                ...active.value.data,
+                ...(inactive.status === 'fulfilled' ? inactive.value.data : []),
+            ]
         },
     })
 
