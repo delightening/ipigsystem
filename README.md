@@ -293,8 +293,8 @@ cargo run
 
 # 前端（另開 terminal）
 cd frontend
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 詳見 [docs/user/QUICK_START.md](docs/user/QUICK_START.md)。
@@ -315,7 +315,7 @@ npm run dev
 ### CI 必過 (`.github/workflows/`)
 - `cargo check` / `cargo clippy -- -D warnings` / `cargo test`
 - `cargo audit`（CVE）+ `cargo deny`
-- `npm run lint` / `vitest run` / `playwright test`
+- `pnpm exec eslint` / `pnpm exec vitest run` / `pnpm run test:e2e`
 - `Trivy` 容器掃描
 - `down.sql guard`：每個 migration 必有對稱 `down/<id>.sql`
 
