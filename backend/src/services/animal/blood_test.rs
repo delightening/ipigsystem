@@ -39,6 +39,17 @@ struct TemplateMembershipSnapshot {
 }
 impl AuditRedact for TemplateMembershipSnapshot {}
 
+/// `attach_panel_items` 批次查詢的中繼列：panel_id 用來把結果分回各組合，
+/// template 以 `#[sqlx(flatten)]` 承接 `t.*`。
+/// 定義在模組層級而非函式內，以將 `attach_panel_items` 控制在 CLAUDE.md 的
+/// 「函數 ≤50 行」門檻內（原為 51 行）。
+#[derive(sqlx::FromRow)]
+struct PanelItemRow {
+    panel_id: Uuid,
+    #[sqlx(flatten)]
+    template: BloodTestTemplate,
+}
+
 /// R30-41: PANEL_TEMPLATE_CHANGE event_type 常數（CLAUDE.md「魔術字串必為 const」）
 const EVT_PANEL_TEMPLATE_CHANGE: &str = "PANEL_TEMPLATE_CHANGE";
 
@@ -942,13 +953,6 @@ impl AnimalBloodTestService {
         only_active_items: bool,
     ) -> Result<Vec<BloodTestPanelWithItems>> {
         use std::collections::HashMap;
-
-        #[derive(sqlx::FromRow)]
-        struct PanelItemRow {
-            panel_id: Uuid,
-            #[sqlx(flatten)]
-            template: BloodTestTemplate,
-        }
 
         if panels.is_empty() {
             return Ok(Vec::new());
