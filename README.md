@@ -333,7 +333,7 @@ pnpm run dev
 ### 程式碼規範
 - Backend：handler 不寫 SQL；handler / service / repository / model 嚴格分層；`unwrap()` 禁止（測試碼用 `expect("描述")`，斷言 Err 用 `expect_err("描述")`）；魔術字串改 `const`
 - Frontend：API 走 TanStack Query；驗證走 React Hook Form `register` 規則 + hand-rolled type guards（R58 起禁 Zod）；custom hook 回傳物件**不可整包**放 `useEffect` deps
-- 詳見 [CLAUDE.md](CLAUDE.md)（量化門檻、Rust / TS 命名、import 順序、清理規則）
+- 詳見 [RULES_BACKEND.md](docs/agents/RULES_BACKEND.md) §4 與 [RULES_FRONTEND.md](docs/agents/RULES_FRONTEND.md) §7（命名慣例）
 
 ---
 
