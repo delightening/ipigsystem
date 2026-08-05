@@ -866,7 +866,7 @@ page: [
 cd frontend
 
 # 升級到最新版本
-npm install -D @playwright/test@latest
+pnpm add -D @playwright/test@latest
 
 # 安裝瀏覽器
 npx playwright install
