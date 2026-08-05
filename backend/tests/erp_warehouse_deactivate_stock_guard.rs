@@ -22,31 +22,22 @@ use erp_backend::AppError;
 const TEST_IP: &str = "203.0.113.9";
 const TEST_UA: &str = "warehouse-guard-test/1.0";
 
-/// 取得測試資料庫連線字串。
+/// 取得測試資料庫連線字串。**只讀 `TEST_DATABASE_URL`，不 fallback。**
 ///
-/// 優先讀 `TEST_DATABASE_URL`；沒有時**只接受看得出是測試庫的 `DATABASE_URL`**。
+/// 開發機（這台同時是 prod）的 `DATABASE_URL` 指向正式庫，fallback 會讓測試對
+/// prod 跑 `sqlx::migrate!` 並寫入 users / warehouses / products /
+/// storage_locations / storage_location_inventory 與稽核列（本測試無 teardown）。
+/// 見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。
 ///
-/// 兩邊各有一個不能踩的坑：
-/// - 開發機（這台同時是 prod）的 `DATABASE_URL` 指向正式庫，無條件 fallback 會讓
-///   測試對 prod 跑 `sqlx::migrate!` 並寫入 users / warehouses / products /
-///   storage_locations / storage_location_inventory 與稽核列（本測試無 teardown）。
-///   見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。
-/// - CI 的 `Backend: cargo test` job 只設 `DATABASE_URL`（指向 service container 的
-///   `ipig_db_test`），完全不設 `TEST_DATABASE_URL`——無條件拒絕 fallback 會讓
-///   整支測試在 CI 直接 panic。
-///
-/// 故以「URL 是否含 test」區分：CI 的 `…/ipig_db_test` 通過，prod 的 `…/ipig_db` 擋下。
+/// 本檔原先採「允許 fallback、但用 DSN 是否含 `test` 擋掉 prod」的啟發式，理由是
+/// 當時 CI 的 `Backend: cargo test` job 只設 `DATABASE_URL`，無條件拒絕會讓整支測試
+/// 在 CI panic。**該前提已移除**——`ci.yml` 的 `backend-test` 與 `backend-coverage`
+/// 兩個 job 都補上了 `TEST_DATABASE_URL`，因此改為直接 fail-closed：不再靠字串
+/// 啟發式猜「這看起來像不像測試庫」，而是要求呼叫端明講。
 fn test_database_url() -> String {
-    if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
-        return url;
-    }
-    let fallback = std::env::var("DATABASE_URL")
-        .expect("需要 TEST_DATABASE_URL，或一個指向測試庫的 DATABASE_URL");
-    assert!(
-        fallback.contains("test"),
-        "DATABASE_URL 看起來不是測試庫（{fallback}）；請設 TEST_DATABASE_URL 指向獨立的丟棄 DB，不要對 prod 跑整合測試"
-    );
-    fallback
+    std::env::var("TEST_DATABASE_URL").expect(
+        "需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）",
+    )
 }
 
 async fn setup_pool() -> PgPool {

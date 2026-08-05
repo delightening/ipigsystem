@@ -18,8 +18,7 @@ use erp_backend::{ActorContext, SYSTEM_USER_ID};
 async fn setup_pool() -> PgPool {
     dotenvy::dotenv().ok();
     let url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("TEST_DATABASE_URL or DATABASE_URL must be set for integration tests");
+        .expect("需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）");
     let pool = PgPool::connect(&url).await.expect("connect test db");
     sqlx::migrate!("./migrations")
         .run(&pool)

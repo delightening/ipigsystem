@@ -85,8 +85,7 @@ impl TestApp {
         dotenvy::dotenv().ok();
 
         let database_url = std::env::var("TEST_DATABASE_URL")
-            .or_else(|_| std::env::var("DATABASE_URL"))
-            .expect("TEST_DATABASE_URL or DATABASE_URL must be set for integration tests");
+            .expect("需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）");
 
         // R28-2：擴大 conn pool 至 15，讓 concurrent audit write 整合測試
         // 可跑 10 並發（原 max_connections=5 限制 → 只能跑 3 並發）。
