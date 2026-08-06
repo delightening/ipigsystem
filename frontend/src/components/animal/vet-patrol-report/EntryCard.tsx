@@ -103,7 +103,7 @@ export function EntryCard({
             <div className="border-t pt-2">
                 <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-medium text-muted-foreground">照片附件</label>
-                    {!canEditStructure ? null : row.id ? (
+                    {canEditStructure && (row.id ? (
                         <label className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text cursor-pointer">
                             <ImagePlus className="h-3.5 w-3.5" />
                             新增照片
@@ -119,7 +119,7 @@ export function EntryCard({
                         </label>
                     ) : (
                         <span className="text-xs text-muted-foreground italic">草稿建立中...</span>
-                    )}
+                    ))}
                 </div>
                 {rowEntryPhotos.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">

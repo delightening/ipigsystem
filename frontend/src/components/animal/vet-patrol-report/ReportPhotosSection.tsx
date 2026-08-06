@@ -14,7 +14,7 @@ export function ReportPhotosSection({ vm }: { vm: VetPatrolReportVM }) {
         <div className="mt-4 pt-3 border-t">
             <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold">整體環境照（選填）</span>
-                {!canManagePhotos ? null : vm.savedReportId ? (
+                {canManagePhotos && (vm.savedReportId ? (
                     <label className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text cursor-pointer">
                         <ImagePlus className="h-3.5 w-3.5" />
                         上傳照片
@@ -30,7 +30,7 @@ export function ReportPhotosSection({ vm }: { vm: VetPatrolReportVM }) {
                     </label>
                 ) : (
                     <span className="text-xs text-muted-foreground">草稿建立中...</span>
-                )}
+                ))}
             </div>
             {vm.photos.length > 0 && (
                 <div className="grid grid-cols-2 gap-3">
