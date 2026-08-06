@@ -17,12 +17,18 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
 
     return (
         <div className="border rounded-lg overflow-hidden">
-            <button
-                type="button"
-                onClick={() => vm.toggleCategory(cat.key)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-muted/50 hover:bg-muted transition-colors text-left"
-            >
-                <div className="flex items-center gap-2">
+            {/* a11y：展開鈕與「新增列」為同層 sibling，不可巢狀（HTML 規範禁止 button 內含
+                互動元素，React 會發 validateDOMNesting、輔助科技對焦點/點擊處理不一致）。
+                外層改為非互動 div 但保留 hover 樣式，視覺與原本一致；展開鈕帶 flex-1 佔滿
+                剩餘寬度，故點標題列空白處仍可展開，行為亦與原本一致。
+                同時不再需要 stopPropagation——原本那行正是巢狀結構的補丁。 */}
+            <div className="w-full flex items-center justify-between px-3 py-2 bg-muted/50 hover:bg-muted transition-colors">
+                <button
+                    type="button"
+                    onClick={() => vm.toggleCategory(cat.key)}
+                    aria-expanded={!isCollapsed}
+                    className="flex flex-1 items-center gap-2 text-left"
+                >
                     {isCollapsed
                         ? <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         : <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -31,17 +37,17 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
                     {filledCount > 0 && (
                         <span className="text-xs text-muted-foreground">({filledCount} 筆)</span>
                     )}
-                </div>
+                </button>
                 {canAddRow && (
                     <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); vm.addRow(cat.key) }}
+                        onClick={() => vm.addRow(cat.key)}
                         className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text transition-colors"
                     >
                         <Plus className="h-3 w-3" /> 新增列
                     </button>
                 )}
-            </button>
+            </div>
 
             {!isCollapsed && (
                 <div className="p-3 space-y-3 bg-muted/20">
