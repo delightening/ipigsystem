@@ -256,9 +256,12 @@ export default function VetPatrolReportListPage() {
                             const bucket = BUCKET_META[statusBucket(r.status)]
                             const isCreator = currentUserId != null && r.created_by === currentUserId
                             const isSubmitted = r.status === 'awaiting_acknowledgement' || r.status === 'awaiting_follow_up'
-                            // 撤回：已送出未完成前 + 建立者或 admin；刪除：草稿任何人 or admin 任何狀態
-                            const canRetract = isSubmitted && (isCreator || isAdmin)
-                            const canDelete = r.status === 'draft' || isAdmin
+                            // 撤回：已送出未完成前 + 建立者或 admin；刪除：草稿限獸醫、admin 不限狀態。
+                            // 兩者後端皆為 require_permission!("animal.vet.recommend")（admin 於
+                            // has_permission 短路放行），故先過 isVet/isAdmin 再套狀態規則——
+                            // 否則失去 VET 角色的舊建立者仍會看到按鈕、點下去才吃 403。
+                            const canRetract = isSubmitted && (isAdmin || (isVet && isCreator))
+                            const canDelete = isAdmin || (isVet && r.status === 'draft')
                             return (
                                 <tr key={r.id} className="hover:bg-muted/30 transition-colors">
                                     <td className="px-4 py-3 font-medium">
