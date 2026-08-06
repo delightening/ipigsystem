@@ -37,11 +37,6 @@ Utils（純函式，任何層皆可呼叫，但 Utils 本身不依賴任何層�
 ## 3. 專項規則
 
 - 錯誤處理統一 `AppError`；handler 回傳 `Result<impl IntoResponse, AppError>`；`?` 逐層傳播。
-- **控制流扁平優於巢狀**：條件巢狀 ≤3 層，用 early return（`return Err(...)` 衛語句）、`?`、
-  `let ... else` 把失敗路徑先擋掉，剩下的主體即「已知合法」的情況。
-  例外：`match` 分支內的 `if let` 解 Option 屬慣用寫法，不必為降縮排而重構
-  （2026-08-06 現況掃描：`?` 5,515 處 / 286 檔、衛語句 734 處，既有 code 已符合；
-  本條是給**新程式碼**的標準，2026-08-06 CLAUDE.md 瘦身時連同「量化門檻」整段刪掉，此處補回）。
 - 禁止裸 `unwrap()`（測試除外）；`expect()` 僅限啟動初始化（main.rs）且附描述訊息。
 - 測試碼禁 `unwrap_err()`，用 `expect_err("描述")`。
 - 禁止 `#[allow(dead_code)]` / `#[allow(unused)]`，未使用直接刪（僅限本次任務造成的 unused）。
