@@ -123,15 +123,21 @@ jobs:
 
       - name: 執行 cargo audit
         working-directory: ./backend
-        # 與 backend/deny.toml ignore 清單對齊（理由詳見該檔）：
+        # ⚠️ 本清單與 backend/deny.toml 的 ignore **刻意不同**（理由詳見該檔頂端註解）：
+        # cargo audit 掃 Cargo.lock（會列出未啟用的 optional dependency），cargo-deny 走
+        # dependency graph，兩者偵測範圍不同，硬要對齊反而製造 advisory-not-detected 警告。
+        # 2026-08-06 以 `cargo tree --target all -e normal,build,dev -i <crate>` 反查校正：
+        #   proc-macro-error 不在依賴樹（只有 proc-macro-error2）→ 移除已失效的 RUSTSEC-2024-0370
         # RUSTSEC-2023-0071: rsa 時序攻擊（jsonwebtoken RS256，無修復版本）
-        # RUSTSEC-2024-0370: proc-macro-error 不維護（過渡期保留）
         # RUSTSEC-2026-0173: proc-macro-error2 不維護（validator_derive，純編譯期無攻擊面）
-        # RUSTSEC-2026-0235: rkyv 0.7.46（rust_decimal 的 optional dep，從未啟用、不在建置圖）
+        # RUSTSEC-2026-0235: rkyv 0.7.46 越界讀。rust_decimal 的 optional dep，本專案只啟用
+        #   features=["serde"]（`cargo tree -i rkyv` 反查為空），僅存在於 lockfile → 誤報
+        # 註：deny.toml 另有 RUSTSEC-2026-0190（anyhow）而此處沒有，因為它是 unsound 類
+        # warning，不計入 cargo audit 的 exit code（2026-08-06 本機實測不加也 EXIT=0），
+        # 加了只會是第二條死 ignore。
         run: >-
           cargo audit
           --ignore RUSTSEC-2023-0071
-          --ignore RUSTSEC-2024-0370
           --ignore RUSTSEC-2026-0173
           --ignore RUSTSEC-2026-0235
 

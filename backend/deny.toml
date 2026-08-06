@@ -36,20 +36,19 @@ ignore = [
     # 先 .context() 後又 .downcast_mut() 取回 context 時觸發 UB；本專案 anyhow 僅用於
     # 錯誤傳播/?，無 downcast_mut() 取回自訂 context 的用法 → 實際不受影響。無修復版本。
     "RUSTSEC-2026-0190",
-    # rkyv 0.7.46 共享指標驗證不足：Rc/Arc/weak 的驗證未計入 pointer metadata，可經
-    # rkyv::access / rkyv::from_bytes 取得長度被偽造的 slice 而越界讀取（修復版 0.8.17+）。
-    # 本專案**不受影響且無法升級**：
-    #   1. rkyv 是 rust_decimal 1.42.1 的 optional dependency，Cargo.toml 只啟用
-    #      features = ["serde"]，從未啟用 rkyv。
-    #   2. 實測 `cargo tree --target all -e normal,build,dev -i rkyv` → nothing to print，
-    #      確認它不在任何 target / edge 的建置圖裡，根本沒被編譯。
-    #      （cargo audit / deny 讀的 Cargo.lock 是 feature-agnostic，會列出未啟用的 optional dep。）
-    #   3. 觸發條件是用上述 API 反序列化不可信 archive；本專案程式碼無 rkyv 任何用法。
-    #   4. 無法升級：rust_decimal 1.42.1 釘 `rkyv = "^0.7"`，cargo 明確拒絕解析 0.8.17；
-    #      且 1.42.1（2026-06-12）已是 crates.io 最新版，上游尚未換版。
-    # 移除條件：rust_decimal 發布改用 rkyv >= 0.8.17 的版本後，升級並刪掉本條。
-    "RUSTSEC-2026-0235",
 ]
+
+# ⚠️ 本清單刻意**不與 `.github/workflows/ci.yml` 的 `cargo audit --ignore` 相同**
+# （2026-08-06 更正）。兩個工具的偵測範圍不同：
+#   * cargo audit 掃 **Cargo.lock**——lockfile 會記錄未啟用的 optional dependency，
+#     因此看得到 rkyv（rust_decimal 的 optional dep，本專案只啟用 features=["serde"]），
+#     需要 `--ignore RUSTSEC-2026-0235`，理由見 ci.yml 該處註解。
+#   * cargo-deny 走 **dependency graph**——看不到 rkyv，對它保留 ignore 只會換來
+#     `warning[advisory-not-detected]: advisory was not encountered`。
+# #32 為了「兩邊對齊」把 0235 一併加進本檔，反而製造了該警告。故本檔只保留
+# cargo-deny 真正會偵測到的項目。
+# 實測依據（2026-08-06，backend/ 內）：
+#   `cargo tree --target all -e normal,build,dev -i rkyv` → warning: nothing to print.
 
 # ============================
 # 授權條款審查
