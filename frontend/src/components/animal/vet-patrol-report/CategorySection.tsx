@@ -11,6 +11,9 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
     const isCollapsed = vm.collapsedCategories.has(cat.key)
     const rows = vm.entries[cat.key]
     const filledCount = rows.filter(r => r.observation || r.suggestion || r.follow_up).length
+    // 新增觀察條目僅獸醫在草稿階段可做：update service 於 AWAITING_FOLLOW_UP 對 id=None
+    // 的新條目直接回 BusinessRule（#378），已完成則整份鎖定。與 EntryCard 同一組旗標。
+    const canAddRow = !vm.isReadOnly && !vm.canEditFollowUpOnly
 
     return (
         <div className="border rounded-lg overflow-hidden">
@@ -29,13 +32,15 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
                         <span className="text-xs text-muted-foreground">({filledCount} 筆)</span>
                     )}
                 </div>
-                <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); vm.addRow(cat.key) }}
-                    className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text transition-colors"
-                >
-                    <Plus className="h-3 w-3" /> 新增列
-                </button>
+                {canAddRow && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); vm.addRow(cat.key) }}
+                        className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text transition-colors"
+                    >
+                        <Plus className="h-3 w-3" /> 新增列
+                    </button>
+                )}
             </button>
 
             {!isCollapsed && (
@@ -45,13 +50,15 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
                     {rows.map((row, idx) => (
                         <EntryCard key={row.tempKey} vm={vm} cat={cat} row={row} idx={idx} />
                     ))}
-                    <button
-                        type="button"
-                        onClick={() => vm.addRow(cat.key)}
-                        className="w-full py-2 border-2 border-dashed border-muted-foreground/30 rounded-lg text-xs text-muted-foreground hover:border-status-success-solid hover:text-status-success-solid transition-colors flex items-center justify-center gap-1"
-                    >
-                        <Plus className="h-3 w-3" /> 新增列
-                    </button>
+                    {canAddRow && (
+                        <button
+                            type="button"
+                            onClick={() => vm.addRow(cat.key)}
+                            className="w-full py-2 border-2 border-dashed border-muted-foreground/30 rounded-lg text-xs text-muted-foreground hover:border-status-success-solid hover:text-status-success-solid transition-colors flex items-center justify-center gap-1"
+                        >
+                            <Plus className="h-3 w-3" /> 新增列
+                        </button>
+                    )}
                 </div>
             )}
         </div>

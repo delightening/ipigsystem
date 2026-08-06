@@ -15,11 +15,14 @@ export function CaptionInput({
     placeholder,
     className,
     onSave,
+    disabled,
 }: {
     value: string
     placeholder: string
     className?: string
     onSave: (caption: string) => void
+    /** 無照片管理權限（非獸醫 / 已鎖定階段）時唯讀——後端 update caption 為 vet-only */
+    disabled?: boolean
 }) {
     const [draft, setDraft] = useState(value)
     const focusedRef = useRef(false)
@@ -37,6 +40,7 @@ export function CaptionInput({
             value={draft}
             placeholder={placeholder}
             className={className}
+            disabled={disabled}
             onChange={(e) => { dirtyRef.current = true; setDraft(e.target.value) }}
             onFocus={() => { focusedRef.current = true }}
             onBlur={() => {

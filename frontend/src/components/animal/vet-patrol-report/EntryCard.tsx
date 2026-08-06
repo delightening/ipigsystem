@@ -22,18 +22,25 @@ export function EntryCard({
     idx: number
 }) {
     const rowEntryPhotos = row.id ? (vm.entryPhotosByEntry.get(row.id) ?? []) : []
+    // 條目結構（刪條目）與照片（上傳/改說明/刪除）都不是追蹤者能碰的：
+    // 後端照片三個 handler 為 require_permission!("animal.vet.recommend")，刪條目則由
+    // update service 於 AWAITING_FOLLOW_UP 明確擋下（#378）。與同卡片文字欄位共用同一組
+    // 階段旗標，差別是這裡隱藏而非 disable——按下去必定失敗的按鈕比不出現更誤導。
+    const canEditStructure = !vm.isReadOnly && !vm.canEditFollowUpOnly
     return (
         <div data-temp-key={row.tempKey} className="border rounded-lg bg-card p-3 space-y-2">
             <div className="flex items-start justify-between gap-2">
                 <span className="text-xs text-muted-foreground">條目 #{idx + 1}</span>
-                <button
-                    type="button"
-                    onClick={() => vm.removeRow(cat.key, idx)}
-                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="刪除條目"
-                >
-                    <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {canEditStructure && (
+                    <button
+                        type="button"
+                        onClick={() => vm.removeRow(cat.key, idx)}
+                        className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        title="刪除條目"
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                )}
             </div>
 
             {cat.hasAnimal && (
@@ -96,7 +103,7 @@ export function EntryCard({
             <div className="border-t pt-2">
                 <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-medium text-muted-foreground">照片附件</label>
-                    {row.id ? (
+                    {!canEditStructure ? null : row.id ? (
                         <label className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text cursor-pointer">
                             <ImagePlus className="h-3.5 w-3.5" />
                             新增照片
@@ -124,19 +131,22 @@ export function EntryCard({
                                         alt={photo.caption || photo.file_name}
                                         className="w-full h-20 object-cover rounded"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => vm.deleteEntryPhotoMutation.mutate(photo.id)}
-                                        className="absolute top-1 right-1 bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full p-0.5"
-                                        title="刪除"
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </button>
+                                    {canEditStructure && (
+                                        <button
+                                            type="button"
+                                            onClick={() => vm.deleteEntryPhotoMutation.mutate(photo.id)}
+                                            className="absolute top-1 right-1 bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full p-0.5"
+                                            title="刪除"
+                                        >
+                                            <Trash2 className="h-3 w-3" />
+                                        </button>
+                                    )}
                                 </div>
                                 <CaptionInput
                                     value={photo.caption}
                                     placeholder="說明（選填）"
                                     className="text-xs h-7"
+                                    disabled={!canEditStructure}
                                     onSave={(caption) => vm.updateEntryCaptionMutation.mutate({
                                         photoId: photo.id,
                                         caption,
