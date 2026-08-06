@@ -19,15 +19,17 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
         <div className="border rounded-lg overflow-hidden">
             {/* a11y：展開鈕與「新增列」為同層 sibling，不可巢狀（HTML 規範禁止 button 內含
                 互動元素，React 會發 validateDOMNesting、輔助科技對焦點/點擊處理不一致）。
-                外層改為非互動 div 但保留 hover 樣式，視覺與原本一致；展開鈕帶 flex-1 佔滿
-                剩餘寬度，故點標題列空白處仍可展開，行為亦與原本一致。
+                外層改為非互動 div，只保留背景與 hover 樣式。
+                padding 必須放在兩個 button 各自身上而非外層 div——否則留白落在非互動容器上，
+                點下去不會展開，可點區域比原本的整列 button 縮小（CodeRabbit #39 Minor）。
+                展開鈕帶 flex-1 吃掉剩餘寬度，故標題列空白處仍屬展開鈕的可點範圍。
                 同時不再需要 stopPropagation——原本那行正是巢狀結構的補丁。 */}
-            <div className="w-full flex items-center justify-between px-3 py-2 bg-muted/50 hover:bg-muted transition-colors">
+            <div className="w-full flex items-center justify-between bg-muted/50 hover:bg-muted transition-colors">
                 <button
                     type="button"
                     onClick={() => vm.toggleCategory(cat.key)}
                     aria-expanded={!isCollapsed}
-                    className="flex flex-1 items-center gap-2 text-left"
+                    className="flex flex-1 items-center gap-2 px-3 py-2 text-left"
                 >
                     {isCollapsed
                         ? <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -42,7 +44,7 @@ export function CategorySection({ vm, cat }: { vm: VetPatrolReportVM; cat: Categ
                     <button
                         type="button"
                         onClick={() => vm.addRow(cat.key)}
-                        className="flex items-center gap-1 text-xs text-status-success-solid hover:text-status-success-text transition-colors"
+                        className="flex items-center gap-1 px-3 py-2 text-xs text-status-success-solid hover:text-status-success-text transition-colors"
                     >
                         <Plus className="h-3 w-3" /> 新增列
                     </button>
