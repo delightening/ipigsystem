@@ -45,7 +45,9 @@ Utils（純函式，任何層皆可呼叫，但 Utils 本身不依賴任何層�
 - 禁止裸 `unwrap()`（測試除外）；`expect()` 僅限啟動初始化（main.rs）且附描述訊息。
 - 測試碼禁 `unwrap_err()`，用 `expect_err("描述")`。
 - 禁止 `#[allow(dead_code)]` / `#[allow(unused)]`，未使用直接刪（僅限本次任務造成的 unused）。
-- SQLx 具名參數，禁止字串拼接 SQL。
+- SQLx 一律用位置參數（PostgreSQL 的 `$1` / `$2` + `.bind()`），禁止字串拼接 SQL。
+  （2026-08-07 更正：原文寫「具名參數」，但 sqlx 的 PostgreSQL driver 不支援具名參數，
+  全 codebase 實際都是 `$n` + `.bind()`。）
 - 相同 SQL SELECT ≥2 次 → 提取到 `repositories/`。同一權限檢查 ≥2 處 → `services/access.rs`。
 - 魔術字串定義為 `const` 或 `enum`。
 - Service 呼叫 Repository 取資料，不直接寫 SQL。
@@ -93,9 +95,14 @@ CSP report（`handlers/csp_report.rs`）、honeypot（`routes/honeypot.rs`）、
 | 改動範圍 | 最低驗證 |
 |---|---|
 | 純 infra / models / services（不改 handler） | `rtk cargo test --lib` 綠 |
-| 動到 handlers / middleware / routes | `rtk cargo test --all-targets` 全綠（整合測試需先 `docker compose -f docker-compose.test.yml up -d postgres`） |
+| 動到 handlers / middleware / routes | `rtk cargo test --all-targets` 全綠（整合測試需先 `rtk docker compose -f docker-compose.test.yml up -d db-test`） |
 | 只動 docs / migration SQL | `rtk cargo check` 綠 |
 | 刪/改 lib 公開 type 或 field | 必跑 `rtk cargo check --tests`，不可只 `--lib`（教訓：--lib 看不到測試碼的破壞） |
+
+> ⚠️ **`up -d` 後面務必指名 `db-test`**（2026-08-07 更正：原文寫 `postgres`，該服務**不存在**
+> 於 `docker-compose.test.yml`——實際服務為 `db-test` / `api-test` / `web-test`）。
+> 不指名服務或誤啟 `api-test` 會佔用 host 8000，**與 prod 的 `ipig-api` 同埠**。
+> 完整禁忌（不得 `down`、不得 `--remove-orphans`）見 `PARALLEL_SESSIONS.md` §5。
 
 ### 7.1 測試碼撰寫規則（自造紅燈的三個來源）
 

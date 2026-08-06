@@ -57,8 +57,9 @@
 
 ## 5. 錯誤處理
 
-- 全域 QueryClient onError 統一處理 401/403/500；queries 401 不重試，其他 retry ≤3；
-  mutations onError 統一 `toast.error(getApiErrorMessage(error))`。
+- 全域 QueryClient onError 統一處理 401/403/500；queries **401 與 403 皆不重試，其餘最多重試 1 次**
+  （`main.tsx` 實作為 `failureCount < 1`）；mutations onError 統一 `toast.error(getApiErrorMessage(error))`。
+  （2026-08-07 更正：原文寫「401 不重試，其他 retry ≤3」，漏了 403 且次數與實作不符。）
 - 渲染錯誤用 `PageErrorBoundary`。
 - ❌ 禁止裸 try-catch + `console.error`。
 
@@ -74,10 +75,11 @@ React 核心 → 第三方庫 → 空行 → `@/lib/`,`@/hooks/`,`@/stores/` →
 ## 8. 驗證方式（環境限制）
 
 - **不要跑 `npm run build`**（會干擾現行 Docker prod）。驗證用：
-  `rtk tsc`（或 `node_modules/.bin/tsc --noEmit`）+ `npx eslint`。
+  `rtk tsc`（或 `./node_modules/.bin/tsc --noEmit`）+ `rtk npx eslint`，以**零警告**為通過。
 - 前端跑的是 production build（非 Vite dev server）：改完要 rebuild image 才會生效。
-- 新 worktree 跑 tsc/eslint 前，先用 PowerShell `New-Item -ItemType Junction` 把主 repo 的
-  `node_modules` junction 過去（非 mklink）。
+- 新 worktree 跑 tsc/eslint 前，先用 PowerShell 把主 repo 的 `node_modules` junction 過去
+  （非 mklink）：`powershell.exe -NoProfile -Command "New-Item -ItemType Junction
+  -Path '<wt>\frontend\node_modules' -Target '<主 repo>\frontend\node_modules'"`
 - ⚠️ **junction 方向只能 worktree → 主 repo，絕不可反向**。反向（把主 repo 的套件指向
   worktree 的 `.pnpm`）之後那個 worktree 一旦被 `worktree remove`，主 repo 的依賴就整批斷鏈，
   **所有 session 都無法在本機跑 tsc/eslint**（2026-08-06 實測：主 repo 436 個頂層套件中 44 個
@@ -86,8 +88,10 @@ React 核心 → 第三方庫 → 空行 → `@/lib/`,`@/hooks/`,`@/stores/` →
   在 grep / cat 到這行時被誤擋，見 PARALLEL_SESSIONS.md §10）。
   症狀是 `Cannot find module '...\node_modules\typescript\bin\tsc'` 但 `.bin/tsc` 明明存在。
   檢查：`Get-ChildItem node_modules -Directory -Force | Where { $_.LinkType -and -not (Test-Path $_.Target[0]) }`。
-  修復：在**自己的 worktree** 跑 `CI=true pnpm install --frozen-lockfile`（pnpm 從 store hardlink，
-  約 60 秒、幾乎不佔額外磁碟），不要去動主 checkout 的 node_modules（別的 session 可能正在用）。
+  修復：在**自己的 worktree** 跑 `CI=true rtk pnpm install --frozen-lockfile`
+  （PowerShell 為 `$env:CI='true'; rtk pnpm install --frozen-lockfile`。`CI=true` 是為了讓
+  pnpm 在無 TTY 下不詢問即可清除舊 modules 目錄；pnpm 從 store hardlink，約 60 秒、
+  幾乎不佔額外磁碟），不要去動主 checkout 的 node_modules（別的 session 可能正在用）。
 - 拆 junction 用 `[System.IO.Directory]::Delete('<path>', $false)`（非遞迴，只斷連結）。
   **不可用 `rm -r`**——會穿透 junction 把主 repo 的依賴刪掉。
   另注意 Bash 工具內 `cmd /c <指令>` 會開互動殼、指令不會真的執行（`mklink` / `rmdir` 皆實測失敗，

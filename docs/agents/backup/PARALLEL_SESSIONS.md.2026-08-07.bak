@@ -25,7 +25,7 @@
 | 建立 | `git worktree add -b <branch> "C:/System Coding/wt-<sid>" origin/main`（從主 checkout 執行） |
 | 所有權 | **只有建立它的 session 能讀寫該目錄**。裡面愛切幾支分支都行 |
 | 別人的工作區 | 唯讀都不必——**不 checkout、不編輯、不 `worktree remove`、不 `worktree prune` 別人的**。`git worktree list` 只用來確認「哪些名字已被佔用」 |
-| 結束 | 分支落地後刪自己的：`git worktree remove "C:/System Coding/wt-<sid>"`；若因 target 目錄殘留而失敗，先移除 `frontend/node_modules` junction（**用 `powershell.exe -NoProfile -Command "[System.IO.Directory]::Delete('<path>', $false)"`** —— 非遞迴、只斷連結；`rm -r` 會穿過去刪主 repo 的依賴），再 `worktree prune`。⚠️ 2026-08-07 更正：原本此處寫的 `cmd /c rmdir` **是無效指令**——Bash 工具內 `cmd /c` 會開互動殼、指令不會執行，且 exit code 仍為 0，看起來像成功。同 `RULES_FRONTEND.md` §8 |
+| 結束 | 分支落地後刪自己的：`git worktree remove "C:/System Coding/wt-<sid>"`；若因 target 目錄殘留而失敗，先移除 `frontend/node_modules` junction（**用 `cmd /c rmdir` 只斷連結**，`rm -r` 會穿過去刪主 repo 的依賴），再 `worktree prune` |
 
 **主 checkout `C:\System Coding\ipig_system` 是唯讀 + 部署專用**：可以 `git pull --ff-only`（部署前同步）、可以跑 docker compose、可以讀檔；
 **不得**在其上 commit / checkout 分支 / `reset` / `stash` / `checkout -- .`。要改 code 一律回自己的 `wt-<sid>`。
