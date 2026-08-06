@@ -511,12 +511,25 @@ impl AccountingService {
         limit: i64,
     ) -> Result<Vec<(JournalEntryRow, Vec<JournalEntryLineRow>)>> {
         let entries = repo::list_journal_entries(pool, date_from, date_to, limit).await?;
-        let mut result = Vec::with_capacity(entries.len());
-        for e in entries {
-            let lines = repo::find_journal_entry_lines(pool, e.id).await?;
-            result.push((e, lines));
+
+        // N+1 修復：原本每張傳票各查一次分錄行，最壞 1 + MAX_PAGE_SIZE 次 round-trip。
+        let entry_ids: Vec<Uuid> = entries.iter().map(|e| e.id).collect();
+        let mut lines_by_entry: std::collections::HashMap<Uuid, Vec<JournalEntryLineRow>> =
+            std::collections::HashMap::new();
+        for (entry_id, line) in
+            repo::find_journal_entry_lines_by_entry_ids(pool, &entry_ids).await?
+        {
+            lines_by_entry.entry(entry_id).or_default().push(line);
         }
-        Ok(result)
+
+        // 無分錄行的傳票不會出現在 join 結果中，對應原本查回空 Vec 的行為。
+        Ok(entries
+            .into_iter()
+            .map(|e| {
+                let lines = lines_by_entry.remove(&e.id).unwrap_or_default();
+                (e, lines)
+            })
+            .collect())
     }
 
     /// 應付帳款帳齡

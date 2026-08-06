@@ -1111,10 +1111,15 @@ impl SignatureService {
         entity_id: &str,
     ) -> Result<Vec<SignatureInfoDto>> {
         let signatures = Self::get_signatures(pool, entity_type, entity_id).await?;
+
+        // N+1 修復：原本每筆簽章各查一次 users 取顯示名稱，改為一次批次查詢。
+        let signer_ids: Vec<Uuid> = signatures.iter().map(|s| s.signer_id).collect();
+        let name_by_id =
+            repositories::user::find_user_display_names_by_ids(pool, &signer_ids).await?;
+
         let mut infos = Vec::with_capacity(signatures.len());
         for sig in signatures {
-            let signer_name =
-                repositories::user::find_user_display_name_by_id(pool, sig.signer_id).await?;
+            let signer_name = name_by_id.get(&sig.signer_id).cloned();
             infos.push(SignatureInfoDto {
                 id: sig.id,
                 signature_type: sig.signature_type,

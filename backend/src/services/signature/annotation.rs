@@ -104,10 +104,14 @@ impl AnnotationService {
         pool: &PgPool,
         annotations: Vec<RecordAnnotation>,
     ) -> Result<Vec<(RecordAnnotation, Option<String>)>> {
+        // N+1 修復：原本每筆附註各查一次 users 取顯示名稱，改為一次批次查詢。
+        let creator_ids: Vec<Uuid> = annotations.iter().map(|a| a.created_by).collect();
+        let name_by_id =
+            repositories::user::find_user_display_names_by_ids(pool, &creator_ids).await?;
+
         let mut result = Vec::with_capacity(annotations.len());
         for ann in annotations {
-            let name =
-                repositories::user::find_user_display_name_by_id(pool, ann.created_by).await?;
+            let name = name_by_id.get(&ann.created_by).cloned();
             result.push((ann, name));
         }
         Ok(result)

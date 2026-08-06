@@ -46,6 +46,26 @@ impl AnimalObservationService {
         Ok(observations)
     }
 
+    /// N+1 修復：一次撈多隻動物的觀察紀錄，供專案層級匯出／列印使用。
+    /// 回傳已依 `animal_id` 排序，呼叫端自行分組。
+    pub async fn list_for_animals(
+        pool: &PgPool,
+        animal_ids: &[Uuid],
+    ) -> Result<Vec<AnimalObservation>> {
+        let observations = sqlx::query_as::<_, AnimalObservation>(
+            r#"SELECT o.*, u.display_name as created_by_name
+               FROM animal_observations o
+               LEFT JOIN users u ON o.created_by = u.id
+               WHERE o.animal_id = ANY($1::uuid[]) AND o.deleted_at IS NULL
+               ORDER BY o.animal_id, o.event_date DESC"#,
+        )
+        .bind(animal_ids)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(observations)
+    }
+
     /// 取得觀察紀錄列表（含獸醫師建議數量，支援資料隔離）
     pub async fn list_with_recommendations(
         pool: &PgPool,

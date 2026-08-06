@@ -72,6 +72,26 @@ impl AnimalSurgeryService {
         Ok(surgeries)
     }
 
+    /// N+1 修復：一次撈多隻動物的手術紀錄，供專案層級匯出／列印使用。
+    /// 回傳已依 `animal_id` 排序，呼叫端自行分組。
+    pub async fn list_for_animals(
+        pool: &PgPool,
+        animal_ids: &[Uuid],
+    ) -> Result<Vec<AnimalSurgery>> {
+        let surgeries = sqlx::query_as::<_, AnimalSurgery>(
+            r#"SELECT s.*, u.display_name as created_by_name
+               FROM animal_surgeries s
+               LEFT JOIN users u ON s.created_by = u.id
+               WHERE s.animal_id = ANY($1::uuid[]) AND s.deleted_at IS NULL
+               ORDER BY s.animal_id, s.surgery_date DESC"#,
+        )
+        .bind(animal_ids)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(surgeries)
+    }
+
     /// 取得手術紀錄列表（含獸醫師建議數量，支援資料隔離）
     pub async fn list_with_recommendations(
         pool: &PgPool,

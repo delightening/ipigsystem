@@ -206,7 +206,19 @@ pub(super) async fn create(
     get(pool, actor, thread.id).await
 }
 
+/// N+1 修復用：批次撈 participants 時多帶 `thread_id` 以便在記憶體分組。
+#[derive(FromRow)]
+struct ParticipantRow {
+    thread_id: Uuid,
+    user_id: Uuid,
+    display_name: String,
+    email: String,
+    last_read_at: Option<DateTime<Utc>>,
+}
+
 pub(super) async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<ThreadSummary>> {
+    use std::collections::HashMap;
+
     let threads = sqlx::query_as::<_, MessageThread>(
         r#"SELECT t.id, t.type, t.subject, t.created_by, t.created_at, t.last_message_at
            FROM message_threads t
@@ -220,42 +232,90 @@ pub(super) async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Th
     .fetch_all(pool)
     .await?;
 
+    if threads.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // N+1 修復：原本每個 thread 各打 3 次查詢（participants / unread / preview），
+    // 且本清單無 LIMIT，查詢數隨使用者累積的對話數無上限成長。
+    // 改為三次批次查詢後在記憶體分組，總查詢數固定為 1 + 3。
+    let thread_ids: Vec<Uuid> = threads.iter().map(|t| t.id).collect();
+
+    let participant_rows = sqlx::query_as::<_, ParticipantRow>(
+        r#"SELECT p.thread_id, p.user_id, COALESCE(u.display_name, u.email) AS display_name,
+                  u.email, p.last_read_at
+           FROM message_thread_participants p
+           JOIN users u ON u.id = p.user_id
+           WHERE p.thread_id = ANY($1::uuid[]) AND p.left_at IS NULL
+           ORDER BY p.thread_id, p.joined_at"#,
+    )
+    .bind(&thread_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut participants_by_thread: HashMap<Uuid, Vec<ThreadParticipantSummary>> = HashMap::new();
+    for r in participant_rows {
+        participants_by_thread
+            .entry(r.thread_id)
+            .or_default()
+            .push(ThreadParticipantSummary {
+                user_id: r.user_id,
+                display_name: r.display_name,
+                email: r.email,
+                last_read_at: r.last_read_at,
+            });
+    }
+
+    let unread_by_thread: HashMap<Uuid, i64> = sqlx::query_as::<_, (Uuid, i64)>(
+        r#"SELECT m.thread_id, COUNT(*)
+           FROM messages m
+           JOIN message_thread_participants p
+             ON p.thread_id = m.thread_id AND p.user_id = $1
+           WHERE m.thread_id = ANY($2::uuid[])
+             AND m.deleted_at IS NULL
+             AND m.sender_id <> $1
+             AND (p.last_read_at IS NULL OR m.created_at > p.last_read_at)
+           GROUP BY m.thread_id"#,
+    )
+    .bind(user_id)
+    .bind(&thread_ids)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect();
+
+    // `DISTINCT ON` + 同序 `ORDER BY` 等價於原本每 thread 的 `ORDER BY created_at DESC LIMIT 1`
+    let preview_by_thread: HashMap<Uuid, String> = sqlx::query_as::<_, (Uuid, String)>(
+        r#"SELECT DISTINCT ON (thread_id) thread_id, body
+           FROM messages
+           WHERE thread_id = ANY($1::uuid[]) AND deleted_at IS NULL
+           ORDER BY thread_id, created_at DESC"#,
+    )
+    .bind(&thread_ids)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect();
+
     let mut out = Vec::with_capacity(threads.len());
     for t in threads {
-        let participants = list_participants(pool, t.id).await?;
-        let unread_count: i64 = sqlx::query_scalar(
-            r#"SELECT COUNT(*) FROM messages m
-               JOIN message_thread_participants p
-                 ON p.thread_id = m.thread_id AND p.user_id = $1
-               WHERE m.thread_id = $2
-                 AND m.deleted_at IS NULL
-                 AND m.sender_id <> $1
-                 AND (p.last_read_at IS NULL OR m.created_at > p.last_read_at)"#,
-        )
-        .bind(user_id)
-        .bind(t.id)
-        .fetch_one(pool)
-        .await?;
-        let last_message_preview: Option<String> = sqlx::query_scalar(
-            r#"SELECT body FROM messages
-               WHERE thread_id = $1 AND deleted_at IS NULL
-               ORDER BY created_at DESC LIMIT 1"#,
-        )
-        .bind(t.id)
-        .fetch_optional(pool)
-        .await?;
+        // 這裡的 `unwrap_or` 取的是「已成功撈回的結果集」中的缺列，不是 DB 錯誤降級：
+        // 無未讀的 thread 不會出現在 GROUP BY 結果中，等同原本 COUNT(*) 回 0。
+        let participants = participants_by_thread.remove(&t.id).unwrap_or_default();
+        let unread_count = unread_by_thread.get(&t.id).copied().unwrap_or(0);
+        let last_message_preview = preview_by_thread.get(&t.id).map(|s| {
+            let trimmed: String = s.chars().take(80).collect();
+            if s.chars().count() > 80 {
+                format!("{trimmed}...")
+            } else {
+                trimmed
+            }
+        });
         out.push(ThreadSummary {
             thread: t,
             participants,
             unread_count,
-            last_message_preview: last_message_preview.map(|s| {
-                let trimmed: String = s.chars().take(80).collect();
-                if s.chars().count() > 80 {
-                    format!("{trimmed}...")
-                } else {
-                    trimmed
-                }
-            }),
+            last_message_preview,
         });
     }
     Ok(out)
