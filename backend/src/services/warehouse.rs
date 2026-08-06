@@ -13,12 +13,35 @@ use crate::{
         Warehouse, WarehouseImportErrorDetail, WarehouseImportResult, WarehouseImportRow,
         WarehouseQuery, WarehouseReportData, WarehouseReportSummary, WarehouseTreeNode,
     },
+    repositories::warehouse::{list_stocked_locations_tx, StockedLocation},
     services::{
-        audit::{ActivityLogEntry, AuditEntity},
+        audit::{ActivityLogEntry, AuditEntity, RequestContext},
         AuditService,
     },
     AppError, Result,
 };
+
+/// 倉庫底下尚有結存時的阻擋訊息。最多列 5 個儲位，避免單筆錯誤訊息過長。
+fn stocked_locations_error(display: &str, stocked: &[StockedLocation]) -> AppError {
+    const MAX_LISTED: usize = 5;
+    let listed = stocked
+        .iter()
+        .take(MAX_LISTED)
+        .map(|l| {
+            let label = l.name.as_deref().unwrap_or(&l.code);
+            format!("{}（{}）", label, l.on_hand_qty.normalize())
+        })
+        .collect::<Vec<_>>()
+        .join("、");
+    let more = if stocked.len() > MAX_LISTED {
+        format!("等共 {} 個儲位", stocked.len())
+    } else {
+        String::new()
+    };
+    AppError::BusinessRule(format!(
+        "倉庫「{display}」底下仍有庫存，無法停用：{listed}{more}。請先將庫存移轉或出庫後再停用。"
+    ))
+}
 
 pub struct WarehouseService;
 
@@ -86,6 +109,7 @@ impl WarehouseService {
         pool: &PgPool,
         actor: &ActorContext,
         req: &CreateWarehouseRequest,
+        ctx: Option<RequestContext<'_>>,
     ) -> Result<Warehouse> {
         let mut tx = pool.begin().await?;
 
@@ -107,7 +131,7 @@ impl WarehouseService {
             address: req.address.clone(),
         };
 
-        let result = Self::create_tx(&mut tx, actor, &req_with_code).await?;
+        let result = Self::create_tx(&mut tx, actor, &req_with_code, ctx).await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -117,6 +141,7 @@ impl WarehouseService {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         actor: &ActorContext,
         req: &CreateWarehouseRequest,
+        ctx: Option<RequestContext<'_>>,
     ) -> Result<Warehouse> {
         // 如果 code 為空或未提供，則自動生成（需從 pool 取，改為簡化：要求 code 在跨服務 tx 內必須提供）
         let code = match req
@@ -169,7 +194,7 @@ impl WarehouseService {
                 event_type: "WAREHOUSE_CREATE",
                 entity: Some(AuditEntity::new("warehouse", warehouse.id, &display)),
                 data_diff: Some(DataDiff::create_only(&warehouse)),
-                request_context: None,
+                request_context: ctx,
             },
         )
         .await?;
@@ -183,6 +208,7 @@ impl WarehouseService {
         actor: &ActorContext,
         id: Uuid,
         req: &UpdateWarehouseRequest,
+        ctx: Option<RequestContext<'_>>,
     ) -> Result<Warehouse> {
         let before =
             sqlx::query_as::<_, Warehouse>("SELECT * FROM warehouses WHERE id = $1 FOR UPDATE")
@@ -190,6 +216,12 @@ impl WarehouseService {
                 .fetch_optional(&mut **tx)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Warehouse not found".to_string()))?;
+
+        // 把「啟用狀態」關掉等同於刪除倉庫（同一條 is_active 路徑），
+        // 因此與 delete_tx 受同一道庫存閘門把關。
+        if before.is_active && req.is_active == Some(false) {
+            Self::ensure_no_stock_tx(tx, id, &format!("{} ({})", before.name, before.code)).await?;
+        }
 
         let after = sqlx::query_as::<_, Warehouse>(
             r#"
@@ -218,7 +250,7 @@ impl WarehouseService {
                 event_type: "WAREHOUSE_UPDATE",
                 entity: Some(AuditEntity::new("warehouse", after.id, &display)),
                 data_diff: Some(DataDiff::compute(Some(&before), Some(&after))),
-                request_context: None,
+                request_context: ctx,
             },
         )
         .await?;
@@ -226,11 +258,30 @@ impl WarehouseService {
         Ok(after)
     }
 
+    /// 停用倉庫前的庫存閘門：底下任一儲位仍有結存就拒絕（422）。
+    ///
+    /// 倉庫停用後，庫存查詢樹（`list_with_shelves`）與現況報表（`get_report_data`）
+    /// 都只看 `is_active = true` 的倉庫，底下的結存會從所有畫面消失，但
+    /// `stock_ledger` 帳上仍在——即「隱形庫存」。2026-08-05「儲藏室 (2)」被停用時
+    /// 底下尚有 4,424 單位結存，即為此情形。
+    async fn ensure_no_stock_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        id: Uuid,
+        display: &str,
+    ) -> Result<()> {
+        let stocked = list_stocked_locations_tx(tx, id).await?;
+        if stocked.is_empty() {
+            return Ok(());
+        }
+        Err(stocked_locations_error(display, &stocked))
+    }
+
     /// Transaction 版本：刪除倉庫（用於跨服務原子操作）
     pub(super) async fn delete_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         actor: &ActorContext,
         id: Uuid,
+        ctx: Option<RequestContext<'_>>,
     ) -> Result<()> {
         let before =
             sqlx::query_as::<_, Warehouse>("SELECT * FROM warehouses WHERE id = $1 FOR UPDATE")
@@ -239,6 +290,9 @@ impl WarehouseService {
                 .await?
                 .ok_or_else(|| AppError::NotFound("Warehouse not found".to_string()))?;
 
+        let display = format!("{} ({})", before.name, before.code);
+        Self::ensure_no_stock_tx(tx, id, &display).await?;
+
         let after = sqlx::query_as::<_, Warehouse>(
             "UPDATE warehouses SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *",
         )
@@ -246,7 +300,6 @@ impl WarehouseService {
         .fetch_one(&mut **tx)
         .await?;
 
-        let display = format!("{} ({})", before.name, before.code);
         AuditService::log_activity_tx(
             tx,
             actor,
@@ -255,7 +308,7 @@ impl WarehouseService {
                 event_type: "WAREHOUSE_DELETE",
                 entity: Some(AuditEntity::new("warehouse", before.id, &display)),
                 data_diff: Some(DataDiff::compute(Some(&before), Some(&after))),
-                request_context: None,
+                request_context: ctx,
             },
         )
         .await?;
@@ -365,19 +418,25 @@ impl WarehouseService {
         actor: &ActorContext,
         id: Uuid,
         req: &UpdateWarehouseRequest,
+        ctx: Option<RequestContext<'_>>,
     ) -> Result<Warehouse> {
         let _user = actor.require_user()?;
         let mut tx = pool.begin().await?;
-        let result = Self::update_tx(&mut tx, actor, id, req).await?;
+        let result = Self::update_tx(&mut tx, actor, id, req, ctx).await?;
         tx.commit().await?;
         Ok(result)
     }
 
     /// 刪除倉庫（軟刪除）— Service-driven audit
-    pub async fn delete(pool: &PgPool, actor: &ActorContext, id: Uuid) -> Result<()> {
+    pub async fn delete(
+        pool: &PgPool,
+        actor: &ActorContext,
+        id: Uuid,
+        ctx: Option<RequestContext<'_>>,
+    ) -> Result<()> {
         let _user = actor.require_user()?;
         let mut tx = pool.begin().await?;
-        Self::delete_tx(&mut tx, actor, id).await?;
+        Self::delete_tx(&mut tx, actor, id, ctx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -553,7 +612,9 @@ impl WarehouseService {
                 address: row.address.clone().filter(|s| !s.trim().is_empty()),
             };
 
-            match Self::create(pool, actor, &create_req).await {
+            // 匯入路徑的 IP / UA 尚未從 handler 串下來（`import_warehouses` 簽名不收），
+            // 與批次 summary audit（WAREHOUSE_IMPORT）現況一致，維持 None。
+            match Self::create(pool, actor, &create_req, None).await {
                 Ok(_warehouse) => {
                     success_count += 1;
                 }

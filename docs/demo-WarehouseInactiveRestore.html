@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>倉庫「已停用檢視 + 復原」UI 預覽</title>
+<style>
+  :root{
+    --background:0 0% 100%; --foreground:222.2 84% 4.9%;
+    --primary:217.2 91.2% 59.8%; --primary-foreground:0 0% 100%;
+    --secondary:210 40% 96.1%; --destructive:0 84.2% 60.2%;
+    --success:142 76% 36%; --muted:210 40% 96.1%; --muted-foreground:215.4 16.3% 46.9%;
+    --border:214.3 31.8% 91.4%; --radius:.5rem;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px;background:hsl(210 40% 98%);color:hsl(var(--foreground));
+       font-family:"Noto Sans TC","Segoe UI",system-ui,sans-serif;line-height:1.6}
+  h1{font-size:24px;margin:0 0 4px}
+  h2{font-size:17px;margin:40px 0 12px;padding-bottom:8px;border-bottom:1px solid hsl(var(--border))}
+  .lede{color:hsl(var(--muted-foreground));margin:0 0 8px}
+  .wrap{max-width:960px;margin:0 auto}
+  .card{background:hsl(var(--background));border:1px solid hsl(var(--border));
+        border-radius:var(--radius);box-shadow:0 1px 2px rgb(0 0 0/.05)}
+  .card-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px}
+  .card-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;margin:0}
+  .card-body{padding:0 20px 20px}
+  .btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;font-size:13px;
+       border-radius:calc(var(--radius) - 2px);border:1px solid transparent;background:none;
+       cursor:pointer;font-family:inherit;color:inherit;white-space:nowrap}
+  .btn:hover{background:hsl(var(--secondary))}
+  .btn-outline{border-color:hsl(var(--border));background:hsl(var(--background))}
+  .btn-primary{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:transparent}
+  .btn-primary:hover{background:hsl(217.2 91.2% 54%)}
+  .btn-danger{background:hsl(var(--destructive));color:#fff}
+  .btn-sm{height:28px;padding:0 10px;font-size:12px}
+  .select{display:flex;align-items:center;justify-content:space-between;width:300px;height:40px;
+          padding:0 12px;border:1px solid hsl(var(--border));border-radius:calc(var(--radius) - 2px);
+          background:hsl(var(--background));font-size:14px;cursor:pointer}
+  .badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;
+         padding:0 5px;border-radius:9px;font-size:11px;font-weight:600;
+         background:hsl(var(--destructive));color:#fff}
+  .muted{color:hsl(var(--muted-foreground))}
+  .small{font-size:13px}
+  .dim{opacity:.55}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+       padding:12px 14px;border:1px solid hsl(var(--border));border-radius:calc(var(--radius) - 2px);
+       background:hsl(210 40% 98.5%)}
+  .row + .row{margin-top:8px}
+  .stack{display:flex;flex-direction:column;gap:2px}
+  .name{font-weight:600;font-size:14px}
+  .dialog-mask{position:fixed;inset:0;background:rgb(0 0 0/.45);display:none;
+               align-items:center;justify-content:center;padding:24px;z-index:20}
+  .dialog-mask.open{display:flex}
+  .dialog{width:100%;max-width:520px;background:hsl(var(--background));border-radius:var(--radius);
+          box-shadow:0 20px 40px rgb(0 0 0/.2);padding:22px}
+  .dialog h3{margin:0 0 4px;font-size:17px}
+  .dialog-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+  .toast{width:380px;border:1px solid hsl(var(--destructive)/.35);border-left:4px solid hsl(var(--destructive));
+         background:hsl(var(--background));border-radius:calc(var(--radius) - 2px);padding:12px 14px;
+         box-shadow:0 4px 12px rgb(0 0 0/.08)}
+  .toast .t{font-weight:600;font-size:14px;color:hsl(var(--destructive));margin-bottom:2px}
+  .note{background:hsl(48 96% 96%);border:1px solid hsl(48 90% 78%);border-radius:var(--radius);
+        padding:12px 16px;font-size:13px;margin:12px 0 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .label{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.04em;
+         color:hsl(var(--muted-foreground));margin-bottom:6px}
+  .opt{border:1px solid hsl(var(--border));border-radius:var(--radius);padding:16px;background:#fff}
+  .divider{height:1px;background:hsl(var(--border));margin:6px 0}
+  .ddl{width:300px;border:1px solid hsl(var(--border));border-radius:calc(var(--radius) - 2px);
+       background:#fff;box-shadow:0 8px 20px rgb(0 0 0/.1);padding:6px;margin-top:6px}
+  .ddl-item{padding:8px 10px;border-radius:4px;font-size:14px;cursor:pointer}
+  .ddl-item:hover{background:hsl(var(--secondary))}
+  .ddl-head{padding:6px 10px;font-size:11px;font-weight:600;letter-spacing:.05em;
+            color:hsl(var(--muted-foreground))}
+  code{background:hsl(var(--secondary));padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>倉庫「已停用檢視 ＋ 復原」UI 預覽</h1>
+  <p class="lede">起因：2026-08-05「2 - 儲藏室」被停用後，畫面上再也選不到它，底下 4,424 單位庫存跟著消失。
+     倉庫頁只列啟用中的倉庫，誤刪無法自救。以下請你選一個入口樣式。</p>
+
+  <h2>現況（before）</h2>
+  <div class="card">
+    <div class="card-head">
+      <p class="card-title">🏢 選擇倉庫</p>
+      <div>
+        <button class="btn">＋ 新增倉庫</button>
+        <button class="btn">✎ 編輯倉庫</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="select"><span>0 - 大倉庫</span><span class="muted">⌄</span></div>
+      <p class="small muted" style="margin:10px 0 0">停用的倉庫完全不出現，也沒有任何提示說「有一座倉庫被停用了」。</p>
+    </div>
+  </div>
+
+  <h2>方案 A：標題列加一顆「已停用倉庫」按鈕（推薦）</h2>
+  <div class="card">
+    <div class="card-head">
+      <p class="card-title">🏢 選擇倉庫</p>
+      <div>
+        <button class="btn" onclick="openDlg()">🗄 已停用倉庫 <span class="badge">1</span></button>
+        <button class="btn">＋ 新增倉庫</button>
+        <button class="btn">✎ 編輯倉庫</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="select"><span>0 - 大倉庫</span><span class="muted">⌄</span></div>
+      <p class="small muted" style="margin:10px 0 0">
+        按鈕只在「真的有停用倉庫」時出現，紅色數字即停用數量 →
+        <a href="#" onclick="openDlg();return false;">點我看展開後的樣子</a>。
+      </p>
+    </div>
+  </div>
+  <p class="note"><strong>優點：</strong>平時完全不干擾（沒有停用倉庫就不顯示），有東西被停用時一眼看得到。
+     復原是明確的一個動作，不會跟「選擇倉庫」混在一起誤點。</p>
+
+  <h2>方案 B：下拉選單底部加「已停用」分區</h2>
+  <div class="card">
+    <div class="card-head">
+      <p class="card-title">🏢 選擇倉庫</p>
+      <div>
+        <button class="btn">＋ 新增倉庫</button>
+        <button class="btn">✎ 編輯倉庫</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="select"><span>0 - 大倉庫</span><span class="muted">⌃</span></div>
+      <div class="ddl">
+        <div class="ddl-item">✓ 0 - 大倉庫</div>
+        <div class="ddl-item">&nbsp;&nbsp;&nbsp;1 - 準備室</div>
+        <div class="ddl-item">&nbsp;&nbsp;&nbsp;3 - 飼料櫃</div>
+        <div class="divider"></div>
+        <div class="ddl-head">已停用</div>
+        <div class="ddl-item dim" style="display:flex;justify-content:space-between;align-items:center">
+          <span>2 - 儲藏室</span><button class="btn btn-sm btn-outline">復原</button>
+        </div>
+      </div>
+      <p class="small muted" style="margin:56px 0 0">停用倉庫灰字列在下拉最底部，右側直接一顆「復原」。</p>
+    </div>
+  </div>
+  <p class="note"><strong>取捨：</strong>入口更近，但下拉選單本來是「切換要看哪個倉庫」，混入不可選的項目容易誤點；
+     倉庫多的時候清單也會被拉長。</p>
+
+  <h2>兩處連帶的文案改動（兩方案共用）</h2>
+  <div class="grid2">
+    <div class="opt">
+      <span class="label">刪除確認對話框</span>
+      <p class="small" style="margin:0 0 6px"><span class="muted">現在：</span>
+         確定要刪除倉庫「儲藏室」嗎？<strong>此操作無法復原。</strong></p>
+      <div class="divider"></div>
+      <p class="small" style="margin:6px 0 0"><span class="muted">改為：</span>
+         確定要停用倉庫「儲藏室」嗎？停用後不會出現在倉庫清單，
+         可從<strong>「已停用倉庫」復原</strong>。</p>
+      <p class="small muted" style="margin:8px 0 0">原文案說「無法復原」其實是錯的——它一直都是軟刪除。</p>
+    </div>
+    <div class="opt">
+      <span class="label">底下還有庫存時（後端已擋，422）</span>
+      <div class="toast">
+        <div class="t">停用失敗</div>
+        <div class="small">倉庫「儲藏室 (2)」底下仍有庫存，無法停用：儲物架1（3759）、儲物架2（60）、儲物架3（309）、抽屜櫃（296）。請先將庫存移轉或出庫後再停用。</div>
+      </div>
+      <p class="small muted" style="margin:8px 0 0">後端訊息直接顯示，前端不另外改寫。</p>
+    </div>
+  </div>
+
+  <h2>方案 A 展開後的對話框</h2>
+  <p class="small muted">點上面方案 A 的按鈕可以實際打開。下面是靜態說明：每列顯示代碼、名稱、停用時間，右側「復原」。</p>
+
+</div>
+
+<div class="dialog-mask" id="dlg" onclick="if(event.target===this)closeDlg()">
+  <div class="dialog">
+    <h3>已停用的倉庫</h3>
+    <p class="small muted" style="margin:0 0 16px">
+      停用的倉庫不會出現在倉庫清單與庫存查詢，但資料與底下的儲位、庫存都還在。復原後立即恢復顯示。</p>
+    <div class="row">
+      <div class="stack">
+        <span class="name">2 - 儲藏室</span>
+        <span class="small muted">停用於 2026-08-05 16:06　·　潘映潔</span>
+      </div>
+      <button class="btn btn-sm btn-primary">復原</button>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" onclick="closeDlg()">關閉</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openDlg(){document.getElementById('dlg').classList.add('open')}
+  function closeDlg(){document.getElementById('dlg').classList.remove('open')}
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDlg()})
+</script>
+</body>
+</html>

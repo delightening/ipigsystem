@@ -1,40 +1,55 @@
 use axum::extract::Multipart;
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
-    http::{header, StatusCode},
+    extract::{ConnectInfo, Path, Query, State},
+    http::{header, HeaderMap, StatusCode},
     response::Response,
     Extension, Json,
 };
+use std::net::SocketAddr;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    middleware::{ActorContext, CurrentUser},
+    middleware::{extract_real_ip_with_trust, ActorContext, CurrentUser},
     models::{
         CreateWarehouseRequest, UpdateWarehouseRequest, Warehouse, WarehouseImportResult,
         WarehouseQuery, WarehouseReportData, WarehouseTreeNode,
     },
     require_permission,
-    services::{pdf_service_client::DocxRenderFormat, WarehouseService},
+    services::{audit::RequestContext, pdf_service_client::DocxRenderFormat, WarehouseService},
     AppError, AppState, Result,
 };
 
 /// 倉庫現況報表 PDF 檔名固定後綴（與 frontend `WarehouseReportPage.tsx` 對齊）。
 const WAREHOUSE_REPORT_FILENAME_SUFFIX: &str = "_倉庫現況報表.pdf";
 
+/// 取 User-Agent header（缺漏或非 ASCII 時為 None，與 auth handler 一致）。
+fn user_agent_of(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+}
+
 /// 建立倉庫
 #[utoipa::path(post, path = "/api/v1/warehouses", request_body = CreateWarehouseRequest, responses((status = 200, description = "建立成功", body = Warehouse)), tag = "倉儲管理", security(("bearer" = [])))]
 pub async fn create_warehouse(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<CreateWarehouseRequest>,
 ) -> Result<Json<Warehouse>> {
     require_permission!(current_user, "erp.warehouse.create");
     req.validate()?;
 
+    let ip = extract_real_ip_with_trust(&headers, &addr, state.config.trust_proxy_headers);
+    let ctx = RequestContext {
+        ip_address: Some(&ip),
+        user_agent: user_agent_of(&headers),
+    };
     let actor = ActorContext::User(current_user.clone());
-    let warehouse = WarehouseService::create(&state.db, &actor, &req).await?;
+    let warehouse = WarehouseService::create(&state.db, &actor, &req, Some(ctx)).await?;
 
     Ok(Json(warehouse))
 }
@@ -83,13 +98,20 @@ pub async fn update_warehouse(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<Uuid>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<UpdateWarehouseRequest>,
 ) -> Result<Json<Warehouse>> {
     require_permission!(current_user, "erp.warehouse.edit");
     req.validate()?;
 
+    let ip = extract_real_ip_with_trust(&headers, &addr, state.config.trust_proxy_headers);
+    let ctx = RequestContext {
+        ip_address: Some(&ip),
+        user_agent: user_agent_of(&headers),
+    };
     let actor = ActorContext::User(current_user.clone());
-    let warehouse = WarehouseService::update(&state.db, &actor, id, &req).await?;
+    let warehouse = WarehouseService::update(&state.db, &actor, id, &req, Some(ctx)).await?;
 
     Ok(Json(warehouse))
 }
@@ -101,11 +123,18 @@ pub async fn delete_warehouse(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<Uuid>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>> {
     require_permission!(current_user, "erp.warehouse.delete");
 
+    let ip = extract_real_ip_with_trust(&headers, &addr, state.config.trust_proxy_headers);
+    let ctx = RequestContext {
+        ip_address: Some(&ip),
+        user_agent: user_agent_of(&headers),
+    };
     let actor = ActorContext::User(current_user.clone());
-    WarehouseService::delete(&state.db, &actor, id).await?;
+    WarehouseService::delete(&state.db, &actor, id, Some(ctx)).await?;
     Ok(Json(
         serde_json::json!({ "message": "Warehouse deleted successfully" }),
     ))
