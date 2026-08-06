@@ -79,8 +79,12 @@ pub async fn free_ear_tag(pool: &PgPool) -> String {
 impl TestApp {
     /// Spawn the full application on a random OS-assigned port.
     ///
-    /// Requires `TEST_DATABASE_URL` env var (or `DATABASE_URL`) pointing to a
-    /// test-ready PostgreSQL instance with migrations already applied.
+    /// **Requires `TEST_DATABASE_URL`**（不再 fallback 到 `DATABASE_URL`）指向一個
+    /// 獨立的丟棄用 PostgreSQL；migration 由本函式自行執行。
+    ///
+    /// 開發機的 `DATABASE_URL` 指向 prod，fallback 會讓整合測試寫進正式庫，
+    /// 見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。CI 兩個 job 已於
+    /// `ci.yml` 補上同值的 `TEST_DATABASE_URL`。
     pub async fn spawn() -> Self {
         dotenvy::dotenv().ok();
 
