@@ -112,7 +112,10 @@ pub use messaging::{
     MessagingCategory, MessagingService, RecipientSummary, SendMessageRequest,
     ThreadParticipantSummary, ThreadSummary, ThreadWithMessages,
 };
-pub use notification::{init_app_url as init_notification_app_url, NotificationService};
+pub use notification::{
+    init_app_url as init_notification_app_url, NotificationService, OrphanPinnedRow,
+    ReconcileReport,
+};
 pub use outbox::{ChannelAdapter, ChannelRegistry, EmailAdapter, OutboxEvent, OutboxService};
 pub use partner::PartnerService;
 pub use pdf_service_client::PdfServiceClient;

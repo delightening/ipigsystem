@@ -154,6 +154,26 @@ pub async fn acknowledge_receipt(
     Ok(Json(report))
 }
 
+/// 解除本報告在追蹤者「待處理」清單上的置頂待辦（best-effort，失敗僅 warn）。
+///
+/// 待辦的解除條件是「這件事不再需要追蹤者動作」，**不是**「這件事被正常完成」。
+/// 因此除了 complete_followup（正常完成），撤回 / 軟刪除 / 棄置草稿這些讓報告離開
+/// 「等追蹤者填寫」狀態的路徑也一律要呼叫——漏接的話，通知會綁在一份沒有人能再操作的
+/// 報告上永久卡死，且使用者無法自行清除（待辦不可手動已讀）。
+///
+/// 2026-08-07 事故即為此：retract + soft delete 兩條路徑未接，
+/// 兩則置頂通知綁在已軟刪的報告上卡了一個月。詳見
+/// `docs/design/features/notification-vs-action-required-2026-08-07.md` §3。
+async fn resolve_followup_pin(state: &AppState, report_id: Uuid, stage_label: &str) {
+    let notif_svc = crate::services::NotificationService::new(state.db.clone());
+    if let Err(e) = notif_svc
+        .resolve_pinned_notifications("vet_patrol_reports", report_id)
+        .await
+    {
+        tracing::warn!("vet_patrol {stage_label} 解除置頂待辦失敗 report={report_id}: {e}");
+    }
+}
+
 /// 通知獸醫追蹤者完成了某階段動作（fire-and-forget）。
 ///
 /// acknowledge_receipt / complete_followup 共用：兩者只 title + content 不同，
@@ -196,14 +216,8 @@ pub async fn complete_followup(
     let actor = ActorContext::User(current_user.clone());
     let report = VetPatrolReportService::complete_followup(&state.db, &actor, id).await?;
 
-    // 追蹤改善完成 → 解除追蹤者「需您填寫追蹤改善」置頂提醒（best-effort，失敗僅 warn）
-    let notif_svc = crate::services::NotificationService::new(state.db.clone());
-    if let Err(e) = notif_svc
-        .resolve_pinned_notifications("vet_patrol_reports", report.id)
-        .await
-    {
-        tracing::warn!("解除巡場待填追蹤置頂通知失敗 report={}: {e}", report.id);
-    }
+    // 追蹤改善完成 → 解除追蹤者「需您填寫追蹤改善」置頂待辦
+    resolve_followup_pin(&state, report.id, "complete_followup").await;
 
     notify_vet_followup_stage(
         &state,
@@ -237,6 +251,12 @@ pub async fn discard_vet_patrol_draft(
             "vet_patrol discard_draft id={id} unlink_failures={unlink_failures}（DB row 已清，但有檔案 unlink 失敗）"
         );
     }
+
+    // 硬刪除為終態。正常情況下草稿不會有置頂待辦（送出才建立），但
+    // 「送出 → 撤回 → 棄置」這條路徑上 retract 已先解除；此處為防禦性補位，
+    // 確保沒有任何置頂待辦指向已不存在的 report row。
+    resolve_followup_pin(&state, id, "discard_draft").await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -306,6 +326,10 @@ pub async fn delete_vet_patrol_report(
     require_permission!(current_user, "animal.vet.recommend");
     let actor = ActorContext::User(current_user.clone());
     VetPatrolReportService::delete(&state.db, &actor, id).await?;
+
+    // 報告已軟刪 → 追蹤者不可能再操作它，解除其置頂待辦（否則永久卡死）
+    resolve_followup_pin(&state, id, "delete").await;
+
     Ok(Json(()))
 }
 
@@ -320,6 +344,11 @@ pub async fn retract_vet_patrol_report(
     require_permission!(current_user, "animal.vet.recommend");
     let actor = ActorContext::User(current_user.clone());
     VetPatrolReportService::retract_to_draft(&state.db, &actor, id).await?;
+
+    // 撤回會清空 follow_up_user_id → 原追蹤者不再被指派，解除其置頂待辦。
+    // 若獸醫之後重新送出，submit_for_followup 會建立新的置頂待辦。
+    resolve_followup_pin(&state, id, "retract").await;
+
     Ok(Json(()))
 }
 
