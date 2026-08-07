@@ -16,13 +16,83 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import api from '@/lib/api'
 import { queryKeys } from '@/lib/queryKeys'
 import { formatDate } from '@/lib/utils'
 import { LEAVE_STATUS_NAMES, LEAVE_TYPE_NAMES } from '@/types/hr'
 import type { LeaveRequestWithUser } from '@/types/hr'
 import type { PaginatedResponse } from '@/types/common'
-import { formatLeaveHours, getLeaveStatusVariant } from '../constants'
+import {
+    formatLeaveHours,
+    getLeaveStatusVariant,
+    getLeaveWaitingDays,
+    getWaitingDaysClass,
+} from '../constants'
+
+/**
+ * 狀態徽章。「待代理確認」時附 tooltip 顯示是哪位代理人還沒確認、已等待幾天。
+ * Radix Trigger 本身是 button，鍵盤可聚焦，不是純 hover-only。
+ */
+function LeaveStatusCell({ leave }: { leave: LeaveRequestWithUser }) {
+    const status = getLeaveStatusVariant(leave.status)
+    const badge = <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
+
+    if (leave.status !== 'PENDING_PROXY' || !leave.proxy_user_name) return badge
+
+    const days = getLeaveWaitingDays(leave.submitted_at)
+    return (
+        <Tooltip>
+            <TooltipTrigger className="cursor-help align-middle">{badge}</TooltipTrigger>
+            <TooltipContent>
+                <div>代理人：{leave.proxy_user_name}</div>
+                {days !== null && (
+                    <div className="mt-0.5">
+                        已等待 <span className={getWaitingDaysClass(days)}>{days} 天</span>
+                    </div>
+                )}
+            </TooltipContent>
+        </Tooltip>
+    )
+}
+
+/** 窄容器（< 700px）卡片版：代理人與等待天數直接寫在版面上，不靠 hover（手機沒有 hover）。 */
+function LeaveRecordCard({ leave }: { leave: LeaveRequestWithUser }) {
+    const status = getLeaveStatusVariant(leave.status)
+    const days = getLeaveWaitingDays(leave.submitted_at)
+    return (
+        <div className="space-y-2">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <div className="font-medium">{leave.user_name}</div>
+                    <div className="text-sm text-muted-foreground">{leave.user_email}</div>
+                </div>
+                <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
+            </div>
+            <div className="text-sm text-muted-foreground">
+                {LEAVE_TYPE_NAMES[leave.leave_type] || leave.leave_type}
+                {' · '}
+                {formatDate(leave.start_date)}
+                {leave.start_date !== leave.end_date && ` ~ ${formatDate(leave.end_date)}`}
+                {' · '}
+                {formatLeaveHours(leave)}
+            </div>
+            {leave.reason && <div className="text-sm break-words">{leave.reason}</div>}
+            {leave.proxy_user_name && (
+                <div className="text-sm">
+                    <span className="text-muted-foreground">代理人：</span>
+                    {leave.proxy_user_name}
+                    {leave.status === 'PENDING_PROXY' && days !== null && (
+                        <>
+                            {' · 已等待 '}
+                            <span className={getWaitingDaysClass(days)}>{days} 天</span>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
 
 export function AllLeaveRecordsTabContent() {
     const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -131,6 +201,7 @@ export function AllLeaveRecordsTabContent() {
                         {
                             key: 'leave_type',
                             header: '假別',
+                            hideClassName: 'hidden @[700px]:table-cell',
                             cell: (leave) => LEAVE_TYPE_NAMES[leave.leave_type] || leave.leave_type,
                         },
                         {
@@ -146,25 +217,20 @@ export function AllLeaveRecordsTabContent() {
                         {
                             key: 'hours',
                             header: '時數',
+                            hideClassName: 'hidden @[700px]:table-cell',
                             cell: (leave) => formatLeaveHours(leave),
                         },
                         {
                             key: 'reason',
                             header: '事由',
                             className: 'max-w-[200px] whitespace-normal break-words',
+                            hideClassName: 'hidden @[880px]:table-cell',
                             cell: (leave) => leave.reason,
                         },
                         {
                             key: 'status',
                             header: '狀態',
-                            cell: (leave) => {
-                                const status = getLeaveStatusVariant(leave.status)
-                                return (
-                                    <StatusBadge variant={status.variant}>
-                                        {status.label}
-                                    </StatusBadge>
-                                )
-                            },
+                            cell: (leave) => <LeaveStatusCell leave={leave} />,
                         },
                     ]}
                     data={allLeaves?.data}
@@ -172,6 +238,8 @@ export function AllLeaveRecordsTabContent() {
                     emptyIcon={FileText}
                     emptyTitle="沒有符合條件的請假紀錄"
                     rowKey={(row) => row.id}
+                    mobileCard={(leave) => <LeaveRecordCard leave={leave} />}
+                    cardBreakpoint={700}
                 />
                 {allLeaves && allLeaves.total > 0 && (
                     <div className="text-sm text-muted-foreground">
