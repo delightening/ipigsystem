@@ -114,6 +114,35 @@ function EntryPhotoGrid({ photos }: { photos: EntryPhoto[] }) {
     )
 }
 
+/**
+ * 條目卡片標題。
+ *
+ * 耳號是這張卡片的主體，必須是第一眼看到的東西。舊版把耳號縮成 `text-xs`
+ * `text-muted-foreground` 塞在右上角，與完全沒有資訊量的「條目 #N」同一個弱化層級，
+ * 讀者第一落點因此落在編號而不是「這是哪幾隻豬」（使用者 2026-08-07 回報）。
+ *
+ * 無耳號的條目（防疫及消毒計畫 / 病歷紀錄 / 其他）沒有動物主體，改把「條目 #N」升為標題；
+ * 不用類別名稱當標題，那會與區塊上方的 `<h3>` 重複。
+ */
+function EntryHeading({
+    label, earTags, index,
+}: { label: string; earTags?: string[]; index: number }) {
+    const tags = earTags ?? []
+    if (tags.length === 0) {
+        return <h4 className="text-base font-bold leading-snug">條目 #{index + 1}</h4>
+    }
+    return (
+        <div className="flex items-baseline justify-between gap-3">
+            {/* 耳號不截斷（多隻群養時換行顯示），對齊專案「表格禁 truncate」的同一理由 */}
+            <h4 className="text-base font-bold leading-snug" aria-label={`${label}，耳號 ${tags.join('、')}`}>
+                {tags.join('、')}
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">{tags.length} 隻</span>
+            </h4>
+            <span className="shrink-0 text-xs text-muted-foreground">條目 #{index + 1}</span>
+        </div>
+    )
+}
+
 // 單一類別區塊（條目卡片 + 各條目照片）
 function CategorySection({
     label, entries, entryPhotos,
@@ -129,14 +158,7 @@ function CategorySection({
                         .sort((a, b) => a.sort_order - b.sort_order)
                     return (
                         <div key={entry.id} className="rounded-lg border bg-card p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs text-muted-foreground">條目 #{idx + 1}</span>
-                                {entry.ear_tags && entry.ear_tags.length > 0 && (
-                                    <span className="text-xs text-muted-foreground">
-                                        耳號：{entry.ear_tags.join('、')}
-                                    </span>
-                                )}
-                            </div>
+                            <EntryHeading label={label} earTags={entry.ear_tags} index={idx} />
                             <Field label="觀察內容" value={entry.observation} />
                             <Field label="建議" value={entry.suggestion} />
                             <Field label="追蹤改善" value={entry.follow_up} />

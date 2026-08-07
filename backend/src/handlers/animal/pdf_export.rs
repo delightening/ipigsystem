@@ -377,14 +377,19 @@ pub async fn export_vet_patrol_report_pdf(
             if let Some(ps) = entry_photo_map.get(&e.id) {
                 let tag_prefix = combined_tag.clone();
                 let mut group_srcs: Vec<serde_json::Value> = Vec::new();
+                // 每張照片自己的說明（使用者在前端 CaptionInput 填的），與 srcs 同序。
+                // 這是修「PDF 圖說只有耳號」的關鍵：group 只有一個 caption 欄位，
+                // 範本便把同組每張照片的圖說都印成同一行耳號，使用者填的說明整個被丟掉
+                // （它只進了 categories[].photos，而範本明講不使用那條路徑）。
+                let mut group_photos: Vec<serde_json::Value> = Vec::new();
                 for p in ps.iter() {
                     let mut p_with_label = p.clone();
+                    let original = p
+                        .get("caption")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     if let Some(obj) = p_with_label.as_object_mut() {
-                        let original = obj
-                            .get("caption")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
                         let new_caption = match (tag_prefix.as_str(), original.as_str()) {
                             ("", "") => String::new(),
                             (tag, "") => tag.to_string(),
@@ -394,7 +399,13 @@ pub async fn export_vet_patrol_report_pdf(
                         obj.insert("caption".into(), serde_json::Value::String(new_caption));
                     }
                     if let Some(src) = p.get("src").cloned() {
-                        group_srcs.push(src);
+                        group_srcs.push(src.clone());
+                        // caption 只放使用者填的說明，不含耳號——耳號由範本統一印在說明上一行，
+                        // 避免同組每張都重覆一次耳號。
+                        group_photos.push(serde_json::json!({
+                            "src": src,
+                            "caption": original,
+                        }));
                     }
                     cat_photos.push(p_with_label);
                 }
@@ -402,7 +413,9 @@ pub async fn export_vet_patrol_report_pdf(
                     photo_groups.push(serde_json::json!({
                         "caption": tag_prefix,
                         "description": e.observation,
+                        // srcs 保留：舊版 print-pdf 仍只認得它（兩個服務非原子部署）。
                         "srcs": group_srcs,
+                        "photos": group_photos,
                     }));
                 }
             }

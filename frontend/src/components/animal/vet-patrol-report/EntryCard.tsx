@@ -142,9 +142,11 @@ export function EntryCard({
                                         </button>
                                     )}
                                 </div>
+                                {/* placeholder 寫成問句＋範例：實測 prod 28 張條目照片 caption 全空，
+                                    「說明（選填）」沒有告訴填寫者要寫什麼，導致 PDF 圖說只剩耳號。 */}
                                 <CaptionInput
                                     value={photo.caption}
-                                    placeholder="說明（選填）"
+                                    placeholder="這張想表達什麼？例：右頸注射部位紅腫"
                                     className="text-xs h-7"
                                     disabled={!canEditStructure}
                                     onSave={(caption) => vm.updateEntryCaptionMutation.mutate({

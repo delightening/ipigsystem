@@ -143,9 +143,29 @@ def from_report_data(data: dict) -> VetPatrolReportPayload:
         srcs_raw = g.get("srcs") or []
         if not isinstance(srcs_raw, list):
             raise ValueError(f"photo_groups[{g_idx}].srcs 必須為 list")
-        srcs = [_compress_data_url(_opt_str(s)) for s in srcs_raw if s]
+        photos_raw_g = g.get("photos") or []
+        if not isinstance(photos_raw_g, list):
+            raise ValueError(f"photo_groups[{g_idx}].photos 必須為 list")
+
+        # 有 `photos`（新版 backend）就以它為準，並由它回填 `srcs`——
+        # 兩邊各壓一次會把每張照片重新編碼兩遍（CPU + 記憶體翻倍，且 srcs 那份沒人用）。
+        group_photos = [
+            PhotoEntry(src=_compress_data_url(_opt_str(p.get("src"))), caption=_opt_str(p.get("caption")))
+            for p in photos_raw_g
+            if isinstance(p, dict) and p.get("src")
+        ]
+        if group_photos:
+            srcs = [p.src for p in group_photos]
+        else:
+            srcs = [_compress_data_url(_opt_str(s)) for s in srcs_raw if s]
+
         photo_groups.append(
-            PhotoGroup(caption=_opt_str(g.get("caption")), description=_opt_str(g.get("description")), srcs=srcs)
+            PhotoGroup(
+                caption=_opt_str(g.get("caption")),
+                description=_opt_str(g.get("description")),
+                srcs=srcs,
+                photos=group_photos,
+            )
         )
 
     return VetPatrolReportPayload(

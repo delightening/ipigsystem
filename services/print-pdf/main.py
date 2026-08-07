@@ -472,12 +472,19 @@ async def _html_to_pdf_paginated_async(
         try:
             t0 = time.perf_counter()
             await page.goto("file://" + path, wait_until="networkidle")
+            # 等字型載入完 + 任何 JS 自適應跑完才印（與 _html_to_pdf_async 同樣條件）。
+            # vet_patrol_report 的一頁化壓縮必須在 page.pdf() 之前完成，否則印到的是
+            # 未壓縮的版面；只等 fonts 會有 race（fonts.ready 的 callback 尚未執行完）。
+            # 無 .autofit-root 的文件條件立即為真、不受影響；逾時不致命。
             try:
                 await page.wait_for_function(
-                    "!document.fonts || document.fonts.status === 'loaded'", timeout=5000
+                    "(!document.fonts || document.fonts.status === 'loaded') && "
+                    "(!document.querySelector('.autofit-root') || "
+                    "document.documentElement.getAttribute('data-fit-done') === '1')",
+                    timeout=5000,
                 )
             except Exception:  # noqa: BLE001
-                log.warning("wait_for_function (fonts) timed out; proceeding")
+                log.warning("wait_for_function (fonts/fit) timed out; proceeding")
             pdf = await page.pdf(
                 prefer_css_page_size=True,
                 print_background=True,
