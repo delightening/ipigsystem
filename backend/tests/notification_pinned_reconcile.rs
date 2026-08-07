@@ -16,18 +16,47 @@ use uuid::Uuid;
 
 use erp_backend::services::NotificationService;
 
-/// **只認 `TEST_DATABASE_URL`，缺了就 panic —— 絕不 fallback 到 `DATABASE_URL`。**
+/// 取測試 DB 連線字串，**拒絕連上疑似正式環境的資料庫**。
 ///
-/// 本檔的測試會跑 non-dry-run 對帳，也就是真的 `UPDATE notifications`，
-/// 而且還會先跑 migration。若 fallback 到 `DATABASE_URL`（在這台機器上指向 prod），
-/// 跑一次測試就會把正式環境的待辦降級、並對正式 schema 動手。
-/// 少一個環境變數的代價是測試跑不起來；fallback 的代價是污染 prod。
-async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL").expect(
-        "TEST_DATABASE_URL 未設定。本測試會寫入資料庫，禁止 fallback 到 DATABASE_URL（prod）。\
+/// 本檔的測試會跑 non-dry-run 對帳（真的 `UPDATE notifications`）並跑 migration，
+/// 所以「連錯 DB」的代價是污染正式資料，不是測試失敗而已。
+///
+/// 規則：優先 `TEST_DATABASE_URL`；未設時才看 `DATABASE_URL`，
+/// 且**只有在其 database 名稱含 `test` 時才接受**。
+///
+/// 為什麼不是「硬性只認 `TEST_DATABASE_URL`」：CI 只設 `DATABASE_URL`
+/// （指向 runner 自己的丟棄庫 `ipig_db_test`），硬性要求會讓 CI 全紅；
+/// 而要在 CI 補環境變數得改 `.github/workflows/*`，那是需使用者授權的項目。
+///
+/// 為什麼不是「無條件 fallback」（本檔原本的寫法）：這台機器上 `DATABASE_URL`
+/// 指向 prod 的 `ipig_db`，無條件 fallback 等於一次 `cargo test` 就改到正式資料。
+///
+/// 擋的是「連到哪個 DB」而不是「有沒有設某個變數名」——前者才是真正的危險。
+fn test_database_url() -> String {
+    if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
+        return url;
+    }
+    let url = std::env::var("DATABASE_URL").expect(
+        "TEST_DATABASE_URL 與 DATABASE_URL 皆未設定。本測試會寫入資料庫，\
          請指向獨立可丟棄的測試 DB。",
     );
+    let db_name = url
+        .rsplit('/')
+        .next()
+        .and_then(|tail| tail.split(['?', '#']).next())
+        .unwrap_or_default();
+    assert!(
+        db_name.contains("test"),
+        "DATABASE_URL 指向的資料庫 `{db_name}` 不像測試庫（名稱不含 test）。\
+         本測試會 UPDATE notifications 並跑 migration，拒絕在可能是 prod 的連線上執行。\
+         請設定 TEST_DATABASE_URL 指向獨立可丟棄的測試 DB。"
+    );
+    url
+}
+
+async fn setup_pool() -> PgPool {
+    dotenvy::dotenv().ok();
+    let url = test_database_url();
     let pool = PgPool::connect(&url).await.expect("connect test db");
     sqlx::migrate!("./migrations")
         .run(&pool)
