@@ -64,6 +64,7 @@ fn role_update(role_ids: Vec<Uuid>) -> UpdateUserRequest {
         role_ids: Some(role_ids),
         expires_at: None,
         version: None,
+        force_role_change: None,
     }
 }
 

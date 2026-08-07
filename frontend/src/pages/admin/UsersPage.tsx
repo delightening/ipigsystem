@@ -4,7 +4,17 @@ import { Switch } from '@/components/ui/switch'
 import { GuestHide } from '@/components/ui/guest-hide'
 import { PageHeader } from '@/components/ui/page-header'
 import { Plus, Download, Mail } from 'lucide-react'
-import { useAuthHasPermission } from '@/stores/auth'
+import { useAuthHasPermission, useAuthIsAdmin } from '@/stores/auth'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useUserManagement } from './hooks/useUserManagement'
 import { UserTable } from './components/UserTable'
 import {
@@ -24,6 +34,8 @@ export function UsersPage() {
   const { toast } = useToast()
   // 邀請使用者：重用既有「邀請管理」流程（email + 名稱 + 角色 → 寄信 → 設密碼登入）
   const canInvite = useAuthHasPermission()('invitation.view')
+  // 強制移除角色僅系統管理員可用（後端亦擋）；非 admin 不顯示該按鈕以免誤導
+  const isAdmin = useAuthIsAdmin()
 
   return (
     <div className="space-y-6">
@@ -129,6 +141,36 @@ export function UsersPage() {
         onSubmit={mgmt.handleUpdateRoles}
         toggleRole={mgmt.toggleRole}
       />
+
+      {/* 移除角色被未結清事項擋下：列出卡住的單據，僅系統管理員可強制移除 */}
+      <AlertDialog
+        open={!!mgmt.unsettledConflict}
+        onOpenChange={(open) => {
+          if (!open) mgmt.setUnsettledConflict(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>此人身上還有未結清事項</AlertDialogTitle>
+            <AlertDialogDescription>{mgmt.unsettledConflict?.message}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="max-h-60 space-y-1 overflow-y-auto rounded-md border bg-muted/40 p-3 text-sm">
+            {mgmt.unsettledConflict?.items.map((item) => (
+              <li key={item} className="break-words">
+                {item}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            {isAdmin && (
+              <AlertDialogAction onClick={mgmt.handleForceUpdateRoles}>
+                仍要移除（待辦將退回）
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <UserDeleteDialog
         open={mgmt.showDeleteDialog}

@@ -8,6 +8,8 @@ export interface ApiErrorPayload {
     blocking: boolean
     warning_type?: string
     existing_animals?: unknown[]
+    /** warning_type='unsettled_items' 時的明細：卡在該使用者身上、無人能接手的單據 */
+    items?: string[]
   }
 }
 

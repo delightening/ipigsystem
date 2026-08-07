@@ -45,6 +45,7 @@ fn empty_update_user(role_ids: Vec<Uuid>) -> UpdateUserRequest {
         role_ids: Some(role_ids),
         expires_at: None,
         version: None, // None 跳過 optimistic-lock 版本檢查
+        force_role_change: None,
     }
 }
 
