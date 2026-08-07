@@ -8,13 +8,37 @@
 
 - PostgreSQL 已安裝且可連線
 - 已安裝 [sqlx-cli](https://github.com/launchbadge/sqlx)（`cargo install sqlx-cli --no-default-features --features postgres`）
-- 環境變數：`TEST_DATABASE_URL` 或 `DATABASE_URL` 指向專用測試資料庫
+- 環境變數：`TEST_DATABASE_URL` 指向**獨立的丟棄用**測試資料庫
+
+---
+
+## ⚠️ 手動跑 migration 一定要帶 `--database-url`
+
+**這台開發機同時是 prod，`DATABASE_URL` 指向正式庫。**
+
+`sqlx-cli` **只認 `DATABASE_URL` 與 `.env`，完全不看 `TEST_DATABASE_URL`**。所以下面這組
+指令看起來安全，實際上會把全部 migration 跑在**正式庫**上：
+
+```bash
+export TEST_DATABASE_URL="postgres://user:pass@localhost:5432/ipig_db_test"
+sqlx migrate run        # ← 錯：這行打的是 DATABASE_URL，不是上面那個
+```
+
+正確寫法是明確指定目標（本文以下所有範例都已照此修正）：
+
+```bash
+sqlx migrate run --database-url "$TEST_DATABASE_URL"
+```
+
+`scripts/run-integration-tests.*` 已在腳本內處理好，並額外把 `DATABASE_URL` 覆寫成測試庫，
+確保該路徑上沒有任何子行程看得到 prod DSN。**手動執行時請自己帶。**
 
 ---
 
 ## 建議：使用專用測試資料庫
 
-整合測試會執行 migration 並操作資料庫。**強烈建議**使用與開發環境分離的測試 DB，例如：
+整合測試會執行 migration 並操作資料庫，且**沒有 teardown**。務必使用與正式庫分離的
+丟棄用測試 DB，例如：
 
 ```bash
 # 建立測試專用 DB
@@ -41,14 +65,17 @@ chmod +x scripts/run-integration-tests.sh
 ./scripts/run-integration-tests.sh
 ```
 
-腳本會自動執行 `sqlx migrate run` 後再執行 `cargo test`。
+腳本會檢查 `TEST_DATABASE_URL`（未設定即中止，不 fallback 到 `DATABASE_URL`）、把
+`DATABASE_URL` 覆寫成同一個值，再依序執行 `sqlx migrate run --database-url ...` 與 `cargo test`。
 
 ### 方式二：手動執行
 
 ```bash
 cd backend
 export TEST_DATABASE_URL="postgres://user:pass@localhost:5432/ipig_db_test"
-sqlx migrate run
+# 同時覆寫 DATABASE_URL，避免 harness 或 Config::from_env() 讀到 prod 那條
+export DATABASE_URL="$TEST_DATABASE_URL"
+sqlx migrate run --database-url "$TEST_DATABASE_URL"
 cargo test
 ```
 
@@ -77,7 +104,7 @@ Failed to run migrations on test database: VersionMismatch(1)
 ```bash
 dropdb ipig_db_test
 createdb ipig_db_test
-sqlx migrate run
+sqlx migrate run --database-url "$TEST_DATABASE_URL"
 cargo test
 ```
 
@@ -87,7 +114,7 @@ cargo test
 
 ```bash
 cargo run --bin fix_migration 1
-sqlx migrate run
+sqlx migrate run --database-url "$TEST_DATABASE_URL"
 cargo test
 ```
 
@@ -111,3 +138,7 @@ GitHub Actions 的 `backend-test` job 會：
 4. 執行 `cargo test`
 
 因此 CI 使用全新 DB，不會遇到 VersionMismatch。本地失敗多半是 DB 狀態與程式碼不一致所致。
+
+> ⚠️ 第 3 步在 CI **可以**裸跑，因為那裡的 `DATABASE_URL` 指向 job 自己的 PostgreSQL
+> service container。**本機不要照抄**——這台機器的 `DATABASE_URL` 指向 prod，見上方
+> 「手動跑 migration 一定要帶 `--database-url`」。
