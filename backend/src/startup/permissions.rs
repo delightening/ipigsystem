@@ -13,6 +13,13 @@ pub async fn ensure_required_permissions(pool: &sqlx::PgPool) -> Result<()> {
         ("animal.animal.delete", "刪除動物", "animal", "可永久刪除（軟刪除）動物紀錄，僅限系統管理員"),
         // 動物來源管理
         ("animal.source.manage", "管理動物來源", "animal", "可管理動物來源資料"),
+        // 動物預約與試驗規劃：檢視 / 操作分離。
+        // 原本讀寫共用 animal.info.assign → SD 與試驗工作人員連頁面都進不來；
+        // 且該權限同時被 batch_assign_animals 使用、由 EXPERIMENT_STAFF / VET 持有，
+        // 沿用就做不到「僅執秘可操作」。故本頁自帶兩個專屬權限。
+        // 見 docs/audit/button-permission-gate-2026-08-07.md §6。
+        ("animal.planning.view", "檢視動物預約與試驗規劃", "animal", "可檢視全場動物按試驗分組的分配清冊與缺口（唯讀）"),
+        ("animal.planning.manage", "管理動物預約與試驗規劃", "animal", "可新增預定試驗、批次預約 / 解除預約、正式分配進實驗、編輯規劃頁備註"),
         // 血檢項目管理（模板、組合、常用組合）
         ("animal.blood_test_template.manage", "血檢項目管理", "animal", "可檢視與編輯血檢項目模板、組合、常用組合"),
         // 版本還原
@@ -402,6 +409,9 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "IACUC_STAFF",
             vec![
+                // 動物預約與試驗規劃：檢視 + 操作（執秘是唯一有操作權的角色）
+                "animal.planning.view",
+                "animal.planning.manage",
                 // AUP 計畫管理：執秘對計畫內容唯讀（不含 edit / submit，對齊原始 spec §4.1
                 // 「編輯草稿 / 提交計畫 ✗」）；保留審查指派 / 核准 / 變更狀態等協調權。
                 "aup.protocol.view_all",
@@ -443,6 +453,9 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "EXPERIMENT_STAFF",
             vec![
+                // 動物預約與試驗規劃：僅檢視（操作限執秘）。SD 由本名單指派而來，
+                // 故全體試驗工作人員都給檢視權。
+                "animal.planning.view",
                 // 計畫管理（僅 Co-Editor 權限，不可獨立建立/提交/刪除計畫）
                 "aup.protocol.view_own",
                 "aup.protocol.edit",
@@ -677,6 +690,8 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "DIRECTOR",
             vec![
+                // 動物預約與試驗規劃：僅檢視（操作限執秘）
+                "animal.planning.view",
                 // 請假：檢視全體待審 + 終審核准（實際審核授權於 services 依角色判定）
                 "hr.leave.view",
                 "hr.leave.view_all",
@@ -755,6 +770,8 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "STUDY_DIRECTOR",
             vec![
+                // 動物預約與試驗規劃：僅檢視（操作限執秘）
+                "animal.planning.view",
                 // PI 核心權限
                 "aup.protocol.view_own",
                 "aup.protocol.create",

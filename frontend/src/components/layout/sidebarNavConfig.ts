@@ -173,7 +173,9 @@ export const navItemsConfig: NavItem[] = [
     subsystem: 'animal',
     children: [
       { title: 'animalList', href: '/animals', translate: true },
-      { title: '預約與試驗規劃', href: '/animals/reservation-planning', permission: 'animal.info.assign', translate: false },
+      // 選單閘與路由閘一致用「檢視」權限；頁內操作另由 animal.planning.manage 個別守。
+      // 用 animal.info.assign 會讓 SD / 試驗工作人員連選單入口都看不到。
+      { title: '預約與試驗規劃', href: '/animals/reservation-planning', permission: 'animal.planning.view', translate: false },
       { title: '巡場報告', href: '/vet-patrol-reports', permission: 'animal.record.view', translate: false },
       { title: '血檢分析', href: '/blood-test-analysis', translate: false },
       { title: '血檢項目', href: '/blood-test-templates', permission: 'animal.blood_test_template.manage', translate: false },

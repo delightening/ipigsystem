@@ -3,6 +3,8 @@ import { Plus } from 'lucide-react'
 
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useReservationPlanning } from './hooks/useReservationPlanning'
 import { ReservationPlanningGroupCard } from './components/ReservationPlanningGroupCard'
 import { CreatePlannedExperimentDialog } from './components/CreatePlannedExperimentDialog'
@@ -35,9 +37,11 @@ export function ReservationPlanningPage() {
         title="動物預約與試驗規劃"
         description="全場活豬按計劃分配：置頂備用池快速配對，各計劃顯示需求 vs 已預約 / 實驗中 / 已完成缺口。"
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" /> 新增預定試驗
-          </Button>
+          <Can permission={PERMISSIONS.ANIMAL_PLANNING_MANAGE}>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" /> 新增預定試驗
+            </Button>
+          </Can>
         }
       />
 
@@ -49,7 +53,13 @@ export function ReservationPlanningPage() {
           <SparePoolPanel targets={targets} />
           {(groups?.length ?? 0) === 0 && (
             <div className="rounded-xl border bg-card py-12 text-center text-muted-foreground">
-              尚無試驗群組。點右上「新增預定試驗」開始規劃，或待已核准計畫有動物預約 / 分配後顯示。
+              {/* 無操作權者看不到「新增預定試驗」鈕，空狀態文案不能叫他去點一顆不存在的按鈕 */}
+              <Can
+                permission={PERMISSIONS.ANIMAL_PLANNING_MANAGE}
+                fallback={<>尚無試驗群組。待執行秘書建立預定試驗，或已核准計畫有動物預約 / 分配後顯示。</>}
+              >
+                尚無試驗群組。點右上「新增預定試驗」開始規劃，或待已核准計畫有動物預約 / 分配後顯示。
+              </Can>
             </div>
           )}
           {groups?.map((g) => (
