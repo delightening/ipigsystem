@@ -14,22 +14,27 @@ use erp_backend::services::permission_codegen;
 /// 本測試雖然只讀 `permissions`，但會先跑 migration 與 `ensure_required_permissions`，
 /// 兩者都會寫入資料庫 —— 連錯 DB 的代價是對正式 schema 動手。
 ///
-/// 規則：優先 `TEST_DATABASE_URL`；未設時才看 `DATABASE_URL`，
-/// 且**只有在其 database 名稱含 `test` 時才接受**。
+/// 規則：優先 `TEST_DATABASE_URL`，未設時才看 `DATABASE_URL`；
+/// **不論來自哪一個變數，都必須通過同一道「database 名稱含 `test`」檢查**。
 ///
-/// 為什麼不是「硬性只認 `TEST_DATABASE_URL`」：CI 只設 `DATABASE_URL`
-/// （指向 runner 自己的丟棄庫 `ipig_db_test`），硬性要求會讓 CI 全紅；
-/// 要在 CI 補環境變數得改 `.github/workflows/*`，那是需使用者授權的項目。
+/// 為什麼檢查要套用在兩個來源上：`TEST_DATABASE_URL` 這個名字本身不保證任何事，
+/// 有人把它指向 prod 一樣會中。守衛該守的是「連到哪個 DB」，不是「用了哪個變數名」。
 ///
-/// 擋的是「連到哪個 DB」而不是「有沒有設某個變數名」——前者才是真正的危險。
+/// 為什麼保留 `DATABASE_URL` fallback：CI 只設 `DATABASE_URL`
+/// （指向 runner 自己的丟棄庫 `ipig_db_test`），硬性只認 `TEST_DATABASE_URL`
+/// 會讓 CI 全紅；要在 CI 補環境變數得改 `.github/workflows/*`，
+/// 屬需使用者授權的項目。名稱檢查對兩個來源都生效後，fallback 不弱化防護。
 fn test_database_url() -> String {
-    if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
-        return url;
-    }
-    let url = std::env::var("DATABASE_URL").expect(
-        "TEST_DATABASE_URL 與 DATABASE_URL 皆未設定。本測試會寫入資料庫，\
-         請指向獨立可丟棄的測試 DB。",
-    );
+    let (url, source) = match std::env::var("TEST_DATABASE_URL") {
+        Ok(url) => (url, "TEST_DATABASE_URL"),
+        Err(_) => (
+            std::env::var("DATABASE_URL").expect(
+                "TEST_DATABASE_URL 與 DATABASE_URL 皆未設定。本測試會寫入資料庫，\
+                 請指向獨立可丟棄的測試 DB。",
+            ),
+            "DATABASE_URL",
+        ),
+    };
     let db_name = url
         .rsplit('/')
         .next()
@@ -37,9 +42,9 @@ fn test_database_url() -> String {
         .unwrap_or_default();
     assert!(
         db_name.contains("test"),
-        "DATABASE_URL 指向的資料庫 `{db_name}` 不像測試庫（名稱不含 test）。\
+        "{source} 指向的資料庫 `{db_name}` 不像測試庫（名稱不含 test）。\
          本測試會跑 migration，拒絕在可能是 prod 的連線上執行。\
-         請設定 TEST_DATABASE_URL 指向獨立可丟棄的測試 DB。"
+         請指向獨立可丟棄的測試 DB。"
     );
     url
 }
