@@ -812,17 +812,38 @@ impl SchedulerService {
                 info!("[Scheduler] Running pinned todo reconcile...");
                 let svc = crate::services::NotificationService::new(db);
                 match svc.reconcile_pinned_notifications(false).await {
-                    Ok(r) if r.resolved.is_empty() => info!(
-                        "[Scheduler] pinned_todo_reconcile: 無孤兒待辦（在途 {} 筆）",
-                        r.still_pending
-                    ),
-                    // 有命中代表某條終態路徑漏接了解除 hook —— 用 warn 讓它在日誌中顯眼，
-                    // 對帳作業只是止血，真正該修的是漏掉的那條路徑。
-                    Ok(r) => tracing::warn!(
-                        "[Scheduler] pinned_todo_reconcile: 降級 {} 筆孤兒待辦（在途 {} 筆）— 表示有終態路徑漏接解除 hook，請查 reason 欄位",
-                        r.resolved.len(),
-                        r.still_pending
-                    ),
+                    Ok(r) => {
+                        if r.resolved.is_empty() {
+                            info!(
+                                "[Scheduler] pinned_todo_reconcile: 無孤兒待辦（在途 {} 筆）",
+                                r.still_pending
+                            );
+                        } else {
+                            // 有命中代表某條終態路徑漏接了解除 hook —— 用 warn 讓它在日誌中顯眼。
+                            // 對帳只是止血，真正該修的是漏掉的那條路徑，所以逐筆印出 reason。
+                            tracing::warn!(
+                                "[Scheduler] pinned_todo_reconcile: 降級 {} 筆孤兒待辦（在途 {} 筆）— 表示有終態路徑漏接解除 hook",
+                                r.resolved.len(),
+                                r.still_pending
+                            );
+                            for row in &r.resolved {
+                                tracing::warn!(
+                                    "[Scheduler] pinned_todo_reconcile 降級: entity={} id={:?} recipient={} reason={}",
+                                    row.related_entity_type,
+                                    row.related_entity_id,
+                                    row.recipient_email,
+                                    row.reason
+                                );
+                            }
+                        }
+                        // 認不得的 entity_type 保守未處理 —— 必須讓維運者看見。否則新增待辦
+                        // 類型後對帳會靜靜跳過它，而「沒有 warn」看起來跟「一切正常」一模一樣。
+                        for (ty, n) in &r.unknown_entity_types {
+                            tracing::warn!(
+                                "[Scheduler] pinned_todo_reconcile 未涵蓋的 entity_type: {ty} — {n} 筆置頂待辦未做判斷，請補進 services/notification/reconcile.rs"
+                            );
+                        }
+                    }
                     Err(e) => error!("[Scheduler] pinned_todo_reconcile failed: {e}"),
                 }
             })

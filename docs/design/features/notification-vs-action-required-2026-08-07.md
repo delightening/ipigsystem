@@ -276,7 +276,8 @@ WHERE n.priority > 0
 - 對 prod DB 跑 dry-run 查詢：**命中 6 筆**（巡場 2 + 單據 4），
   合法在途待辦 1 筆（`ef46b84d`，2026-08-07，`awaiting_acknowledgement`）**正確未被命中**
 
-**尚未執行**：prod 的實際資料修補（需先 merge 部署後再跑 bin），以及排程掛載（見 §8）。
+**尚未執行**：僅剩 prod 的實際資料修補（需先 merge 部署後再跑 bin）。
+排程已隨 `SchedulerService::start()` 在應用啟動時掛載，部署後即生效。
 
 **補充發現**：採購單（PO）那條路徑經查**沒有**同類 bug——
 `pending_pos` 的唯一出口就是「存在已核准的 GRN」，而該處已接解除 hook。
@@ -299,8 +300,9 @@ prod 上那 4 筆 `document` 置頂列是單據與收件人都被硬刪後留下
 建議補一層安全網（**不改變你的裁定**，使用者仍然不能手動略過）：
 一支定期對帳作業，把「置頂中、但關聯實體已不存在或已在終態」的列自動降級並記 log。
 這正是你當初沒選的第三個選項，但根因確認後我認為它從「nice to have」變成「結構上需要」。
-**使用者 2026-08-07 裁定：要做。** 邏輯已隨 PR A 落地
-（`services/notification/reconcile.rs`），僅剩排程掛載，見 §8 待決第 2 項。
+**使用者 2026-08-07 裁定：要做，每日一次。** 已隨 PR A 完整落地：
+邏輯在 `services/notification/reconcile.rs`，排程在 `services/scheduler.rs`
+（每日 03:50 UTC，由 `SchedulerService::start()` 掛載）。
 
 ---
 

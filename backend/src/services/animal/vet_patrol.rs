@@ -1226,6 +1226,17 @@ impl VetPatrolReportService {
         )
         .await?;
 
+        // 撤回清空 follow_up_user_id → 原追蹤者不再被指派，解除其置頂待辦。
+        // 必須在**同一個 tx 內**：本 tx 已對報告列 FOR UPDATE，併發的 submit_for_followup
+        // 會被列鎖擋住，因此不可能發生「解除把剛建立的新待辦一起降級」。
+        // 詳見 NotificationService::resolve_pinned_notifications_tx 的說明。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         tx.commit().await?;
         Ok(after)
     }
@@ -1436,6 +1447,14 @@ impl VetPatrolReportService {
         )
         .await?;
 
+        // 追蹤改善完成 → 解除追蹤者的置頂待辦（同 tx，理由見 retract_to_draft）。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         tx.commit().await?;
         Ok(after)
     }
@@ -1594,6 +1613,16 @@ impl VetPatrolReportService {
             .execute(&mut *tx)
             .await?;
 
+        // 硬刪除為終態。草稿正常不會有置頂待辦（送出才建立），但「送出 → 撤回 → 棄置」
+        // 這條路徑上若 retract 的解除將來回歸，這裡是最後一道防線——row 一旦硬刪，
+        // 任何指向它的置頂待辦就再也沒有業務路徑能解除它。同 tx，理由見 retract_to_draft。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         // 寫 audit 軌跡（草稿雖被刪，動作仍留痕）
         let snapshot = VetPatrolReportSnapshot {
             report: before.clone(),
@@ -1689,6 +1718,14 @@ impl VetPatrolReportService {
                 data_diff: Some(DataDiff::delete_only(&snapshot)),
                 request_context: None,
             },
+        )
+        .await?;
+
+        // 報告已軟刪 → 追蹤者不可能再操作它，解除置頂待辦（同 tx，理由見 retract_to_draft）。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
         )
         .await?;
 

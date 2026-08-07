@@ -33,10 +33,40 @@ fn read_database_url() -> Result<String> {
     std::env::var("DATABASE_URL").context("DATABASE_URL（或 DATABASE_URL_FILE）must be set")
 }
 
+const USAGE: &str = "\
+用法：reconcile_pinned_notifications [--dry-run]
+
+  --dry-run   只查不寫，列出將被降級的孤兒待辦（上 prod 前用來核對筆數）
+  --help      顯示本說明
+
+環境變數：DATABASE_URL_FILE 或 DATABASE_URL
+";
+
+/// 嚴格剖析參數。
+///
+/// **不可用 `args().any(|a| a == "--dry-run")`**：那種寫法下任何拼錯
+/// （`--dryrun`、`--dry_run`、`-dry-run`）都會被靜默忽略，於是「本來想預覽」
+/// 變成「直接對 prod 資料庫寫入」。這支工具會 UPDATE notifications，
+/// 誤觸的代價是真的改到正式資料。
+fn parse_args() -> Result<bool> {
+    let mut dry_run = false;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--dry-run" => dry_run = true,
+            "--help" | "-h" => {
+                print!("{USAGE}");
+                std::process::exit(0);
+            }
+            other => anyhow::bail!("未知參數 `{other}`\n\n{USAGE}"),
+        }
+    }
+    Ok(dry_run)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-    let dry_run = std::env::args().any(|a| a == "--dry-run");
+    let dry_run = parse_args()?;
 
     let pool = PgPoolOptions::new()
         .max_connections(2)

@@ -129,20 +129,30 @@ impl NotificationService {
     async fn find_orphan_pinned(pool: &PgPool) -> Result<Vec<OrphanPinnedRow>, AppError> {
         Ok(sqlx::query_as::<_, OrphanPinnedRow>(
             r#"
-            -- 巡場報告：報告已軟刪 / 已完成 / row 根本不存在 → 追蹤者已無事可做
+            -- 巡場報告：報告已軟刪 / 已完成 / 已撤回 / row 根本不存在 → 追蹤者已無事可做。
+            --
+            -- 「已撤回」＝ status='draft' 且 follow_up_user_id IS NULL：置頂待辦只在
+            -- submit_for_followup 建立（該處必定同時設 status='awaiting_acknowledgement'
+            -- 與 follow_up_user_id），所以這個組合唯一的來源就是撤回。必須納入 ——
+            -- 撤回正是 2026-08-07 事故的觸發路徑，若該處的解除將來回歸，
+            -- 這道安全網要接得住。
             SELECT n.id, n.title, n.related_entity_type, n.related_entity_id,
                    u.email AS recipient_email, n.created_at,
                    CASE
                      WHEN r.id IS NULL              THEN '關聯的巡場報告已不存在'
                      WHEN r.deleted_at IS NOT NULL  THEN '關聯的巡場報告已刪除'
-                     ELSE                                '關聯的巡場報告已完成'
+                     WHEN r.status = 'completed'    THEN '關聯的巡場報告已完成'
+                     ELSE                                '關聯的巡場報告已撤回（無指派追蹤者）'
                    END AS reason
             FROM notifications n
             JOIN users u ON u.id = n.user_id
             LEFT JOIN vet_patrol_reports r ON r.id = n.related_entity_id
             WHERE n.priority > 0
               AND n.related_entity_type = 'vet_patrol_reports'
-              AND (r.id IS NULL OR r.deleted_at IS NOT NULL OR r.status = 'completed')
+              AND (r.id IS NULL
+                   OR r.deleted_at IS NOT NULL
+                   OR r.status = 'completed'
+                   OR (r.status = 'draft' AND r.follow_up_user_id IS NULL))
 
             UNION ALL
 
