@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useAuthHasRole, useAuthIsGuest } from '@/stores/auth'
+import { useAuthHasPermission, useAuthHasRole, useAuthIsGuest } from '@/stores/auth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
@@ -42,6 +42,11 @@ export function AnimalsPage() {
   const hasRole = useAuthHasRole()
   const isGuest = useAuthIsGuest()
   const { t } = useTranslation()
+
+  // 巡場報告僅獸醫可建立（對齊後端 create_vet_patrol_report 的
+  // require_permission!("animal.vet.recommend")，seed 只發給 VET role）。
+  // 同 VetPatrolReportListPage 的新增鈕判定，避免非獸醫看到按鈕點下去才吃 403。
+  const canCreateVetPatrol = useAuthHasPermission()('animal.vet.recommend')
 
   const isPIOrClient = hasRole('PI') || hasRole('CLIENT')
   const isAdmin = hasRole('admin')
@@ -227,10 +232,12 @@ export function AnimalsPage() {
                 <Upload className="h-4 w-4 shrink-0" />
                 <span className="truncate">{t('animals.importBasic')}</span>
               </Button>
-              <Button size="sm" variant="outline" className="w-full gap-2 text-status-success-solid border-status-success-solid/30 hover:bg-status-success-solid/10 text-xs md:text-sm" onClick={() => setShowVetPatrolDialog(true)}>
-                <Stethoscope className="h-4 w-4 shrink-0" />
-                <span className="truncate">獸醫巡場紀錄</span>
-              </Button>
+              {canCreateVetPatrol && (
+                <Button size="sm" variant="outline" className="w-full gap-2 text-status-success-solid border-status-success-solid/30 hover:bg-status-success-solid/10 text-xs md:text-sm" onClick={() => setShowVetPatrolDialog(true)}>
+                  <Stethoscope className="h-4 w-4 shrink-0" />
+                  <span className="truncate">獸醫巡場紀錄</span>
+                </Button>
+              )}
               {/* R32-A3b：欄位狀態表 xlsx/PDF 匯出已併入 AnimalPenReport dialog
                   （產生欄位狀態表 → 匯出 Excel / 匯出 PDF），不再單獨外掛按鈕 */}
               <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowBatchExportDialog(true)}>
