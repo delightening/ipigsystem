@@ -1,3 +1,4 @@
+export { Can } from './Can'
 export { RequirePermission } from './RequirePermission'
 export { ProtectedRoute } from './ProtectedRoute'
 export { ForcePasswordRoute } from './ForcePasswordRoute'
