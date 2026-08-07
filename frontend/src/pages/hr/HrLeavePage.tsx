@@ -31,6 +31,8 @@ export function HrLeavePage() {
     const hasRole = useAuthHasRole()
     const currentUser = useAuthUser()
     const canViewAll = hasRole('admin') || hasRole('ADMIN_STAFF')
+    // 負責人之上無人可代理其職務，代理人選填（未指定時後端走報備制），前端不擋
+    const isDirector = hasRole('DIRECTOR')
     const { dialogState, confirm } = useConfirmDialog()
 
     const leaveForm = useLeaveRequestForm()
@@ -103,7 +105,7 @@ export function HrLeavePage() {
             toast({ title: '錯誤', description: '請填寫請假事由', variant: 'destructive' })
             return
         }
-        if (!leaveForm.form.proxyUserId || leaveForm.form.proxyUserId === '__none__') {
+        if (!isDirector && (!leaveForm.form.proxyUserId || leaveForm.form.proxyUserId === '__none__')) {
             toast({ title: '錯誤', description: '請選擇職務代理人', variant: 'destructive' })
             return
         }

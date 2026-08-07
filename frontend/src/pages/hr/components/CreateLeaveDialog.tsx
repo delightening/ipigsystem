@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
 import api from '@/lib/api'
+import { useAuthHasRole } from '@/stores/auth'
 import { LEAVE_TYPE_NAMES } from '@/types/hr'
 import type { StaffInfo } from '@/types/hr'
 import type { useLeaveRequestForm } from '../hooks/useLeaveRequestForm'
@@ -49,6 +50,9 @@ export function CreateLeaveDialog({
 }: CreateLeaveDialogProps) {
     const isAnnualLeave = leaveForm.isAnnualLeave
     const errors = leaveForm.rhf?.formState?.errors
+    const hasRole = useAuthHasRole()
+    // 負責人之上無人可代理其職務，代理人改為選填；未指定時後端走報備制（送出即核准）。
+    const isDirector = hasRole('DIRECTOR')
 
     const uploadMutation = useMutation({
         mutationFn: async (files: FileList) => {
@@ -150,12 +154,18 @@ export function CreateLeaveDialog({
                         )}
                     </div>
                     <div className="grid gap-2">
-                        <Label>職務代理人 *</Label>
+                        <Label>
+                            職務代理人 {!isDirector && '*'}
+                            {isDirector && <span className="text-muted-foreground text-xs ml-1">(選填)</span>}
+                        </Label>
                         <Select value={leaveForm.form.proxyUserId} onValueChange={(v) => leaveForm.updateField('proxyUserId', v)}>
                             <SelectTrigger>
-                                <SelectValue placeholder="選擇代理人..." />
+                                <SelectValue placeholder={isDirector ? '選擇代理人，或不指定...' : '選擇代理人...'} />
                             </SelectTrigger>
                             <SelectContent>
+                                {isDirector && (
+                                    <SelectItem value="__none__">不指定（報備制）</SelectItem>
+                                )}
                                 {staffList?.map((staff) => (
                                     <SelectItem key={staff.id} value={staff.id}>
                                         {staff.display_name}
@@ -163,7 +173,11 @@ export function CreateLeaveDialog({
                                 ))}
                             </SelectContent>
                         </Select>
-                        <p className="text-xs text-muted-foreground">代理人於您請假期間協助職務；送審後會通知對方</p>
+                        <p className="text-xs text-muted-foreground">
+                            {isDirector
+                                ? '代理人於您請假期間協助職務；不指定則以報備制送出，直接核准並扣除假別餘額'
+                                : '代理人於您請假期間協助職務；送審後會通知對方'}
+                        </p>
                     </div>
                     <div className="grid gap-2">
                         <Label>
