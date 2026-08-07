@@ -5,6 +5,28 @@
 
 reviews:
   auto_review:
+    # 除預設分支（main）外，也審 base 為 integration/* 的 PR。
+    #
+    # 背景：本鍵預設 `[]`，語意是「預設分支**以外**都不審」。因此走
+    # `integration/<代號>` 長期分支策略時（見 CLAUDE.md 記憶 integration-branch-strategy
+    # 與 docs/agents/PARALLEL_SESSIONS.md §3：N ≥ 6 支 PR 同改同區塊時改走
+    # integration 分支以免衝突雪崩），系列中的每一支子 PR 都會拿到
+    # `Review skipped: reviews are disabled for this base branch`。
+    #
+    # 那個 status 的 `state` 是 `success`，看起來像審過、其實一個檔案都沒看 ——
+    # 依 CLAUDE.md 授權節 (e)/(f) 不算乾淨章，等於整個系列都無法滿足「bot 0 建議」閘，
+    # 只有最後 integration→main 那一次會被審。而那正好是切分 PR 想避免的一坨大 diff：
+    # 把 N 支小 PR 的審查壓縮成一次，審查品質必然下降。
+    #
+    # 2026-08-07 實測：PR #48（base=integration/button-permission-gate）即為此狀況。
+    #
+    # ⚠️ 代價：系列中每支子 PR 都會消耗共用的 review 配額（OSS 方案 1–10 次／
+    # 開發者／小時，rolling window，且跨 session 共用 —— 見下方 Dependabot 段落的
+    # 配額說明與 PARALLEL_SESSIONS.md §7）。開 integration 系列時要一併考慮
+    # 「同一小時最多開 3 支 PR」的自我節流。
+    base_branches:
+      - "integration/.*"
+
     # 不審 Dependabot 開的 PR。
     #
     # 理由：這類 PR 的 diff 只有版本號與 lockfile，CodeRabbit 對它結構上
