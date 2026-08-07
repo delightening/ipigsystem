@@ -133,8 +133,13 @@ function EntryHeading({
     }
     return (
         <div className="flex items-baseline justify-between gap-3">
-            {/* 耳號不截斷（多隻群養時換行顯示），對齊專案「表格禁 truncate」的同一理由 */}
-            <h4 className="text-base font-bold leading-snug" aria-label={`${label}，耳號 ${tags.join('、')}`}>
+            {/* 耳號不截斷（多隻群養時換行顯示），對齊專案「表格禁 truncate」的同一理由。
+                aria-label 會**取代**元素內的可見文字成為 accessible name，所以「N 隻」
+                必須一併寫進去，否則輔助技術讀不到隻數（CodeRabbit #44）。 */}
+            <h4
+                className="text-base font-bold leading-snug"
+                aria-label={`${label}，耳號 ${tags.join('、')}，共 ${tags.length} 隻`}
+            >
                 {tags.join('、')}
                 <span className="ml-1.5 text-xs font-normal text-muted-foreground">{tags.length} 隻</span>
             </h4>

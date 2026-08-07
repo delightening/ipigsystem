@@ -6,11 +6,13 @@ render 出來的 PDF 驗證頁數與內容，而不是靠讀 CSS 推論。
 
 用法：先起一個掛上修改後檔案的拋棄式容器，再指向它：
 
-    docker run --rm -d --name ipig-print-pdf-verify -p 127.0.0.1:9211:9200 \
+    rtk docker run --rm -d --name ipig-print-pdf-verify -p 127.0.0.1:9211:9200 \
       -v .../main.py:/app/main.py:ro -v .../templates:/app/templates:ro \
       -v .../adapters:/app/adapters:ro -v .../schemas:/app/schemas:ro \
       ipig_system-print-pdf
     python _tools/verify_vet_patrol_report_layout.py http://127.0.0.1:9211
+
+驗證完記得收掉：`rtk docker stop ipig-print-pdf-verify`（帶 --rm，stop 即移除）。
 """
 
 from __future__ import annotations
@@ -88,6 +90,18 @@ def pages(pdf: bytes) -> list[str]:
 
 
 SIGN_MARK = "巡場獸醫師"
+
+
+def photo_pages(pdf: bytes) -> list[str]:
+    """只取照片頁的文字。
+
+    照片區塊在範本中排在簽名區之後、且每組都帶 `page-break-before: always`，
+    所以「簽名頁之後的頁」就是照片頁。用來把圖說的計數與主表格的內文隔開
+    （耳號字串在兩邊都會出現）。
+    """
+    txt = pages(pdf)
+    sign_idx = next((i for i, t in enumerate(txt) if SIGN_MARK in t), -1)
+    return txt[sign_idx + 1 :] if sign_idx >= 0 else []
 
 
 def check(name: str, pdf: bytes, want_pages: int | None, want_sign_page_has_table: bool) -> bool:
@@ -169,10 +183,21 @@ def main() -> int:
         }
     ]
     pdf = render(base, payload(real, groups))
-    txt = "\n".join(pages(pdf))
-    has_desc = "右頸注射部位，無紅腫熱痛" in txt
-    print(("PASS " if has_desc else "FAIL ") + "D 圖說帶說明 :: caption_rendered=" + str(has_desc))
-    results.append(has_desc)
+    # 只在**照片頁**範圍內計數：耳號字串也出現在主表格的觀察內容裡，對整份 PDF
+    # 數會多算一次。照片頁都帶 page-break-before 且排在簽名區之後，故取簽名頁之後。
+    photo_txt = "\n".join(photo_pages(pdf))
+    # 用 count 而非 `in`：本次修的 bug 正是「同組每張照片共用同一個圖說」，
+    # 只檢查「有出現」的話，範本若把第一張的說明複製到第二張，測試照樣會過
+    # （CodeRabbit #44 指出）。故要求說明**恰好一次**、耳號**每張各一次**。
+    want_tags = len(groups[0]["photos"])
+    desc_n = photo_txt.count("右頸注射部位，無紅腫熱痛")
+    tag_n = photo_txt.count("#674、#691、#818")
+    ok_d = desc_n == 1 and tag_n == want_tags
+    print(
+        ("PASS " if ok_d else "FAIL ")
+        + f"D 圖說帶說明 :: desc={desc_n}(want 1), tags={tag_n}(want {want_tags})"
+    )
+    results.append(ok_d)
 
     # E. 舊 payload（只有 srcs、沒有 photos）仍須正常出圖說＝耳號
     old_groups = [{"caption": "#275", "description": "", "srcs": [DOT_URL]}]
