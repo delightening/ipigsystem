@@ -9,11 +9,16 @@ use sqlx::PgPool;
 
 use erp_backend::services::permission_codegen;
 
+/// 只認 `TEST_DATABASE_URL`，**不 fallback 到 `DATABASE_URL`**（在這台機器上指向 prod）。
+///
+/// 本測試雖然只讀 `permissions`，但會先跑 migration 與 `ensure_required_permissions`，
+/// 兩者都會寫入資料庫 —— fallback 等於讓一次 `cargo test` 對正式 schema 動手。
 async fn setup_pool() -> PgPool {
     dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("TEST_DATABASE_URL or DATABASE_URL must be set for integration tests");
+    let url = std::env::var("TEST_DATABASE_URL").expect(
+        "TEST_DATABASE_URL 未設定。本測試會跑 migration，禁止 fallback 到 DATABASE_URL（prod）。\
+         請指向獨立可丟棄的測試 DB。",
+    );
     let pool = PgPool::connect(&url).await.expect("connect test db");
     sqlx::migrate!("./migrations")
         .run(&pool)
