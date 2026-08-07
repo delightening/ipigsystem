@@ -28,24 +28,17 @@ use uuid::Uuid;
 
 use erp_backend::services::{AnimalObservationService, AnimalSurgeryService, AnimalWeightService};
 
-/// **fail-closed**：只讀 `TEST_DATABASE_URL`，不 fallback 到 `DATABASE_URL`。
-///
-/// CLAUDE.md 紅線是「禁止在 prod 跑 backend 整合測試」——開發機（這台同時是 prod）的
-/// `DATABASE_URL` 指向正式庫，fallback 會對 prod DB 跑 migration 並寫入測試資料，
-/// 污染正式表與稽核鏈。
-///
-/// 本檔原先採「允許 fallback、但用 DSN 是否含 `test` 擋掉 prod」的啟發式，理由是當時
-/// CI 的 `backend-test` job 只設 `DATABASE_URL`，無條件拒絕會讓整支測試在 CI panic。
-/// **該前提已移除**——`ci.yml` 的 `backend-test` 與 `backend-coverage` 兩個 job 都補上了
-/// `TEST_DATABASE_URL`，因此改為直接 fail-closed：不再靠字串啟發式猜「這看起來像不像
-/// 測試庫」，而是要求呼叫端明講。
-async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL").expect(
-        "需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）",
-    );
+#[path = "common/test_db.rs"]
+mod test_db;
 
-    let pool = PgPool::connect(&url).await.expect("connect test db");
+/// **fail-closed**：見 `tests/common/test_db.rs`。
+///
+/// 只讀 `TEST_DATABASE_URL`（不 fallback 到 `DATABASE_URL`，開發機那條指向 prod），
+/// 並在 migration 與任何寫入之前驗證目標資料庫**本身**是丟棄用測試庫——不是靠
+/// 名字判斷。本檔早期版本用「DSN 是否含 `test`」的字串啟發式，已由該護欄取代。
+async fn setup_pool() -> PgPool {
+    // 10 = sqlx `PgPool::connect` 的預設池大小，明寫以保留原行為。
+    let pool = test_db::connect_disposable(10).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

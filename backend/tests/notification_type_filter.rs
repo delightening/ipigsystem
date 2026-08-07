@@ -8,11 +8,12 @@ use uuid::Uuid;
 use erp_backend::models::NotificationQuery;
 use erp_backend::services::NotificationService;
 
+#[path = "common/test_db.rs"]
+mod test_db;
+
 async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL")
-        .expect("需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）");
-    let pool = PgPool::connect(&url).await.expect("connect test db");
+    // 10 = sqlx `PgPool::connect` 的預設池大小，明寫以保留原行為。
+    let pool = test_db::connect_disposable(10).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

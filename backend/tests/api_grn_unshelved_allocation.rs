@@ -16,6 +16,9 @@ use erp_backend::middleware::ActorContext;
 use erp_backend::models::{AssignUnassignedRequest, InventoryQuery, UnassignedSourceQuery};
 use erp_backend::services::StockService;
 
+#[path = "common/test_db.rs"]
+mod test_db;
+
 /// 分配走自核准 TR：測試以 System actor（actor_user_id() == SYSTEM_USER_ID）觸發，
 /// 讓 documents.created_by / line_shelf_allocations.created_by 的 FK 指向 migration 033 SYSTEM user。
 const TEST_ACTOR: ActorContext = ActorContext::System {
@@ -26,10 +29,8 @@ const TEST_ACTOR: ActorContext = ActorContext::System {
 const SYSTEM_USER_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_0000_0000_0000_0000_0001);
 
 async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL")
-        .expect("需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）");
-    let pool = PgPool::connect(&url).await.expect("connect test db");
+    // 10 = sqlx `PgPool::connect` 的預設池大小，明寫以保留原行為。
+    let pool = test_db::connect_disposable(10).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

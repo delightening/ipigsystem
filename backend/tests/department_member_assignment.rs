@@ -14,14 +14,11 @@ use erp_backend::middleware::{ActorContext, CurrentUser};
 use erp_backend::models::{CreateLeaveRequest, LeaveStatus};
 use erp_backend::services::{AuditService, HrService, UserService};
 
+#[path = "common/test_db.rs"]
+mod test_db;
+
 async fn pool() -> PgPool {
-    let url = std::env::var("TEST_DATABASE_URL")
-        .expect("需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）");
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&url)
-        .await
-        .expect("connect test DB");
+    let pool = test_db::connect_disposable(5).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

@@ -8,6 +8,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 
+pub mod test_db;
+
 /// Reusable test application that spawns a real Axum server on a random port.
 pub struct TestApp {
     pub address: String,
@@ -79,26 +81,20 @@ pub async fn free_ear_tag(pool: &PgPool) -> String {
 impl TestApp {
     /// Spawn the full application on a random OS-assigned port.
     ///
-    /// **Requires `TEST_DATABASE_URL`**（不再 fallback 到 `DATABASE_URL`）指向一個
+    /// **Requires `TEST_DATABASE_URL`**（不 fallback 到 `DATABASE_URL`）指向一個
     /// 獨立的丟棄用 PostgreSQL；migration 由本函式自行執行。
     ///
     /// 開發機的 `DATABASE_URL` 指向 prod，fallback 會讓整合測試寫進正式庫，
-    /// 見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。CI 兩個 job 已於
-    /// `ci.yml` 補上同值的 `TEST_DATABASE_URL`。
+    /// 見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。
+    ///
+    /// 光要求變數存在還不夠——它不檢查變數指向哪裡。實際的隔離判斷在
+    /// [`test_db::connect_disposable`]：在 migration 與任何寫入之前驗證目標資料庫
+    /// **本身**是丟棄用測試庫（標記表 + 核心業務表為空），不看它的名字。
     pub async fn spawn() -> Self {
-        dotenvy::dotenv().ok();
-
-        let database_url = std::env::var("TEST_DATABASE_URL")
-            .expect("需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）");
-
         // R28-2：擴大 conn pool 至 15，讓 concurrent audit write 整合測試
         // 可跑 10 並發（原 max_connections=5 限制 → 只能跑 3 並發）。
         // 5 仍足以支援單請求 backend test，15 換取 concurrent test 強度。
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(15)
-            .connect(&database_url)
-            .await
-            .expect("Failed to connect to test database");
+        let pool = test_db::connect_disposable(15).await;
 
         sqlx::migrate!("./migrations")
             .run(&pool)
