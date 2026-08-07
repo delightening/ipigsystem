@@ -31,7 +31,12 @@ pub struct OrphanPinnedRow {
     pub title: String,
     pub related_entity_type: String,
     pub related_entity_id: Option<Uuid>,
-    pub recipient_email: String,
+    /// 收件人的 **user_id**，刻意不帶 email。
+    ///
+    /// 本結構會被排程的 `warn!` 寫進營運日誌（Loki 留存久、存取範圍比 DB 廣），
+    /// email 屬直接識別個人的資料，不應為了維運方便而長期落在日誌裡。
+    /// 真的需要對應到人時，維運者用這個 id 查 `users` 表即可 —— 那是有存取控管的路徑。
+    pub user_id: Uuid,
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// 人類可讀的降級理由（實體已刪 / 已在終態 / 實體不存在）。
     pub reason: String,
@@ -42,7 +47,11 @@ pub struct OrphanPinnedRow {
 pub struct ReconcileReport {
     /// 已降級（dry-run 時為「將被降級」）的列。
     pub resolved: Vec<OrphanPinnedRow>,
-    /// 置頂中且經判定仍為合法待辦的筆數。
+    /// 置頂中、**已判定為仍需使用者動作**的筆數。
+    ///
+    /// 已扣掉 [`Self::resolved`] 與 [`Self::unknown_entity_types`] ——
+    /// 後者是「未做判斷」而非「判定為合法」，混進來會讓這個數字被高估，
+    /// 使維運者誤以為所有剩餘置頂列都已驗證過。
     pub still_pending: i64,
     /// 本模組不認得其 entity_type、因此未做判斷的筆數（保守不動）。
     pub unknown_entity_types: Vec<(String, i64)>,
@@ -61,10 +70,17 @@ impl NotificationService {
         dry_run: bool,
     ) -> Result<ReconcileReport, AppError> {
         let candidates = Self::find_orphan_pinned(&self.db).await?;
+        let unknown = Self::count_unknown_entity_types(&self.db).await?;
+        let unknown_total: i64 = unknown.iter().map(|(_, n)| *n).sum();
 
         let report = ReconcileReport {
-            still_pending: Self::count_pinned(&self.db).await? - candidates.len() as i64,
-            unknown_entity_types: Self::count_unknown_entity_types(&self.db).await?,
+            // 未知 entity_type 的列也計在 count_pinned 內，但它們是「未做判斷」，
+            // 不能算進「已判定仍需動作」。兩者互斥（unknown 的定義就是不在候選類型內），
+            // 直接相減即可。
+            still_pending: Self::count_pinned(&self.db).await?
+                - candidates.len() as i64
+                - unknown_total,
+            unknown_entity_types: unknown,
             resolved: candidates,
         };
 
@@ -137,7 +153,7 @@ impl NotificationService {
             -- 撤回正是 2026-08-07 事故的觸發路徑，若該處的解除將來回歸，
             -- 這道安全網要接得住。
             SELECT n.id, n.title, n.related_entity_type, n.related_entity_id,
-                   u.email AS recipient_email, n.created_at,
+                   n.user_id, n.created_at,
                    CASE
                      WHEN r.id IS NULL              THEN '關聯的巡場報告已不存在'
                      WHEN r.deleted_at IS NOT NULL  THEN '關聯的巡場報告已刪除'
@@ -145,7 +161,6 @@ impl NotificationService {
                      ELSE                                '關聯的巡場報告已撤回（無指派追蹤者）'
                    END AS reason
             FROM notifications n
-            JOIN users u ON u.id = n.user_id
             LEFT JOIN vet_patrol_reports r ON r.id = n.related_entity_id
             WHERE n.priority > 0
               AND n.related_entity_type = 'vet_patrol_reports'
@@ -158,10 +173,9 @@ impl NotificationService {
 
             -- 單據：row 已不存在（硬刪）→ 無從入庫/簽核，待辦不可能再完成
             SELECT n.id, n.title, n.related_entity_type, n.related_entity_id,
-                   u.email AS recipient_email, n.created_at,
+                   n.user_id, n.created_at,
                    '關聯的單據已不存在' AS reason
             FROM notifications n
-            JOIN users u ON u.id = n.user_id
             WHERE n.priority > 0
               AND n.related_entity_type = 'document'
               AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = n.related_entity_id)

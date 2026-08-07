@@ -56,7 +56,7 @@ UI：通知＝鈴鐺，待處理＝驚嘆號，兩者都在頁面上方。
 
 ### 3-3 查 prod DB 得到的真相
 
-```
+```text
 -- 該則置頂通知綁的報告
 id           = 687524ef-e2e0-4f19-8997-ae30cdbf1579
 patrol_date  = 2026-07-09
@@ -265,14 +265,15 @@ WHERE n.priority > 0
 - 對帳有命中時記 `warn` 而非 `info`：命中代表某條終態路徑漏接了解除 hook，
   對帳只是止血，真正該修的是漏掉的那條路徑——不要讓它靜靜地每天清、沒人發現
 
-**回歸測試** — `tests/notification_pinned_reconcile.rs`（新檔，4 例，全 `#[serial]`）
-- 軟刪 / 已完成 → 必須降級
+**回歸測試** — `tests/notification_pinned_reconcile.rs`（新檔，6 例，全 `#[serial]`）
+- 軟刪 / 已完成 / **已撤回**（draft 且無指派追蹤者）→ 必須降級
 - **在途待辦 → 絕不可降級**（比前者重要：誤清真正待辦的傷害大得多）
+- **draft 但仍有追蹤者 → 不得誤降**（對照組，防降級條件寫太寬）
 - dry-run 不得寫入
 
 **驗證結果**
 - `cargo check --tests` / `clippy -W clippy::unwrap_used` / `fmt --check`：0 error 0 warning
-- 新測試 4 passed；既有 `vet_patrol_core` + 2 支 notification 測試 33 passed（exit 0）
+- 新測試 6 passed；既有 `vet_patrol_core` 17 passed（解除搬進 tx 未打壞既有行為）
 - 對 prod DB 跑 dry-run 查詢：**命中 6 筆**（巡場 2 + 單據 4），
   合法在途待辦 1 筆（`ef46b84d`，2026-08-07，`awaiting_acknowledgement`）**正確未被命中**
 

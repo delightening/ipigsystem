@@ -144,6 +144,12 @@ async fn priority_of(pool: &PgPool, notification_id: Uuid) -> i16 {
 
 // 本檔全部測試都對「整張 notifications 表」跑對帳＝共享狀態，必須序列化：
 // 併發下另一支測試的非 dry-run 對帳會把本測試的列一起降級，dry-run 那支尤其會偽紅。
+//
+// ⚠️ `#[serial]` 只在**同一測試 binary 內**生效。目前這是安全的，因為
+// `reconcile_pinned_notifications` 只有本檔呼叫 —— 其他 test binary 不會動到
+// 別人的置頂列。**若日後有第二個 test binary 呼叫對帳（非 dry-run），這個前提就破了**，
+// 屆時需改用跨行程機制（各自獨立的 test database，或 advisory lock），
+// 而不是再加 `#[serial]`（那擋不住跨 binary 的併發）。
 #[tokio::test]
 #[serial]
 async fn reconcile_downgrades_pin_whose_report_was_soft_deleted() {
@@ -259,8 +265,17 @@ async fn reconcile_leaves_in_flight_todo_untouched() {
     let vet = seed_user(&pool).await;
     let follower = seed_user(&pool).await;
 
-    // 仍在途：指派給追蹤者、等他確認收到
-    let report = seed_patrol_report(&pool, vet, "awaiting_acknowledgement", false).await;
+    // 仍在途：指派給追蹤者、等他確認收到。
+    // 必須帶 follow_up_user_id —— submit_for_followup 一定同時設 status 與追蹤者，
+    // 用 None 會讓這個 fixture 保護一個正式流程根本產不出來的狀態。
+    let report = seed_patrol_report_with_follower(
+        &pool,
+        vet,
+        "awaiting_acknowledgement",
+        false,
+        Some(follower),
+    )
+    .await;
     let notif = seed_pinned_notification(&pool, follower, report).await;
 
     let svc = NotificationService::new(pool.clone());

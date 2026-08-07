@@ -80,14 +80,18 @@ async fn main() -> Result<()> {
         .await
         .context("reconcile pinned notifications")?;
 
+    // dry-run 時尚未寫入（「待降級」），非 dry-run 時 reconcile 回傳前已完成降級（「已降級」）。
+    // 兩者混用同一組文案會讓維運者分不清「這批到底動了沒」。
     let tag = if dry_run { "[dry-run] " } else { "" };
+    let verb = if dry_run { "待降級" } else { "已降級" };
 
-    println!("{tag}待降級的孤兒待辦（共 {} 筆）：", report.resolved.len());
+    println!("{tag}{verb}的孤兒待辦（共 {} 筆）：", report.resolved.len());
     for r in &report.resolved {
+        // 不印 email：對應到人請用 user_id 查 users 表（見 OrphanPinnedRow 的說明）。
         println!(
-            "  {} | {} | {} | {}",
+            "  {} | user={} | {} | {}",
             r.created_at.format("%Y-%m-%d %H:%M"),
-            r.recipient_email,
+            r.user_id,
             r.title,
             r.reason
         );
@@ -100,8 +104,10 @@ async fn main() -> Result<()> {
         }
     }
 
+    // still_pending 已扣除未知類型 —— 這裡只算「已判定仍需使用者動作」的，
+    // 不把「未做判斷」的混進來充數。
     println!(
-        "\n{tag}完成：降級 {} 筆，仍為合法待辦 {} 筆",
+        "\n{tag}完成：{verb} {} 筆；已判定仍需使用者動作 {} 筆",
         report.resolved.len(),
         report.still_pending
     );

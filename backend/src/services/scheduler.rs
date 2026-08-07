@@ -827,11 +827,15 @@ impl SchedulerService {
                                 r.still_pending
                             );
                             for row in &r.resolved {
+                                // 刻意不記 email：本 warn 會進營運日誌（留存久、存取範圍比 DB 廣），
+                                // email 屬直接識別個人的資料。需要對應到人時用 user_id 查 users 表 ——
+                                // 那是有存取控管的路徑。
                                 tracing::warn!(
-                                    "[Scheduler] pinned_todo_reconcile 降級: entity={} id={:?} recipient={} reason={}",
+                                    "[Scheduler] pinned_todo_reconcile 降級: notification={} entity={} entity_id={:?} user={} reason={}",
+                                    row.id,
                                     row.related_entity_type,
                                     row.related_entity_id,
-                                    row.recipient_email,
+                                    row.user_id,
                                     row.reason
                                 );
                             }
