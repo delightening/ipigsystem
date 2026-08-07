@@ -294,7 +294,28 @@ impl HrService {
         }
     }
 
+    /// 使用者是否具「負責人」角色。申請人未必等於當前操作者（`hr.leave.manage` 可代人送審），
+    /// 故查 DB 而非讀 `CurrentUser.roles`。
+    async fn user_is_director(pool: &PgPool, user_id: Uuid) -> Result<bool> {
+        let exists: (bool,) = sqlx::query_as(
+            r#"SELECT EXISTS(
+                SELECT 1 FROM users u
+                JOIN user_roles ur ON ur.user_id = u.id
+                JOIN roles r ON r.id = ur.role_id
+                WHERE u.id = $1 AND r.code = $2
+                  AND u.is_active = true AND u.deleted_at IS NULL
+            )"#,
+        )
+        .bind(user_id)
+        .bind(crate::constants::ROLE_DIRECTOR)
+        .fetch_one(pool)
+        .await?;
+        Ok(exists.0)
+    }
+
     /// 職務代理人驗證：必填、不可為申請人本人、須在職、且不可於同時段也在請假。
+    /// 例外：負責人之上無人可代理其職務，代理人改為選填——未指定時其假單走報備制
+    /// （見 `submit_leave`），不進代理確認關。
     async fn validate_proxy(
         pool: &PgPool,
         applicant_id: Uuid,
@@ -302,8 +323,12 @@ impl HrService {
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<()> {
-        let proxy_id =
-            proxy_id.ok_or_else(|| AppError::BadRequest("請假必須指定職務代理人".into()))?;
+        let Some(proxy_id) = proxy_id else {
+            if Self::user_is_director(pool, applicant_id).await? {
+                return Ok(());
+            }
+            return Err(AppError::BadRequest("請假必須指定職務代理人".into()));
+        };
         if proxy_id == applicant_id {
             return Err(AppError::BadRequest("職務代理人不可為申請人本人".into()));
         }
@@ -692,26 +717,64 @@ impl HrService {
         )
         .await?;
 
-        // 審核鏈第一關為「代理人確認」（proxy 必填，validate_proxy 已保證非空）。
-        // current_approver_id 設為代理人，供「待我確認」清單反查。
-        let after = sqlx::query_as::<_, LeaveRequest>(
-            r#"
-            UPDATE leave_requests
-            SET status = 'PENDING_PROXY'::leave_status, current_approver_id = proxy_user_id,
-                submitted_at = NOW(), updated_at = NOW()
-            WHERE id = $1 AND status = 'DRAFT'::leave_status
-            RETURNING
-                id, user_id, proxy_user_id, leave_type::text as leave_type, start_date, end_date,
-                start_time, end_time, total_days, total_hours, reason, supporting_documents,
-                annual_leave_source_id, is_urgent, is_retroactive,
-                status::text as status, current_approver_id, submitted_at, approved_at,
-                rejected_at, cancelled_at, revoked_at, cancellation_reason, revocation_reason,
-                created_at, updated_at
-            "#,
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
+        // 負責人本人請假走報備制：沒有人可代理其職務，終審關也只剩他自己
+        // （`can_user_approve_leave` 首條即禁止批自己的單，admin 代批同樣被擋）→
+        // 送出即核准並扣餘額，否則假單會永久卡在終審關。
+        const SELF_REPORT_COMMENT: &str = "負責人報備制：送出即核准";
+        let director_self_report =
+            before.proxy_user_id.is_none() && Self::user_is_director(pool, before.user_id).await?;
+
+        let after = if director_self_report {
+            Self::deduct_leave_balance(&mut tx, &before).await?;
+            Self::insert_leave_approval(
+                &mut tx,
+                id,
+                before.user_id,
+                LeaveStatus::PendingDirector.as_str(),
+                "APPROVE",
+                Some(SELF_REPORT_COMMENT),
+            )
+            .await?;
+            sqlx::query_as::<_, LeaveRequest>(
+                r#"
+                UPDATE leave_requests
+                SET status = 'APPROVED'::leave_status, current_approver_id = NULL,
+                    submitted_at = NOW(), approved_at = NOW(), updated_at = NOW()
+                WHERE id = $1 AND status = 'DRAFT'::leave_status
+                RETURNING
+                    id, user_id, proxy_user_id, leave_type::text as leave_type, start_date, end_date,
+                    start_time, end_time, total_days, total_hours, reason, supporting_documents,
+                    annual_leave_source_id, is_urgent, is_retroactive,
+                    status::text as status, current_approver_id, submitted_at, approved_at,
+                    rejected_at, cancelled_at, revoked_at, cancellation_reason, revocation_reason,
+                    created_at, updated_at
+                "#,
+            )
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?
+        } else {
+            // 審核鏈第一關為「代理人確認」（非負責人時 validate_proxy 已保證 proxy 非空）。
+            // current_approver_id 設為代理人，供「待我確認」清單反查。
+            sqlx::query_as::<_, LeaveRequest>(
+                r#"
+                UPDATE leave_requests
+                SET status = 'PENDING_PROXY'::leave_status, current_approver_id = proxy_user_id,
+                    submitted_at = NOW(), updated_at = NOW()
+                WHERE id = $1 AND status = 'DRAFT'::leave_status
+                RETURNING
+                    id, user_id, proxy_user_id, leave_type::text as leave_type, start_date, end_date,
+                    start_time, end_time, total_days, total_hours, reason, supporting_documents,
+                    annual_leave_source_id, is_urgent, is_retroactive,
+                    status::text as status, current_approver_id, submitted_at, approved_at,
+                    rejected_at, cancelled_at, revoked_at, cancellation_reason, revocation_reason,
+                    created_at, updated_at
+                "#,
+            )
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?
+        };
 
         let display = format!(
             "{} {}~{}",
@@ -722,7 +785,12 @@ impl HrService {
             actor,
             ActivityLogEntry {
                 event_category: "HR",
-                event_type: "LEAVE_SUBMIT",
+                // 報備制與一般送審分開記事件，稽核查詢時可直接篩出負責人自核的假單。
+                event_type: if director_self_report {
+                    "LEAVE_DIRECTOR_SELF_APPROVE"
+                } else {
+                    "LEAVE_SUBMIT"
+                },
                 entity: Some(AuditEntity::new("leave_request", after.id, &display)),
                 data_diff: Some(DataDiff::compute(Some(&before), Some(&after))),
                 request_context: None,
