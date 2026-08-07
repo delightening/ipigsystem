@@ -5,7 +5,7 @@ import { CheckCircle, Clock, Users } from 'lucide-react'
 
 import api from '@/lib/api'
 import { queryKeys } from '@/lib/queryKeys'
-import { useAuthHasRole } from '@/stores/auth'
+import { useAuthHasPermission, useAuthIsAdmin } from '@/stores/auth'
 import { useConfirmDialog } from '@/hooks/useConfirmDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { GuestHide } from '@/components/ui/guest-hide'
@@ -20,10 +20,13 @@ import type { CreateOvertimeData } from './constants'
 
 export function HrOvertimePage() {
     const [showCreateDialog, setShowCreateDialog] = useState(false)
-    const hasRole = useAuthHasRole()
+    const hasPermission = useAuthHasPermission()
+    const isAdmin = useAuthIsAdmin()
     const { dialogState, confirm } = useConfirmDialog()
 
-    const canViewAll = hasRole('admin') || hasRole('ADMIN_STAFF')
+    // 與後端 list_overtime 的判準對齊（`is_admin || has_permission("hr.overtime.view_all")`）。
+    // 原本硬編 admin/ADMIN_STAFF 兩個角色名，漏掉同樣持有該權限的 DIRECTOR。
+    const canViewAll = isAdmin || hasPermission('hr.overtime.view_all')
 
     // 取得員工清單（供申請人篩選用）
     const { data: staffList } = useQuery({

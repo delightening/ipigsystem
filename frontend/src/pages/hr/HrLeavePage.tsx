@@ -8,7 +8,7 @@ import api from '@/lib/api'
 import { queryKeys } from '@/lib/queryKeys'
 import { useGuestQuery } from '@/hooks/useGuestQuery'
 import { DEMO_LEAVES, DEMO_BALANCE_SUMMARY } from '@/lib/guest-demo'
-import { useAuthHasRole, useAuthUser } from '@/stores/auth'
+import { useAuthHasPermission, useAuthHasRole, useAuthIsAdmin, useAuthUser } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import { GuestHide } from '@/components/ui/guest-hide'
 import { PageHeader } from '@/components/ui/page-header'
@@ -28,9 +28,14 @@ import { AllLeaveRecordsTabContent } from './components/AllLeaveRecordsTabConten
 
 export function HrLeavePage() {
     const dialogs = useDialogSet(['create'] as const)
-    const hasRole = useAuthHasRole()
     const currentUser = useAuthUser()
-    const canViewAll = hasRole('admin') || hasRole('ADMIN_STAFF')
+    const hasRole = useAuthHasRole()
+    const hasPermission = useAuthHasPermission()
+    const isAdmin = useAuthIsAdmin()
+    // 與後端 list_leaves 的判準對齊（`is_admin || has_permission("hr.leave.view_all")`）。
+    // 原本硬編 admin/ADMIN_STAFF 兩個角色名，漏掉同樣持有該權限的 DIRECTOR——
+    // 負責人因此看不到「請假紀錄」分頁。改看權限後，日後新角色只要給權限即自動生效。
+    const canViewAll = isAdmin || hasPermission('hr.leave.view_all')
     // 負責人之上無人可代理其職務，代理人選填（未指定時後端走報備制），前端不擋
     const isDirector = hasRole('DIRECTOR')
     const { dialogState, confirm } = useConfirmDialog()
