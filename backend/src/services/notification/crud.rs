@@ -7,8 +7,8 @@ use crate::{
     error::AppError,
     models::{
         CreateNotificationRequest, Notification, NotificationItem, NotificationQuery,
-        NotificationSettings, PaginatedResponse, UpdateNotificationSettingsRequest, KIND_ACTION,
-        KIND_INFO, PRIORITY_NORMAL, PRIORITY_PINNED,
+        NotificationSettings, PaginatedResponse, UpdateNotificationSettingsRequest, ENTRY_BELL,
+        ENTRY_TODO, KIND_ACTION, KIND_INFO, PRIORITY_NORMAL, PRIORITY_PINNED,
     },
 };
 
@@ -74,11 +74,33 @@ impl NotificationService {
                 .push_bind(notification_type.clone());
         }
 
-        // kind 篩選：分家後鈴鐺帶 kind=info、驚嘆號帶 kind=action。
-        // 未帶＝不篩選，維持舊前端相容（部署期間新舊前端可能並存）。
-        if let Some(ref kind) = &query.kind {
-            qb.push(" AND kind = ").push_bind(kind.clone());
-            count_qb.push(" AND kind = ").push_bind(kind.clone());
+        // 入口篩選。兩個入口的判準只寫在這裡一處（與兩個計數共用同一句 SQL 述詞），
+        // 前端只說「我是哪個入口」，不自己拼條件——否則清單與紅點會各算各的而對不起來。
+        //
+        // 鈴鐺不是 kind='info'：已完成的待辦（kind='action' 但 priority=0）也屬鈴鐺，
+        // 那正是「我當初處理過哪些事」的歷史。
+        //
+        // 未帶 entry ＝ 不篩選，維持舊前端相容（部署期間新舊前端並存）。
+        match query.entry.as_deref() {
+            Some(ENTRY_TODO) => {
+                for b in [&mut qb, &mut count_qb] {
+                    b.push(" AND kind = ")
+                        .push_bind(KIND_ACTION)
+                        .push(" AND priority > ")
+                        .push_bind(PRIORITY_NORMAL);
+                }
+            }
+            Some(ENTRY_BELL) => {
+                for b in [&mut qb, &mut count_qb] {
+                    b.push(" AND NOT (kind = ")
+                        .push_bind(KIND_ACTION)
+                        .push(" AND priority > ")
+                        .push_bind(PRIORITY_NORMAL)
+                        .push(")");
+                }
+            }
+            // 無法辨識的值一律當「未帶」，不因打錯字回空清單而讓使用者以為東西不見了
+            _ => {}
         }
 
         // 緊急置頂（priority=1）永遠排在最上方，其餘按時間新到舊。

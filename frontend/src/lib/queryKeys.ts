@@ -75,6 +75,10 @@ export const queryKeys = {
     all: ['notifications'] as const,
     unreadCount: ['notifications-unread-count'] as const,
     recent: ['notifications-recent'] as const,
+    /** 驚嘆號紅點：未完成待辦數 */
+    actionRequiredCount: ['notifications-action-required-count'] as const,
+    /** 驚嘆號下拉的待辦清單 */
+    actionRequired: ['notifications-action-required'] as const,
     settings: ['notification-settings'] as const,
     routing: ['notification-routing'] as const,
     routingEventTypes: ['notification-routing-event-types'] as const,

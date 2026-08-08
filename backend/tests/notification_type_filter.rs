@@ -58,7 +58,7 @@ async fn list_notifications_with_type_filter_does_not_500() {
     let query = NotificationQuery {
         is_read: None,
         notification_type: Some("system_alert".to_string()),
-        kind: None,
+        entry: None,
     };
 
     let result = service

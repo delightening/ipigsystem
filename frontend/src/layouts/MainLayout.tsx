@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { NotificationDropdown } from '@/components/layout/NotificationDropdown'
+import { ActionRequiredDropdown } from '@/components/layout/ActionRequiredDropdown'
 import { PasswordChangeDialog } from '@/components/layout/PasswordChangeDialog'
 import { useSidebarStore } from '@/stores/sidebar'
 
@@ -196,7 +197,10 @@ export function MainLayout() {
               {new Date().toLocaleDateString(i18n.language, { timeZone: 'Asia/Taipei' })}
             </span>
 
+            {/* 待處理排在鈴鐺右邊、離使用者選單較近：需要動作的東西擺在慣用手的動線上。
+                兩個入口都常駐（零狀態不隱藏），位置才不會忽左忽右。 */}
             <NotificationDropdown />
+            <ActionRequiredDropdown />
 
             <Select value={i18n.language} onValueChange={handleLanguageChange}>
               <SelectTrigger className="w-[60px] md:w-[120px] h-9" data-testid="language-selector">

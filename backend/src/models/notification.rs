@@ -143,9 +143,17 @@ pub struct CreateNotificationRequest {
 pub struct NotificationQuery {
     pub is_read: Option<bool>,
     pub notification_type: Option<String>,
-    /// `'info'` | `'action'`；未帶＝不篩選（維持舊前端行為，不破壞相容）。
-    pub kind: Option<String>,
+    /// 由哪個入口發問：[`ENTRY_BELL`] | [`ENTRY_TODO`]；未帶＝不篩選（維持舊前端相容）。
+    pub entry: Option<String>,
 }
+
+/// 鈴鐺入口：一切**不是未完成待辦**的通知。
+///
+/// 注意不等於 `kind='info'` —— 已完成的待辦（`kind='action'` 但 `priority=0`）
+/// 也屬於鈴鐺，那正是「我當初處理過哪些事」的歷史。
+pub const ENTRY_BELL: &str = "bell";
+/// 驚嘆號入口：未完成待辦（`kind='action' AND priority>0`）。
+pub const ENTRY_TODO: &str = "todo";
 
 /// 未讀通知數量
 #[derive(Debug, Serialize)]

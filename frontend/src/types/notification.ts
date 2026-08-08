@@ -41,7 +41,27 @@ export interface NotificationItem {
     created_at: string
     /** 0=一般；1=緊急置頂（待辦，完成前排在清單最上方） */
     priority?: number
+    /**
+     * 通知的**性質**：`'info'` 一般告知 / `'action'` 待辦。
+     *
+     * 與 `priority` 分工，兩者都要：`kind` 是歷史事實（一旦是待辦就永遠是），
+     * `priority > 0` 才代表**還沒完成**。待處理清單 ＝ `kind='action' && priority>0`；
+     * 完成後離開待處理，但仍以 `kind='action'` + `priority=0` 留在鈴鐺歷史裡。
+     *
+     * 選填是為了相容部署期間仍在跑的舊回應。
+     */
+    kind?: NotificationKind
 }
+
+/** 通知性質，見 {@link NotificationItem.kind} */
+export type NotificationKind = 'info' | 'action'
+
+/**
+ * 通知的兩個入口。判準寫在後端（`?entry=`），前端只說自己是誰。
+ *
+ * `bell` **不等於** `kind='info'`：已完成的待辦也屬鈴鐺歷史。
+ */
+export type NotificationEntry = 'bell' | 'todo'
 
 export interface NotificationListResponse {
     data: NotificationItem[]

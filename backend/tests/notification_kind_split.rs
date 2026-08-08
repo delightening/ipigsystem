@@ -190,46 +190,70 @@ async fn action_count_ignores_is_read() {
     );
 }
 
-/// `?kind=` 篩選讓兩個入口各取所需。
+/// `?entry=` 篩選讓兩個入口各取所需，且**清單與紅點必須算出同一批**。
+///
+/// 特別鎖住：鈴鐺入口**不等於** `kind='info'` —— 已完成的待辦
+/// （`kind='action'` 但 `priority=0`）也要留在鈴鐺歷史裡，
+/// 那正是「我當初處理過哪些事」。
 #[tokio::test]
-async fn kind_filter_separates_the_two_entries() {
+async fn entry_filter_separates_the_two_entries() {
     let pool = setup_pool().await;
     let user = seed_user(&pool).await;
-    seed(&pool, user, "info", 0).await;
-    seed(&pool, user, "action", 1).await;
+    seed(&pool, user, "info", 0).await; // 一般通知
+    seed(&pool, user, "action", 0).await; // 已完成的待辦
+    seed(&pool, user, "action", 1).await; // 未完成的待辦
 
     let svc = NotificationService::new(pool.clone());
-    let only_action = svc
-        .list_notifications(
-            user,
-            &NotificationQuery {
-                is_read: None,
-                notification_type: None,
-                kind: Some("action".to_string()),
-            },
-            1,
-            20,
-        )
-        .await
-        .expect("list action");
-    assert_eq!(only_action.data.len(), 1);
-    assert_eq!(only_action.data[0].kind, "action");
+    let query = |entry: Option<&str>| NotificationQuery {
+        is_read: None,
+        notification_type: None,
+        entry: entry.map(str::to_string),
+    };
 
-    // 未帶 kind ＝ 不篩選，維持舊前端相容（部署期間新舊前端並存）
+    let todo = svc
+        .list_notifications(user, &query(Some("todo")), 1, 20)
+        .await
+        .expect("list todo");
+    assert_eq!(todo.total, 1, "待處理只收未完成待辦");
+    assert_eq!(todo.data[0].kind, "action");
+    assert_eq!(todo.data[0].priority, 1);
+
+    let bell = svc
+        .list_notifications(user, &query(Some("bell")), 1, 20)
+        .await
+        .expect("list bell");
+    assert_eq!(bell.total, 2, "鈴鐺收一般通知 + 已完成的待辦");
+    assert!(
+        bell.data.iter().any(|n| n.kind == "action"),
+        "已完成的待辦必須留在鈴鐺歷史裡；鈴鐺入口不可實作成 kind='info'"
+    );
+    assert!(
+        bell.data.iter().all(|n| n.priority == 0),
+        "鈴鐺不得混入未完成待辦，否則同一件事兩個入口都出現"
+    );
+
+    // 清單筆數與紅點計數必須一致（分家後最容易漂移的地方）
+    assert_eq!(
+        todo.total,
+        svc.get_action_required_count(user)
+            .await
+            .expect("action count"),
+        "待處理清單筆數與驚嘆號紅點必須算出同一批"
+    );
+
+    // 未帶 entry ＝ 不篩選，維持舊前端相容（部署期間新舊前端並存）
     let all = svc
-        .list_notifications(
-            user,
-            &NotificationQuery {
-                is_read: None,
-                notification_type: None,
-                kind: None,
-            },
-            1,
-            20,
-        )
+        .list_notifications(user, &query(None), 1, 20)
         .await
         .expect("list all");
-    assert_eq!(all.data.len(), 2, "未帶 kind 應回全部，不可預設篩選");
+    assert_eq!(all.total, 3, "未帶 entry 應回全部，不可預設篩選");
+
+    // 打錯字視同未帶，不回空清單（空清單會讓使用者以為待辦不見了）
+    let typo = svc
+        .list_notifications(user, &query(Some("bel")), 1, 20)
+        .await
+        .expect("list typo");
+    assert_eq!(typo.total, 3, "無法辨識的 entry 應退回不篩選，不可回空");
 }
 
 /// 建立端：`kind` 由 `priority` 決定，集中在唯一的 INSERT 點綁定。
