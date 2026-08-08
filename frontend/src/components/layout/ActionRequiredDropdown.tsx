@@ -60,8 +60,16 @@ export function ActionRequiredDropdown() {
                 setShowDropdown(false)
             }
         }
+        // 只靠「點外面」關閉的話，鍵盤使用者被困在展開的選單裡沒有出路
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setShowDropdown(false)
+        }
         document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
+        document.addEventListener('keydown', handleEscape)
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside)
+            document.removeEventListener('keydown', handleEscape)
+        }
     }, [])
 
     const handleClick = (notification: NotificationItem) => {
@@ -84,6 +92,8 @@ export function ActionRequiredDropdown() {
                 className="relative"
                 onClick={() => setShowDropdown(!showDropdown)}
                 aria-label={t('common.actionRequired')}
+                aria-haspopup="menu"
+                aria-expanded={showDropdown}
                 data-testid="action-required-bell"
             >
                 <CircleAlert className="h-5 w-5" />
@@ -124,10 +134,14 @@ export function ActionRequiredDropdown() {
                             items.map((item) => {
                                 const days = waitedDays(item.created_at)
                                 return (
-                                    <div
+                                    // 用 <button> 而非 <div onClick>：列項的主要動作是導向，
+                                    // div 不可聚焦也不吃 Enter/Space，鍵盤與螢幕閱讀器使用者
+                                    // 完全打不開任何一則待辦。
+                                    <button
                                         key={item.id}
+                                        type="button"
                                         onClick={() => handleClick(item)}
-                                        className="px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted transition-colors border-l-4 border-l-status-error-solid"
+                                        className="w-full text-left px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted focus-visible:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors border-l-4 border-l-status-error-solid"
                                     >
                                         <div className="flex items-start gap-3">
                                             <div className="flex-1 min-w-0">
@@ -158,7 +172,7 @@ export function ActionRequiredDropdown() {
                                                 <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                                             )}
                                         </div>
-                                    </div>
+                                    </button>
                                 )
                             })
                         ) : (

@@ -16,6 +16,9 @@ import {
 
 const PER_PAGE = 20
 
+/** tab 與其面板的關聯 id（role="tab" 需要 aria-controls 指向 role="tabpanel"） */
+const TAB_PANEL_ID = 'notifications-panel'
+
 /** 網址上只認這兩個值，其餘（含沒帶）一律退回鈴鐺 */
 const isEntry = (v: string | null): v is NotificationEntry => v === 'bell' || v === 'todo'
 
@@ -131,7 +134,9 @@ export default function NotificationsPage() {
                     <button
                         key={key}
                         role="tab"
+                        id={`notif-tab-${key}`}
                         aria-selected={entry === key}
+                        aria-controls={TAB_PANEL_ID}
                         onClick={() => switchEntry(key)}
                         className={cn(
                             'flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
@@ -146,7 +151,12 @@ export default function NotificationsPage() {
                 ))}
             </div>
 
-            <div className="border rounded-lg overflow-hidden divide-y">
+            <div
+                id={TAB_PANEL_ID}
+                role="tabpanel"
+                aria-labelledby={`notif-tab-${entry}`}
+                className="border rounded-lg overflow-hidden divide-y"
+            >
                 {isLoading ? (
                     <div className="p-8 text-center text-muted-foreground">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
@@ -172,11 +182,14 @@ export default function NotificationsPage() {
                     const isResolvedAction = !isTodo && n.kind === 'action'
                     const days = waitedDays(n.created_at)
                     return (
-                    <div
+                    // 用 <button> 而非 <div onClick>：div 不可聚焦也不吃 Enter/Space，
+                    // 鍵盤與螢幕閱讀器使用者打不開任何一則通知／待辦
+                    <button
                         key={n.id}
+                        type="button"
                         onClick={() => handleClick(n)}
                         className={cn(
-                            'px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors flex items-start gap-3',
+                            'w-full text-left px-4 py-3 cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors flex items-start gap-3',
                             isTodo
                                 ? 'border-l-4 border-l-status-error-solid'
                                 : !n.is_read && 'bg-status-info-bg',
@@ -217,7 +230,7 @@ export default function NotificationsPage() {
                         {notificationTargetPath(n) && (
                             <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                         )}
-                    </div>
+                    </button>
                     )
                 })}
             </div>

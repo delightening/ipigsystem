@@ -38,6 +38,14 @@ describe('notificationTargetPath', () => {
         )
     })
 
+    it('需要 id 的實體缺 id 時回 null，不得產出 /protocols/undefined', () => {
+        // 呼叫端只用 `if (path)` 判斷。回一個內含 undefined 的字串會讓外連圖示照樣
+        // 顯示、點下去導到不存在的頁面——比不給連結更糟。
+        for (const type of ['protocol', 'document', 'animal', 'amendment']) {
+            expect(notificationTargetPath({ related_entity_type: type })).toBeNull()
+        }
+    })
+
     it('安樂死類以動物為落點；沒帶 id 就無處可去，回 null', () => {
         expect(
             notificationTargetPath({

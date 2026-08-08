@@ -16,14 +16,17 @@ export function notificationTargetPath(notification: {
     if (!type) return null
 
     switch (type) {
+        // 以下四種都要 id 才有落點。`related_entity_id` 是選填，少了它直接內插
+        // 會產出 `/protocols/undefined` —— 呼叫端只看 `if (path)`，於是會顯示外連
+        // 圖示、點下去導到不存在的頁面。缺 id 一律回 null，與下面 euthanasia 一致。
         case 'protocol':
-            return `/protocols/${id}`
+            return id ? `/protocols/${id}` : null
         case 'document':
-            return `/documents/${id}`
+            return id ? `/documents/${id}` : null
         case 'animal':
-            return `/animals/${id}`
+            return id ? `/animals/${id}` : null
         case 'amendment':
-            return `/protocols/amendments/${id}`
+            return id ? `/protocols/amendments/${id}` : null
         case 'leave_request':
             return '/hr/leaves'
         case 'overtime_record':

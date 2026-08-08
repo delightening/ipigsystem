@@ -87,8 +87,16 @@ export function NotificationDropdown() {
         setShowDropdown(false)
       }
     }
+    // 只靠「點外面」關閉的話，鍵盤使用者被困在展開的選單裡沒有出路
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowDropdown(false)
+    }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
   }, [])
 
   const handleNotificationClick = (notification: NotificationItem) => {
@@ -124,6 +132,8 @@ export function NotificationDropdown() {
         className="relative"
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label="通知"
+        aria-haspopup="menu"
+        aria-expanded={showDropdown}
         data-testid="notification-bell"
       >
         <Bell className="h-5 w-5" />
@@ -166,11 +176,14 @@ export function NotificationDropdown() {
                 // 未完成的不會出現（?entry=bell 已在後端排除），所以不再有置頂樣式。
                 const isResolvedAction = notification.kind === 'action'
                 return (
-                <div
+                // 用 <button> 而非 <div onClick>：div 不可聚焦也不吃 Enter/Space，
+                // 鍵盤與螢幕閱讀器使用者打不開任何一則通知
+                <button
                   key={notification.id}
+                  type="button"
                   onClick={() => handleNotificationClick(notification)}
                   className={cn(
-                    "px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted transition-colors",
+                    "w-full text-left px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted focus-visible:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors",
                     !notification.is_read && "bg-status-info-bg"
                   )}
                 >
@@ -206,7 +219,7 @@ export function NotificationDropdown() {
                       <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                     )}
                   </div>
-                </div>
+                </button>
                 )
               })
             ) : (
