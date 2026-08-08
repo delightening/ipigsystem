@@ -112,6 +112,8 @@ export const DEMO_MY_PROJECTS_WIDGET = [
 
 // === 通知 / 修正 ===
 export const DEMO_NOTIFICATIONS_UNREAD = { count: 0 }
+/** 驚嘆號紅點。訪客不會有待辦（沒有指派給他的事），固定 0。 */
+export const DEMO_NOTIFICATIONS_ACTION_REQUIRED = { count: 0 }
 export const DEMO_AMENDMENTS_PENDING = { count: 0 }
 
 // === 整合匯出（向後相容） ===

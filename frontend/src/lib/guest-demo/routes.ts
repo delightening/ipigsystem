@@ -46,7 +46,7 @@ import {
 import {
   DEMO_LOW_STOCK_ALERTS, DEMO_VET_COMMENTS,
   DEMO_STAFF_ATTENDANCE_TODAY, DEMO_CALENDAR_EVENTS, DEMO_MY_PROJECTS_WIDGET,
-  DEMO_NOTIFICATIONS_UNREAD, DEMO_AMENDMENTS_PENDING,
+  DEMO_NOTIFICATIONS_UNREAD, DEMO_NOTIFICATIONS_ACTION_REQUIRED, DEMO_AMENDMENTS_PENDING,
 } from './dashboard'
 import {
   DEMO_STOCK_ON_HAND, DEMO_STOCK_LEDGER, DEMO_PURCHASE_LINES, DEMO_SALES_LINES,
@@ -333,6 +333,7 @@ const exactRoutes: Record<string, unknown> = {
   // === Dashboard widgets ===
   '/staff-attendance': DEMO_STAFF_ATTENDANCE_TODAY,
   '/notifications/unread-count': DEMO_NOTIFICATIONS_UNREAD,
+  '/notifications/action-required-count': DEMO_NOTIFICATIONS_ACTION_REQUIRED,
   '/amendments/pending-count': DEMO_AMENDMENTS_PENDING,
 
   // === 報表中心（batch 2；ERP 報表回 plain array） ===
