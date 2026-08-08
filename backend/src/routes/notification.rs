@@ -14,6 +14,11 @@ pub fn routes() -> Router<AppState> {
             "/notifications/unread-count",
             get(handlers::get_unread_count),
         )
+        // 驚嘆號入口的計數（待辦）。須在 /:id 之前註冊，避免被當成 UUID 解析。
+        .route(
+            "/notifications/action-required-count",
+            get(handlers::get_action_required_count),
+        )
         .route("/notifications/read", post(handlers::mark_as_read))
         .route("/notifications/read-all", post(handlers::mark_all_as_read))
         .route(

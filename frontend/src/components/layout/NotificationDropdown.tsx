@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { shouldPoll } from '@/lib/query'
+import { queryKeys } from '@/lib/queryKeys'
+import { notificationTargetPath } from '@/lib/notificationRoute'
 import { useAuthStore } from '@/stores/auth'
 import type { NotificationItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -13,9 +15,17 @@ import {
   Loader2,
   Bell,
   CheckCheck,
+  CheckCircle2,
   ExternalLink,
 } from 'lucide-react'
 
+/**
+ * 鈴鐺入口：**通知**（看過就好，不需要動作）。
+ *
+ * 未完成待辦已分家到 {@link ./ActionRequiredDropdown}，這裡不再出現，
+ * 免得同一件事在畫面上被數兩次。但**已完成**的待辦仍留在這裡當歷史 ——
+ * 那是「我當初處理過哪些事」，所以入口判準是 `?entry=bell` 而非 `kind=info`。
+ */
 export function NotificationDropdown() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -28,7 +38,7 @@ export function NotificationDropdown() {
   const isLoggedIn = !!user && isInitialized
 
   const { data: unreadCount } = useQuery({
-    queryKey: ['notifications-unread-count'],
+    queryKey: queryKeys.notifications.unreadCount,
     queryFn: async () => {
       const res = await api.get<{ count: number }>('/notifications/unread-count')
       return res.data.count
@@ -39,9 +49,11 @@ export function NotificationDropdown() {
   })
 
   const { data: notificationsData, isLoading: isLoadingNotifications } = useQuery({
-    queryKey: ['notifications-recent'],
+    queryKey: queryKeys.notifications.recent,
     queryFn: async () => {
-      const res = await api.get<{ data: NotificationItem[] }>('/notifications?per_page=10')
+      const res = await api.get<{ data: NotificationItem[] }>(
+        '/notifications?entry=bell&per_page=10',
+      )
       return res.data.data
     },
     enabled: isLoggedIn && showDropdown,
@@ -75,8 +87,16 @@ export function NotificationDropdown() {
         setShowDropdown(false)
       }
     }
+    // 只靠「點外面」關閉的話，鍵盤使用者被困在展開的選單裡沒有出路
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowDropdown(false)
+    }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
   }, [])
 
   const handleNotificationClick = (notification: NotificationItem) => {
@@ -85,53 +105,8 @@ export function NotificationDropdown() {
     }
     setShowDropdown(false)
 
-    if (notification.related_entity_type) {
-      switch (notification.related_entity_type) {
-        case 'protocol':
-          navigate(`/protocols/${notification.related_entity_id}`)
-          break
-        case 'document':
-          navigate(`/documents/${notification.related_entity_id}`)
-          break
-        case 'animal':
-          navigate(`/animals/${notification.related_entity_id}`)
-          break
-        case 'amendment':
-          navigate(`/protocols/amendments/${notification.related_entity_id}`)
-          break
-        case 'leave_request':
-          navigate('/hr/leaves')
-          break
-        case 'overtime_record':
-        case 'overtime':
-          navigate('/hr/overtime')
-          break
-        case 'euthanasia_order':
-        case 'euthanasia_appeal':
-          if (notification.related_entity_id) {
-            navigate(`/animals/${notification.related_entity_id}`)
-          }
-          break
-        case 'invitation':
-          navigate('/hr/invitations')
-          break
-        case 'expiry_warning':
-          navigate('/inventory?filter=expiry_warning')
-          break
-        case 'low_stock':
-          navigate('/inventory?filter=low_stock')
-          break
-        case 'equipment':
-          navigate('/equipment')
-          break
-        case 'vet_patrol_reports':
-          navigate('/vet-patrol-reports')
-          break
-        case 'report':
-          navigate('/admin/settings')
-          break
-      }
-    }
+    const path = notificationTargetPath(notification)
+    if (path) navigate(path)
   }
 
   const formatNotificationTime = (dateStr: string) => {
@@ -157,11 +132,15 @@ export function NotificationDropdown() {
         className="relative"
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label="通知"
+        aria-haspopup="menu"
+        aria-expanded={showDropdown}
         data-testid="notification-bell"
       >
         <Bell className="h-5 w-5" />
+        {/* 灰而非紅：用顏色分輕重 —— 紅色留給隔壁「非做不可」的待處理，
+            這裡只是「還沒看過」。兩邊都紅等於回到「什麼都很急」。 */}
         {unreadCount && unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-status-error-solid text-white text-xs font-bold">
+          <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-status-neutral-solid text-white text-xs font-bold">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -193,27 +172,32 @@ export function NotificationDropdown() {
               </div>
             ) : notificationsData && notificationsData.length > 0 ? (
               notificationsData.map((notification) => {
-                const isPinned = (notification.priority ?? 0) > 0
+                // 已完成的待辦：留在這裡當「我當初處理過哪些事」的歷史。
+                // 未完成的不會出現（?entry=bell 已在後端排除），所以不再有置頂樣式。
+                const isResolvedAction = notification.kind === 'action'
                 return (
-                <div
+                // 用 <button> 而非 <div onClick>：div 不可聚焦也不吃 Enter/Space，
+                // 鍵盤與螢幕閱讀器使用者打不開任何一則通知
+                <button
                   key={notification.id}
+                  type="button"
                   onClick={() => handleNotificationClick(notification)}
                   className={cn(
-                    "px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted transition-colors",
-                    isPinned
-                      ? "border-l-4 border-l-status-warning-solid bg-status-warning-bg/40"
-                      : !notification.is_read && "bg-status-info-bg"
+                    "w-full text-left px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-muted focus-visible:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors",
+                    !notification.is_read && "bg-status-info-bg"
                   )}
                 >
                   <div className="flex items-start gap-3">
                     <div className={cn(
                       "w-2 h-2 rounded-full mt-2 shrink-0",
-                      isPinned ? "bg-status-warning-solid" : !notification.is_read ? "bg-status-info-bg0" : "bg-transparent"
+                      // 原本寫成 bg-status-info-bg0（不存在的 class），未讀圓點一直沒顯示
+                      !notification.is_read ? "bg-status-info-solid" : "bg-transparent"
                     )} />
                     <div className="flex-1 min-w-0">
-                      {isPinned && (
-                        <span className="inline-block mb-1 text-xs font-medium px-1.5 py-0.5 rounded bg-status-warning-bg text-status-warning-text">
-                          {t('common.actionRequired')}
+                      {isResolvedAction && (
+                        <span className="inline-flex items-center gap-1 mb-1 text-xs font-medium px-1.5 py-0.5 rounded bg-status-success-bg text-status-success-text">
+                          <CheckCircle2 className="h-3 w-3" />
+                          {t('common.actionCompleted')}
                         </span>
                       )}
                       <p className={cn(
@@ -231,11 +215,11 @@ export function NotificationDropdown() {
                         {formatNotificationTime(notification.created_at)}
                       </p>
                     </div>
-                    {notification.related_entity_type && (
+                    {notificationTargetPath(notification) && (
                       <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                     )}
                   </div>
-                </div>
+                </button>
                 )
               })
             ) : (
