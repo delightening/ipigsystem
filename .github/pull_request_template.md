@@ -39,6 +39,11 @@ Closes #
 - [ ] 前端：`pnpm lint` 無警告 + `pnpm test` 通過
 - [ ] 瀏覽器手動測試通過（若涉及 UI）
 - [ ] 已新增或更新對應測試
+- [ ] **若初次 review 之後又 push 過修正**：已在最後一次 push 後留言 `@coderabbitai review`
+  <!-- `.coderabbit.yaml` 的 auto_incremental_review: false 讓後續 push 不再自動重審
+       （那是配額耗盡的主因）。CLAUDE.md 授權節 (e) 要求 bot review 必須晚於最後一次
+       commit，所以這一步是拿到乾淨章的必要動作，漏做會出現「最新 commit 沒有對應
+       review」的落差。 -->
 
 ## 資料庫變更 (Database Changes)
 
