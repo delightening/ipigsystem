@@ -51,7 +51,7 @@ import {
   User,
   MapPin,
 } from 'lucide-react'
-import { useAuthIsGuest } from '@/stores/auth'
+import { useAuthIsGuest, useAuthHasPermission } from '@/stores/auth'
 import { useConfirmDialog } from '@/hooks/useConfirmDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { GuestHide } from '@/components/ui/guest-hide'
@@ -71,6 +71,7 @@ const defaultFormValues: AnimalSourceFormData = {
 
 export function AnimalSourcesPage() {
   const isGuest = useAuthIsGuest()
+  const canManageSource = useAuthHasPermission()(PERMISSIONS.ANIMAL_SOURCE_MANAGE)
   const queryClient = useQueryClient()
   const { dialogState, confirm } = useConfirmDialog()
 
@@ -310,7 +311,10 @@ export function AnimalSourcesPage() {
                 colSpan={8}
                 icon={Building2}
                 title="尚無來源資料"
-                action={isGuest ? undefined : { label: '新增第一個來源', onClick: () => handleOpenDialog(), icon: Plus }}
+                // TableEmptyRow 的 action 是純 prop 不是 children，包不進 <Can>；
+                // 用同一個 permission 判斷即可。原本只擋 guest，沒有
+                // animal.source.manage 的一般使用者仍看得到「新增第一個來源」並打得開對話框。
+                action={isGuest || !canManageSource ? undefined : { label: '新增第一個來源', onClick: () => handleOpenDialog(), icon: Plus }}
               />
             )}
           </TableBody>
