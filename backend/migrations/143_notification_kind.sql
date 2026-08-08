@@ -23,10 +23,33 @@ ALTER TABLE notifications
 ALTER TABLE notifications
     ADD CONSTRAINT chk_notifications_kind CHECK (kind IN ('info', 'action'));
 
--- 既有的置頂列即為待辦。priority>0 是本次之前唯一的「待辦」判準，
--- 故以它回填 kind；已完成而降回 0 的舊待辦無從辨識，只能留在 'info'
--- （不影響「待處理」清單正確性 —— 那些本來就不該出現在清單上）。
-UPDATE notifications SET kind = 'action' WHERE priority > 0;
+-- 回填。只看 priority 是不夠的：那樣**只認得得出「現在還沒完成」的待辦**，
+-- 已經完成而降回 0 的舊待辦會被永久寫成 'info'，與上面「kind 是歷史事實」的
+-- 不變量自相矛盾 —— 分家後鈴鐺歷史裡就再也標不出「這件我當初處理過」。
+--
+-- 這些舊列還有一個可靠訊號：**建立時的標題格式**。系統只有兩處產生置頂待辦
+-- （erp.rs 採購未入庫、vet_patrol.rs 巡場追蹤），兩者的標題都是固定 format!，
+-- 而歷史列的標題已經凍結、不會再變。
+--
+-- ⚠️ 這與 crud.rs 的 RESOLVE_PINNED_SQL 刻意「不比對標題」並不衝突：
+-- 那是**執行期**的解除路徑，未來文案調整或多語系會讓 LIKE 失效而漏解除；
+-- 這裡是**一次性回填既有列**，比對的是已經寫死在資料裡的歷史字串。
+--
+-- 2026-08-07 對 prod 實查（全表 1252 列）：
+--   採購未入庫  174 列（4 未完成、170 已完成）
+--   巡場追蹤      8 列（1 未完成、  7 已完成）
+--   其餘       1070 列，未完成 0 —— 證實這兩個 pattern 涵蓋了全部現存置頂列。
+-- 即多回收 177 列的歷史待辦身分，而非讓它們沉入 'info'。
+--
+-- 仍保留 priority > 0 這一支當安全網：萬一有本文件未涵蓋的置頂列，
+-- 寧可標成 action（最多在鈴鐺多一個「已完成」徽章），也不要漏掉待處理清單。
+UPDATE notifications
+SET kind = 'action'
+WHERE priority > 0
+   OR (related_entity_type = 'document'
+       AND title LIKE '[iPig] 採購單未入庫提醒%')
+   OR (related_entity_type = 'vet_patrol_reports'
+       AND title LIKE '[巡場報告]%需您填寫追蹤改善');
 
 -- 「待處理」清單的查詢索引。partial index：只索引未完成的待辦，
 -- 而那在 prod 上是個位數（2026-08-07 實查全系統 7 筆），索引極小。

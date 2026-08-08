@@ -88,8 +88,11 @@ export function ActionRequiredDropdown() {
             >
                 <CircleAlert className="h-5 w-5" />
                 {hasPending && (
+                    // error-strong 而非 error：白字配 --status-error-solid 只有 3.78:1，
+                    // 12px 粗體屬 WCAG「一般文字」需 4.5:1；error-strong 是 4.67:1，過關且更沉。
+                    // （DESIGN.md 變更紀錄第 14 項已把 solid + 白字的對比列為待收斂項。）
                     <span
-                        className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-status-error-solid text-white text-xs font-bold"
+                        className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-status-error-strong-solid text-white text-xs font-bold"
                         data-testid="action-required-badge"
                     >
                         {pendingCount! > 99 ? '99+' : pendingCount}

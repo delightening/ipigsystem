@@ -22,8 +22,8 @@
   .tok-bg{background:hsl(var(--background))} .tok-card{background:hsl(var(--card))}
   .tok-fg{color:hsl(var(--foreground))} .tok-mut{color:hsl(var(--muted-foreground))}
   .tok-border{border-color:hsl(var(--border))}
-  .badge-error{background:hsl(var(--status-error-solid));color:#fff}
-  .badge-warn{background:hsl(var(--status-warning-solid));color:#fff}
+  .badge-error{background:hsl(var(--status-error-strong-solid));color:hsl(var(--background))}
+  .badge-warn{background:hsl(var(--status-warning-solid));color:hsl(var(--foreground))}
   .soft-warn{background:hsl(var(--status-warning-bg));color:hsl(var(--status-warning-text));border-color:hsl(var(--status-warning-border))}
   .soft-info{background:hsl(var(--status-info-bg))}
   .hover-accent:hover{background:hsl(var(--accent))}
@@ -37,7 +37,7 @@
     <h1 class="text-2xl font-bold tok-fg">通知／待處理 雙入口 — 版面預覽</h1>
     <p class="text-sm tok-mut">
       議題 1 PR B。決策點用 <span class="soft-warn border px-1.5 py-0.5 rounded text-xs font-medium">黃底</span> 標出，
-      請逐項選擇。色彩全部取自 <code class="text-xs">index.css</code> 的 design token，未硬編色。
+      請逐項選擇。色彩全部取自 <code class="text-xs">index.css</code> 的 design token，未硬編色；計數徽章的底/字組合皆 ≥ WCAG AA 4.5:1。
     </p>
   </header>
 
@@ -130,7 +130,7 @@
           <span class="font-semibold tok-fg text-sm">B2　輕重分明：通知灰 / 待處理紅</span></div>
         <div class="flex items-center justify-center gap-5 py-4 tok-bg rounded border tok-border">
           <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full text-[10px] font-bold" style="background:hsl(var(--muted-foreground));color:#fff">12</span></div>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full text-[10px] font-bold" style="background:hsl(var(--muted-foreground));color:hsl(var(--background))">12</span></div>
           <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">2</span></div>
         </div>
