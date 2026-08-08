@@ -155,6 +155,11 @@ export function DocumentDetailPage() {
   // 倉庫核准 vs admin 最終核准的角色分層保留（後端同時要求 permission + 角色/admin）。
   const canApproveDoc = hasPermission('erp.document.approve')
   const canCancelDoc = hasPermission('erp.document.cancel')
+  // 補齊 R71-8 未涵蓋的三顆：複製（建新單）、採購入庫（建 GRN）、送審。
+  // 前兩者後端都是 create_document / create_grn_from_po → erp.document.create；
+  // 送審是 submit_document → erp.document.submit（原本完全沒閘）。
+  const canCreateDoc = hasPermission('erp.document.create')
+  const canSubmitDoc = hasPermission('erp.document.submit')
 
   const { dialogState, confirm } = useConfirmDialog()
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
@@ -397,10 +402,14 @@ export function DocumentDetailPage() {
   const showCancel = isSubmitted && canCancelDoc && (isWarehouseManager || isAdmin)
 
   // 採購入庫按鈕：PO 已核准且未完全入庫，倉庫管理員可用
+  // 採購入庫建立 GRN 單 → 後端 create_grn_from_po 要求 erp.document.create。
+  // 原本只看角色，倉管若沒有該權限會看到一顆必定 403 的按鈕。角色層保留
+  // （這是誰該做入庫的業務分工），permission 層是後端真正的閘，兩層都要。
   const showCreateGrn =
     document.doc_type === 'PO' &&
     document.status === 'approved' &&
     (document.receipt_status === 'pending' || document.receipt_status === 'partial') &&
+    canCreateDoc &&
     (isWarehouseManager || isAdmin)
 
   // R71-10：最終核准（admin）為單據生效的關鍵動作，送出前加二次確認。
@@ -468,10 +477,12 @@ export function DocumentDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleCopyDocument}>
-            <Copy className="mr-2 h-4 w-4" />
-            複製單據
-          </Button>
+          {canCreateDoc && (
+            <Button variant="outline" onClick={handleCopyDocument}>
+              <Copy className="mr-2 h-4 w-4" />
+              複製單據
+            </Button>
+          )}
           {showCreateGrn && (
             <Button onClick={() => createGrnMutation.mutate()} disabled={createGrnMutation.isPending}>
               {createGrnMutation.isPending ? (
@@ -482,7 +493,7 @@ export function DocumentDetailPage() {
               採購入庫
             </Button>
           )}
-          {document.status === 'draft' && (
+          {document.status === 'draft' && canSubmitDoc && (
             <Button onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
               {submitMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

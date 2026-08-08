@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useForm } from 'react-hook-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -121,12 +123,16 @@ function CreateApPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          新增付款
-        </Button>
-      </DialogTrigger>
+      {/* 後端 create_ap_payment / create_ar_receipt 皆 require_permission!("erp.document.create")；
+          原本此頁完全沒有按鈕層閘。閘在 DialogTrigger 外層，連對話框都打不開。 */}
+      <Can permission={PERMISSIONS.ERP_DOCUMENT_CREATE}>
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <Plus className="mr-2 h-4 w-4" />
+            新增付款
+          </Button>
+        </DialogTrigger>
+      </Can>
       <DialogContent>
         <form onSubmit={handleSubmit(onValid)}>
           <DialogHeader>
