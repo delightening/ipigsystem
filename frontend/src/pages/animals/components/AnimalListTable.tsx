@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useTranslation } from 'react-i18next'
 import { animalSpeciesLabel } from '@/lib/animalSpecies'
 import type { AnimalListItem } from '@/lib/api'
@@ -214,15 +216,17 @@ export function AnimalListTable({
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => onQuickEdit(animal.id)}
-                          title="快速編輯"
-                          aria-label="快速編輯"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
+                        <Can permission={PERMISSIONS.ANIMAL_ANIMAL_EDIT}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onQuickEdit(animal.id)}
+                            title="快速編輯"
+                            aria-label="快速編輯"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                        </Can>
                       </div>
                     </TableCell>
                   </TableRow>
