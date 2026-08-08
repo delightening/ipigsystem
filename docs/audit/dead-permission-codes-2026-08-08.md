@@ -7,7 +7,8 @@
 
 ## 0. 一句話結論
 
-後端有 **13 個權限碼被 `require_permission!` / `has_permission` 檢查，但不存在於 `permissions` 表**。
+後端有 **13 個權限碼被 `require_permission!` / `has_permission` 檢查、或被寫進角色授予清單，
+但不存在於 `permissions` 表**（11 個被檢查，另 2 個只被授予、無人檢查——見 §2-2-1）。
 `has_permission` 對它們永遠回 `false`，功能實際上只靠 `is_admin()` 短路才能用——
 **「只有管理員做得到」是意外達成的，不是設計**。其中 `facility.manage` 有 19 個呼叫點且無任何 fallback，
 等於整個設施管理模組在無人察覺的情況下變成管理員專屬。
@@ -117,7 +118,7 @@ JOIN 直接不產生列 —— 沒有錯誤、沒有警告、`rows_affected` 少
 
 根因是「兩端都是裸字串、沒有交叉驗證」。建議加一個整合測試：
 
-```
+```text
 掃描 backend/src 中所有 require_permission! / has_permission 的字串
 ∪ startup/permissions.rs 所有角色授予清單中的字串
 ⊆ permissions 表的 code 集合
@@ -126,9 +127,20 @@ JOIN 直接不產生列 —— 沒有錯誤、沒有警告、`rows_affected` 少
 差集非空就紅。這個測試會在**第一次打錯字時**就擋下來，而不是等到某個功能
 悄悄變成管理員專屬、幾個月後才被人發現。
 
-已實作於 `backend/tests/permission_codes_exist.rs`（兩條測試：檢查端、授予端）。
-並做過變異驗證——把 `facility.manage` 從目錄移掉，測試如預期紅燈且列出全部 19 個呼叫點，
-確認它不是空轉的斷言。
+已實作於 `backend/tests/permission_codes_exist.rs`（三條測試：檢查端、授予端、解析器回歸）。
+
+**實作方式：純靜態比對，不連資料庫。** 第一版是跑 migration + seed 後比對 `permissions` 表，
+但 `sqlx::migrate!` 不會刪既有列——測試庫殘留前次寫入的權限時，就算把某個碼從目錄移掉，
+它在 DB 裡仍找得到，測試照樣綠。CI 每次都是新容器所以不受影響，但本機重跑會被殘留資料騙過去；
+「本機綠、CI 才紅」正是這類防呆最不該有的性質。改成解析
+`startup/permissions.rs` 目錄 ∪ migration 的 `INSERT INTO permissions` 後，沒有任何狀態可殘留，
+且跑完只要 0.2 秒（已驗證靜態抽取涵蓋 DB 現有全部權限碼，差集 0）。
+
+變異驗證（兩條假綠路徑都確認會紅）：
+1. 把 `facility.manage` 從目錄移掉 → 如預期紅燈並列出 19 個呼叫點。
+2. 把帶行尾註解的授予項目 `"aup.amendment.approve", // H6：…` 改成不存在的碼 → 如預期紅燈。
+   **第一版解析器會漏掉這種寫法**（整行跳過），庫內現有 3 筆；那三個碼剛好都存在所以沒出事，
+   但只要有人用同樣寫法加一個新碼，防呆就看不見它。
 
 `backend/tests/permission_constants_sync.rs`（PR 1 加的）目前只驗
 `permissions.generated.ts` 與 DB 一致，管不到後端自己的裸字串——正是這 13 個漏網的原因。
@@ -157,7 +169,7 @@ JOIN 直接不產生列 —— 沒有錯誤、沒有警告、`rows_affected` 少
 
 `handlers/` 下的 `has_role(` 呼叫點：
 
-```
+```text
 document.rs:74            euthanasia.rs:42/157/177
 protocol/crud.rs:40/222/223/239/621/660
 protocol/review.rs:251
