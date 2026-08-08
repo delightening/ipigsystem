@@ -12,7 +12,13 @@ playwright==1.62.0
 pydantic==2.13.4
 python-multipart==0.0.31
 openpyxl==3.1.5
-pypdf==6.14.2
+# 6.15.0：修 GHSA-fp3f-mc75-235c 與 GHSA-fwg2-594c-jp42（皆 CVSS 4.8）——
+# 解析惡意 PDF 的 /ToUnicode 與 CID 字型寬度時資源耗盡（DoS）。
+# 本服務不受影響：pypdf 只用在 _aup_toc_pages（解析我們自己剛用 Chromium 產生的
+# PDF 以定位章節頁碼）與 project_medical 合併，兩者輸入皆為自產，
+# 沒有任何路徑讓外來 PDF 進到 pypdf。仍升版而非寫例外 —— 修補就在 upstream，
+# 為一個可直接修掉的問題累積永久例外不划算。
+pypdf==6.15.0
 Pillow==12.3.0
 
 # --- transitive 依賴的安全性下限（2026-08-04）---
