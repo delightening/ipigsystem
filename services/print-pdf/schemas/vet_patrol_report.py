@@ -26,7 +26,12 @@ class PhotoGroup(BaseModel):
 
     caption: str = ""
     description: str = ""
+    # 群組層級的 src 清單。**已被 `photos` 取代**，保留是為了相容尚未同步部署的 backend
+    # （backend 與本服務非原子部署）。兩者都有時以 `photos` 為準。
     srcs: list[str] = Field(default_factory=list)
+    # 每張照片各自的說明。`srcs` 只是字串陣列、結構上放不下 per-photo caption，
+    # 導致使用者在前端填的圖片說明印不進 PDF（同組每張都只印同一行耳號）。
+    photos: list[PhotoEntry] = Field(default_factory=list)
 
 
 class SubEntry(BaseModel):

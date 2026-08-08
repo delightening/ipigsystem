@@ -43,7 +43,7 @@ export function ReportPhotosSection({ vm }: { vm: VetPatrolReportVM }) {
                             />
                             <CaptionInput
                                 value={photo.caption}
-                                placeholder="輸入解說（選填）"
+                                placeholder="這張想表達什麼？例：A棟走道積水"
                                 className="text-xs"
                                 disabled={!canManagePhotos}
                                 onSave={(caption) => vm.updateReportCaptionMutation.mutate({
