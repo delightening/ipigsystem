@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! 整合測試的資料庫隔離護欄（fail-closed）。
 //!
 //! # 為什麼「要求 `TEST_DATABASE_URL` 存在」還不夠
@@ -19,13 +17,23 @@
 //!
 //! 1. 資料庫有[`MARKER_TABLE`]標記表 → 曾被本護欄認定為丟棄用，放行。
 //! 2. 沒有標記，且[`PROBE_TABLES`]任一張已有資料 → **中止**，不連不寫。
-//! 3. 沒有標記且探測表全空（或還不存在＝全新空庫）→ 蓋上標記後放行。
+//! 3. 沒有標記且探測表全空 → 蓋上標記後放行。
+//! 4. 沒有標記且探測表不齊 → 只有在 public schema **完全沒有使用者資料表**時
+//!    才算「全新空庫」而放行；否則一律**中止**。
 //!
 //! 第 3 步是 bootstrap：CI 的 `backend-test` job 在 `cargo test` 之前就先跑過
 //! `sqlx migrate run`，所以測試開始時資料庫已經有全部結構、卻還沒有標記。用
 //! 「業務資料是否為空」而非「有沒有表」來判斷，CI 才不需要額外的蓋章步驟
 //! （2026-08-07 與使用者確認採此變體，理由是少一個「CI 與護欄必須同步、忘了加
 //! 就整支紅」的耦合點）。
+//!
+//! 第 4 步的收緊（2026-08-08）：本檔原本把「探測表不齊」直接當成全新空庫並**立刻
+//! 蓋章**。那等於在還沒認出這顆庫是什麼之前就先對它寫入——DSN 若指到本機其他系統
+//! 的資料庫（這台同時跑 prod 與 observability，postgres 上不只一顆庫），它會被蓋上
+//! 「可丟棄」標記；而標記一旦蓋下去，**下一次執行就直接走第 1 步放行**，護欄自此對
+//! 那顆庫永久失效。改成「有表但不是我們的表 → 中止」後，只有真正空無一物的庫會被
+//! bootstrap。代價是「migration 只跑了一半」的測試庫會被擋下，需重建或手動蓋章——
+//! 這個方向是刻意的：這支護欄的存在目的就是寧可誤擋，不可誤放。
 //!
 //! # 殘留風險（明說，不假裝沒有）
 //!
@@ -56,15 +64,23 @@ const MARKER_TABLE: &str = "__ipig_disposable_test_db";
 /// 放行——這是刻意選的失敗方向。
 const PROBE_TABLES: [&str; 3] = ["animals", "audit_logs", "protocols"];
 
-/// 讀 `TEST_DATABASE_URL`；未設定即中止。
+/// 讀 `TEST_DATABASE_URL`；未設定或為空即中止。
 ///
 /// **不 fallback 到 `DATABASE_URL`**：開發機那條指向 prod，見 CLAUDE.md
 /// 「禁止在 prod 跑 backend 整合測試」。
-pub fn require_test_database_url() -> String {
+///
+/// 空字串要一起擋：`TEST_DATABASE_URL=`（等號後留空）會讓 `std::env::var` 回
+/// `Ok("")` 而不是 `Err(NotPresent)`，原本的 `expect` 放它過去，最後才在 sqlx
+/// 解析 URL 時失敗——錯誤訊息退化成「連不上」，看的人不會知道真正該做什麼。
+fn require_test_database_url() -> String {
     dotenvy::dotenv().ok();
-    std::env::var("TEST_DATABASE_URL").expect(
-        "需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB；禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）",
-    )
+    let url = std::env::var("TEST_DATABASE_URL").unwrap_or_default();
+    assert!(
+        !url.trim().is_empty(),
+        "需設定 TEST_DATABASE_URL 指向獨立的丟棄用測試 DB（目前未設定或為空字串）；\
+         禁止 fallback 到 DATABASE_URL（開發機那條指向 prod，見 CLAUDE.md）"
+    );
+    url
 }
 
 /// 建立連線池，並在回傳前確認目標資料庫可以安全地被測試破壞。
@@ -84,35 +100,65 @@ pub async fn connect_disposable(max_connections: u32) -> PgPool {
 
 /// 確認 `pool` 指向的資料庫是丟棄用測試庫；不是就 panic。
 ///
-/// 必須在 `sqlx::migrate!` 與任何寫入**之前**呼叫。
-pub async fn assert_disposable(pool: &PgPool) {
+/// 必須在 `sqlx::migrate!` 與任何寫入**之前**呼叫。**在確認之前不對目標資料庫
+/// 做任何寫入**——包含蓋標記表本身。
+async fn assert_disposable(pool: &PgPool) {
     if has_marker(pool).await {
         return;
     }
 
-    // 三張探測表尚未全部存在 = 結構還沒建完的全新空庫。正式庫不可能只有一部分
-    // 核心表，故視為可丟棄並在 migration 之前先蓋章。
     if !probe_tables_all_exist(pool).await {
+        // 探測表不齊 → 沒辦法用「業務資料是否為空」判斷這是什麼庫。
+        // 只有 public schema 完全沒有使用者資料表時，才確定它是全新空庫。
+        let existing_tables = user_table_count(pool).await;
+        assert!(
+            existing_tables == 0,
+            "拒絕在資料庫 `{}` 執行整合測試：它沒有測試庫標記（{MARKER_TABLE}），\
+             核心業務表（{}）不齊，卻已經有 {existing_tables} 張使用者資料表——\
+             這不是全新的空庫，也不是本系統的測試庫，很可能是別的系統的資料庫。\
+             請把 TEST_DATABASE_URL 指向獨立的丟棄用 DB（或先 dropdb 重建）。",
+            current_database(pool).await,
+            PROBE_TABLES.join(", "),
+        );
         stamp_marker(pool).await;
         return;
     }
 
     let populated = populated_probe_tables(pool).await;
     if !populated.is_empty() {
-        let db_name: String = sqlx::query_scalar("SELECT current_database()")
-            .fetch_one(pool)
-            .await
-            .expect("query current_database");
         // 只印資料庫名與筆數，不印完整 DSN——後者含密碼，會進 CI log。
         panic!(
-            "拒絕在資料庫 `{db_name}` 執行整合測試：它沒有測試庫標記（{MARKER_TABLE}），\
+            "拒絕在資料庫 `{}` 執行整合測試：它沒有測試庫標記（{MARKER_TABLE}），\
              且核心業務表已有資料（{}）。整合測試會跑 migration 並寫入 fixture 且不清理，\
              這看起來是正式資料庫。請把 TEST_DATABASE_URL 指向獨立的丟棄用 DB。",
+            current_database(pool).await,
             populated.join(", ")
         );
     }
 
     stamp_marker(pool).await;
+}
+
+/// 目前連線的資料庫名（只用於錯誤訊息；DSN 含密碼，一律不印）。
+async fn current_database(pool: &PgPool) -> String {
+    sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(pool)
+        .await
+        .expect("query current_database")
+}
+
+/// public 以外的系統 schema 不算；回傳這顆庫裡「屬於某個系統」的資料表張數。
+///
+/// 用 `pg_tables` 而非 `information_schema.tables`：後者只列出目前角色有權限看到的
+/// 表，權限不足時會回 0 而讓「有表」被誤判成「空庫」——那正好是要擋的方向。
+async fn user_table_count(pool: &PgPool) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM pg_catalog.pg_tables \
+         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("count user tables")
 }
 
 async fn has_marker(pool: &PgPool) -> bool {
@@ -163,21 +209,41 @@ async fn populated_probe_tables(pool: &PgPool) -> Vec<String> {
 
 /// 蓋上「這是可丟棄的測試資料庫」標記。
 ///
-/// `IF NOT EXISTS` / `WHERE NOT EXISTS`：多個測試 binary 循序跑，但同 binary 內
-/// 平行測試仍可能同時進到這裡，靠它們避免競態。
-///
 /// 表存在即代表已蓋章（[`has_marker`] 只看存在性），`stamped_at` 那一列純粹是給人
 /// 除錯用的「這顆庫何時被認定為丟棄庫」。**必須真的寫進去**——只建表不插列會讓欄位
 /// 永遠是空的，看的人得不到任何資訊（2026-08-07 實測抓到）。
+///
+/// # `IF NOT EXISTS` 不等於沒有競態
+///
+/// 本檔原註解宣稱靠 `IF NOT EXISTS` / `WHERE NOT EXISTS` 就能避免競態，**那是錯的**。
+/// Postgres 的 `CREATE TABLE IF NOT EXISTS` 不是原子操作：兩個連線同時執行時，落後的
+/// 那個可能在建 relation 的型別時撞上 `pg_type_typname_nsp_index` 的 unique violation
+/// （23505），而不是靜默略過；也可能回 42P07（duplicate table）。多個測試 binary 是
+/// 循序跑的，但**同一個 binary 內的平行測試**會同時走到這裡，CI 目前靠
+/// `--test-threads=1` 掩蓋，本機平行跑就會間歇紅。
+///
+/// 這兩個 SQLSTATE 的語意都是「別人剛好先建好了」，結果與我們想要的一致，故視為成功。
 async fn stamp_marker(pool: &PgPool) {
-    sqlx::query(
+    if let Err(e) = sqlx::query(
         "CREATE TABLE IF NOT EXISTS public.__ipig_disposable_test_db (\
              stamped_at timestamptz NOT NULL DEFAULT now()\
          )",
     )
     .execute(pool)
     .await
-    .expect("create disposable test db marker");
+    {
+        let created_concurrently = e
+            .as_database_error()
+            .and_then(|db| db.code())
+            .is_some_and(|code| matches!(code.as_ref(), "23505" | "42P07"));
+        assert!(
+            created_concurrently,
+            "無法在測試資料庫 `{}` 建立標記表 {MARKER_TABLE}：{e}\n\
+             若這是權限錯誤（42501）：PostgreSQL 15 起 public schema 預設不開放非 owner \
+             CREATE，請改用該資料庫的 owner 帳號連線，或先手動建好這張表。",
+            current_database(pool).await,
+        );
+    }
 
     sqlx::query(
         "INSERT INTO public.__ipig_disposable_test_db (stamped_at) \
