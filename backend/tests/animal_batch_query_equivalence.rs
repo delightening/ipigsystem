@@ -28,40 +28,17 @@ use uuid::Uuid;
 
 use erp_backend::services::{AnimalObservationService, AnimalSurgeryService, AnimalWeightService};
 
-/// **fail-closed**：連線與 migrate 之前先確認目標是測試資料庫，否則中止。
+#[path = "common/test_db.rs"]
+mod test_db;
+
+/// **fail-closed**：見 `tests/common/test_db.rs`。
 ///
-/// CLAUDE.md 紅線是「禁止在 prod 跑 backend 整合測試」——未設 `TEST_DATABASE_URL` 時
-/// fallback 到 `DATABASE_URL` 會對 prod DB 跑 migration 並寫入測試資料，污染正式表與
-/// 稽核鏈（R84-15 待修項）。
-///
-/// 但「一律要求 `TEST_DATABASE_URL`」不是正解：CI 的 `backend-test` job **只設
-/// `DATABASE_URL`**，且它指向 postgres service container 內的 `ipig_db_test`——在該
-/// 環境下 fallback 是安全的。真正的危險只存在於本機（本機 `DATABASE_URL` 指向 prod）。
-///
-/// 因此採 R84-15 描述的形式：**允許 fallback，但在 connect 與 migrate 之前先擋掉非
-/// 測試 DSN**。prod 資料庫名為 `ipig_db`，測試庫一律含 `test`（CI 的 `ipig_db_test`、
-/// 本機的 `ipig_db_test_<sid>`），以此為判準。
+/// 只讀 `TEST_DATABASE_URL`（不 fallback 到 `DATABASE_URL`，開發機那條指向 prod），
+/// 並在 migration 與任何寫入之前驗證目標資料庫**本身**是丟棄用測試庫——不是靠
+/// 名字判斷。本檔早期版本用「DSN 是否含 `test`」的字串啟發式，已由該護欄取代。
 async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("需設定 TEST_DATABASE_URL 或 DATABASE_URL");
-
-    // 只取 database 名判斷，避免把含密碼的完整 DSN 印進 CI log
-    let db_name = url
-        .rsplit('/')
-        .next()
-        .unwrap_or_default()
-        .split('?')
-        .next()
-        .unwrap_or_default();
-    assert!(
-        db_name.contains("test"),
-        "拒絕在非測試資料庫執行整合測試：目標 database 為 `{db_name}`。\
-         請將 TEST_DATABASE_URL 指向獨立的丟棄用資料庫（名稱需含 test）。"
-    );
-
-    let pool = PgPool::connect(&url).await.expect("connect test db");
+    // 10 = sqlx `PgPool::connect` 的預設池大小，明寫以保留原行為。
+    let pool = test_db::connect_disposable(10).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

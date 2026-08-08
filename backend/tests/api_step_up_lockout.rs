@@ -22,14 +22,14 @@ use erp_backend::constants::STEP_UP_LOCKOUT_MAX_ATTEMPTS;
 use erp_backend::services::AuthService;
 use erp_backend::AppError;
 
+#[path = "common/test_db.rs"]
+mod test_db;
+
 const TEST_PASSWORD: &str = "iPig$ecure1";
 
 async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("TEST_DATABASE_URL or DATABASE_URL must be set for integration tests");
-    let pool = PgPool::connect(&url).await.expect("connect test db");
+    // 10 = sqlx `PgPool::connect` 的預設池大小，明寫以保留原行為。
+    let pool = test_db::connect_disposable(10).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

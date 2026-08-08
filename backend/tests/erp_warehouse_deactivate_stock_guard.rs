@@ -19,40 +19,22 @@ use erp_backend::services::audit::RequestContext;
 use erp_backend::services::WarehouseService;
 use erp_backend::AppError;
 
+#[path = "common/test_db.rs"]
+mod test_db;
+
 const TEST_IP: &str = "203.0.113.9";
 const TEST_UA: &str = "warehouse-guard-test/1.0";
 
-/// 取得測試資料庫連線字串。
+/// **fail-closed**：見 `tests/common/test_db.rs`。
 ///
-/// 優先讀 `TEST_DATABASE_URL`；沒有時**只接受看得出是測試庫的 `DATABASE_URL`**。
-///
-/// 兩邊各有一個不能踩的坑：
-/// - 開發機（這台同時是 prod）的 `DATABASE_URL` 指向正式庫，無條件 fallback 會讓
-///   測試對 prod 跑 `sqlx::migrate!` 並寫入 users / warehouses / products /
-///   storage_locations / storage_location_inventory 與稽核列（本測試無 teardown）。
-///   見 CLAUDE.md「禁止在 prod 跑 backend 整合測試」。
-/// - CI 的 `Backend: cargo test` job 只設 `DATABASE_URL`（指向 service container 的
-///   `ipig_db_test`），完全不設 `TEST_DATABASE_URL`——無條件拒絕 fallback 會讓
-///   整支測試在 CI 直接 panic。
-///
-/// 故以「URL 是否含 test」區分：CI 的 `…/ipig_db_test` 通過，prod 的 `…/ipig_db` 擋下。
-fn test_database_url() -> String {
-    if let Ok(url) = std::env::var("TEST_DATABASE_URL") {
-        return url;
-    }
-    let fallback = std::env::var("DATABASE_URL")
-        .expect("需要 TEST_DATABASE_URL，或一個指向測試庫的 DATABASE_URL");
-    assert!(
-        fallback.contains("test"),
-        "DATABASE_URL 看起來不是測試庫（{fallback}）；請設 TEST_DATABASE_URL 指向獨立的丟棄 DB，不要對 prod 跑整合測試"
-    );
-    fallback
-}
-
+/// 本測試會對目標庫寫入 users / warehouses / products / storage_locations /
+/// storage_location_inventory 與稽核列，且**沒有 teardown**——誤指向 prod 的代價很高。
+/// 護欄只讀 `TEST_DATABASE_URL`（不 fallback，開發機那條指向 prod），並在 migration
+/// 與任何寫入之前驗證目標資料庫**本身**是丟棄用測試庫，不是靠名字判斷。
+/// 本檔早期版本用「DSN 是否含 `test`」的字串啟發式，已由該護欄取代。
 async fn setup_pool() -> PgPool {
-    dotenvy::dotenv().ok();
-    let url = test_database_url();
-    let pool = PgPool::connect(&url).await.expect("connect test db");
+    // 10 = sqlx `PgPool::connect` 的預設池大小，明寫以保留原行為。
+    let pool = test_db::connect_disposable(10).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await

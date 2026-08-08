@@ -453,6 +453,12 @@ jobs:
         working-directory: ./backend
     env:
       DATABASE_URL: postgres://postgres:password@localhost:5432/ipig_db_test
+      # 整合測試的唯一 DSN 來源。與 DATABASE_URL 同值，但必須**獨立存在**：
+      # 測試 harness 一律只讀 TEST_DATABASE_URL、不再 fallback 到 DATABASE_URL。
+      # 理由：開發機同時是 prod，那裡的 DATABASE_URL 指向正式庫，fallback 會讓
+      # 測試對 prod 跑 migration 並寫入測試資料（見 CLAUDE.md「禁止在 prod 跑
+      # backend 整合測試」）。CI 這側補上本變數，本機那側才有條件 fail-closed。
+      TEST_DATABASE_URL: postgres://postgres:password@localhost:5432/ipig_db_test
       SQLX_OFFLINE: "false"
       ADMIN_EMAIL: admin@ipigsystem.asia
       # H9: 移除 hardcoded fallback，CI_ADMIN_PASSWORD secret 必須設定
@@ -561,6 +567,8 @@ jobs:
         working-directory: ./backend
     env:
       DATABASE_URL: postgres://postgres:password@localhost:5432/ipig_db_test
+      # 同 backend-test job：測試 harness 只讀本變數，不 fallback 到 DATABASE_URL。
+      TEST_DATABASE_URL: postgres://postgres:password@localhost:5432/ipig_db_test
       SQLX_OFFLINE: "false"
       ADMIN_EMAIL: admin@ipigsystem.asia
       ADMIN_INITIAL_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}

@@ -20,15 +20,11 @@ use erp_backend::middleware::{ActorContext, CurrentUser};
 use erp_backend::models::CreateOvertimeRequest;
 use erp_backend::services::{AuditService, HrService};
 
+#[path = "common/test_db.rs"]
+mod test_db;
+
 async fn pool() -> PgPool {
-    let url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("TEST_DATABASE_URL or DATABASE_URL must be set");
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&url)
-        .await
-        .expect("connect test DB");
+    let pool = test_db::connect_disposable(5).await;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
