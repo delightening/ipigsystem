@@ -123,6 +123,41 @@ pub async fn ensure_required_permissions(pool: &sqlx::PgPool) -> Result<()> {
         // R40-A 站內信
         ("messaging.send", "使用站內信", "messaging", "可寄送、接收站內信（受 access matrix 限制）"),
         ("messaging.admin_view", "管理員查看任意對話", "messaging", "可讀取所有 thread / message 內容（per R40-7 admin 全可看）"),
+        // ────────────────────────────────────────────────────────────────
+        // 死權限碼補齊（2026-08-08，docs/audit/dead-permission-codes-2026-08-08.md）
+        //
+        // 以下 11 個碼被 handler 的 require_permission! / has_permission 檢查，
+        // 卻從來不在 permissions 表裡 —— has_permission 對它們永遠回 false，
+        // 功能只靠 is_admin() 短路才能用。「只有管理員做得到」是意外，不是設計。
+        //
+        // 根因：下方 ensure_all_role_permissions 的授予 SQL 是
+        //   INSERT ... SELECT ... FROM roles CROSS JOIN permissions WHERE p.code = ANY($2)
+        // JOIN 的是 permissions 表；清單裡有不存在的碼時 JOIN 不產生列，
+        // 沒有錯誤也沒有警告。防呆見 tests/permission_codes_exist.rs。
+        //
+        // ⚠️ 補進目錄本身**不改變任何人的權限**（沒有角色被授予，仍只有管理員通得過），
+        // 唯一例外是 aup.review.reply —— 它早已寫在五個角色的授予清單裡，
+        // 補進目錄後那五筆授予才會真的生效（使用者 2026-08-08 裁定：補齊讓它生效）。
+        ("facility.manage", "管理設施", "facility", "可新增 / 編輯 / 刪除建築、區域、欄舍等設施資料"),
+        ("system.admin", "系統管理", "system", "系統層級管理操作（AI / agent 端點）"),
+        ("admin.treatment_drug.view", "查看治療用藥主檔", "admin", "可查看治療用藥主檔"),
+        ("admin.treatment_drug.create", "建立治療用藥", "admin", "可新增治療用藥主檔項目"),
+        ("admin.treatment_drug.edit", "編輯治療用藥", "admin", "可編輯治療用藥主檔項目"),
+        ("admin.treatment_drug.delete", "刪除治療用藥", "admin", "可刪除治療用藥主檔項目"),
+        ("erp.product.delete", "刪除產品", "erp", "可刪除產品主檔"),
+        ("erp.partner.delete", "刪除夥伴", "erp", "可刪除夥伴主檔"),
+        ("hr.attendance.manage", "管理出勤紀錄", "hr", "可代員工新增 / 修改出勤紀錄"),
+        ("animal.euthanasia.create", "開立安樂死單", "animal", "可開立安樂死單據（現行 handler 另接受 ROLE_VET）"),
+        ("aup.review.reply", "回覆審查意見", "aup", "可回覆被指派的審查意見（非計畫擁有者亦可）"),
+        // 同一批漏補：這兩個碼同樣寫在 PI / IACUC_STAFF / EXPERIMENT_STAFF /
+        // INTERN / STUDY_DIRECTOR 五個角色的授予清單裡，也同樣靜默落空。
+        // 差別是目前**沒有任何 handler 檢查它們**（附件上傳/刪除走其他授權路徑），
+        // 所以補上不改變任何行為 —— 但留著不補，防呆測試會一直紅，
+        // 且日後有人真的拿它們來上閘時又會踩同一個坑。
+        // 這兩個是 permission_codes_exist 測試寫完後**當場抓到**的，
+        // 不在 2026-08-08 首次人工掃描的 11 個名單內（那次只掃了被檢查的碼）。
+        ("aup.attachment.upload", "上傳計畫附件", "aup", "可上傳計畫書附件"),
+        ("aup.attachment.delete", "刪除計畫附件", "aup", "可刪除計畫書附件"),
     ];
 
     for (code, name, module, description) in required_permissions {
