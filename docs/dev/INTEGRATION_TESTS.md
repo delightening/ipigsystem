@@ -76,7 +76,7 @@ export TEST_DATABASE_URL="postgres://user:pass@localhost:5432/ipig_db_test"
 # 同時覆寫 DATABASE_URL，避免 harness 或 Config::from_env() 讀到 prod 那條
 export DATABASE_URL="$TEST_DATABASE_URL"
 sqlx migrate run --database-url "$TEST_DATABASE_URL"
-cargo test
+rtk cargo test
 ```
 
 ---
@@ -105,7 +105,7 @@ Failed to run migrations on test database: VersionMismatch(1)
 dropdb ipig_db_test
 createdb ipig_db_test
 sqlx migrate run --database-url "$TEST_DATABASE_URL"
-cargo test
+rtk cargo test
 ```
 
 **選項 B：移除有問題的 migration 紀錄**
@@ -113,15 +113,18 @@ cargo test
 若已知是 version 1 有問題：
 
 ```bash
-cargo run --bin fix_migration 1
+# fix_migration 只讀 DATABASE_URL、不看 TEST_DATABASE_URL，
+# 所以要先覆寫，否則它會連到 prod（本機的 DATABASE_URL 指向正式庫）。
+export DATABASE_URL="$TEST_DATABASE_URL"
+rtk cargo run --bin fix_migration 1
 sqlx migrate run --database-url "$TEST_DATABASE_URL"
-cargo test
+rtk cargo test
 ```
 
 **選項 C：使用全新 Docker 容器**
 
 ```bash
-docker run -d --name ipig-test-db -e POSTGRES_PASSWORD=password -e POSTGRES_DB=ipig_db_test -p 5433:5432 postgres:16
+rtk docker run -d --name ipig-test-db -e POSTGRES_PASSWORD=password -e POSTGRES_DB=ipig_db_test -p 5433:5432 postgres:16
 export TEST_DATABASE_URL="postgres://postgres:password@localhost:5433/ipig_db_test"
 ./scripts/run-integration-tests.sh
 ```

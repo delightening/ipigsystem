@@ -16,7 +16,7 @@
 #   同一個值，確保這條路徑上沒有任何子行程看得到 prod DSN。
 #
 # 若出現 VersionMismatch(1) 錯誤，表示測試 DB 的 migration 紀錄與程式碼不符。
-# 解法：drop 並重建測試 DB，或執行 cargo run --bin fix_migration <version> 後再重跑。
+# 解法：drop 並重建測試 DB，或執行 rtk cargo run --bin fix_migration <version> 後再重跑。
 
 $ErrorActionPreference = "Stop"
 # 巢狀 Join-Path 而非三參數形式：`Join-Path a b c` 需要 PowerShell 7 的
@@ -30,6 +30,28 @@ if (-not $dbUrl) {
     Write-Host "錯誤：請設定 TEST_DATABASE_URL 指向獨立的丟棄用測試資料庫" -ForegroundColor Red
     Write-Host "刻意不 fallback 到 DATABASE_URL——開發機那條指向 prod，見 CLAUDE.md" -ForegroundColor Yellow
     Write-Host "範例：`$env:TEST_DATABASE_URL = 'postgres://user:pass@localhost:5432/ipig_db_test'" -ForegroundColor Yellow
+    exit 1
+}
+
+# 只有「非空」不等於「是測試庫」：打錯字或直接把 prod DSN 貼過來，
+# 之前一樣會被匯出成 DATABASE_URL、跑 migration、被測試寫入
+# （CodeAnt / CodeRabbit 於 PR #46 各自獨立指出）。
+#
+# 這裡是**第二層**防線，判準刻意保守：資料庫名不得是 prod 的名字，且必須含 `test`。
+# 名稱檢查本身是啟發式（改名就失效），真正的身分驗證在測試 harness 的
+# tests/common/test_db.rs——它檢查標記表與核心業務表是否為空。但那道護欄管不到
+# 本腳本的 `sqlx migrate run`（獨立的 sqlx-cli 進程），所以這裡要自己擋一次。
+$ProdDbName = "ipig_db"
+# 取資料庫名：去掉 query string 後取最後一段路徑。
+$dbName = ($dbUrl -split '\?')[0].TrimEnd('/').Split('/')[-1]
+if ($dbName -eq $ProdDbName) {
+    Write-Host "錯誤：TEST_DATABASE_URL 指向 prod 資料庫 ``$ProdDbName``，已中止。" -ForegroundColor Red
+    Write-Host "整合測試會跑 migration 並寫入 fixture 且不清理，絕不可對正式庫執行。" -ForegroundColor Yellow
+    exit 1
+}
+if ($dbName -notlike "*test*") {
+    Write-Host "錯誤：TEST_DATABASE_URL 的資料庫名為 ``$dbName``，看不出是測試庫（名稱需含 test），已中止。" -ForegroundColor Red
+    Write-Host "若這確實是丟棄用資料庫，請改名後重試——這道檢查是為了擋住手滑貼到正式 DSN。" -ForegroundColor Yellow
     exit 1
 }
 
