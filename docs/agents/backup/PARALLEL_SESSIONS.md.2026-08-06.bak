@@ -120,69 +120,12 @@
   其餘排隊等前面的 review 老化退出視窗再開。依據：2026-08-04 連開 #16／#17／#18／#20
   當場四支全撞 `Review rate limited`，撞牆的成本（人工逐支判斷是否放行）遠高於等待。
   多 session 並行時這條特別重要——三個 session 各開 2 支就已超標。
-- 不得為了趕自己的 PR 反覆 `@coderabbitai review`——那會吃掉別的 session 的 review 額度。
-  **同一 PR 最多觸發一次**；唯一例外見下（2026-08-06 補，仍有硬上限）：
-  依 §7.1 判定「該輪未涵蓋最新 commit」時，可**再觸發一次** `@coderabbitai full review`
-  糾正，**合計上限 2 次**。第二次仍未涵蓋 → **停下回報**，不再觸發。
-  ⚠️ 觸發前先確認配額訊息說的等待時間已過（`next included review available in N minutes`），
-  在 rate limit 期間硬觸發不會執行，卻仍佔掉一次嘗試。
+- 不得為了趕自己的 PR 反覆 `@coderabbitai review`——那會吃掉別的 session 的 review 額度。同一 PR 最多觸發一次。
 - 判斷 bot 閘要看 commit status 的 **description**：`Review completed` 才算審過；
   `Review rate limited` / `skipped` 都**不是**乾淨章（`state` 兩者都是 `success`，只看 state 會誤判）。
   ⚠️ 更嚴格的判準見 CLAUDE.md 授權節 (f)：description 顯示 `Review completed` 但 PR 留言是
   `Review skipped due to path filters` 時＝它一個檔案都沒看，同樣不算乾淨章。
 - CI runner 也是共用的：不要為了「試試看」重跑整套 CI。
-
-### 7.1 判斷 CodeRabbit 是否真的審過（2026-08-06 實戰整理）
-
-CLAUDE.md 授權節 (f) 是判準本身，本節是案例與操作細節。
-
-**訊號可靠度由高到低：**
-
-| 訊號 | 意義 |
-|---|---|
-| status `Review in progress` | ✅ **唯一可靠的正向即時訊號**——審查真的起跑了 |
-| Walkthrough **內容**含「只有最新 commit 才有的特徵」 | ✅ 定案依據 |
-| `Files skipped ... (N)` 且 N == 改動檔數 | ⚠️ 可疑，但**不足以定案**（見下方 #28 反例） |
-| status `Review completed` + `updated_at` | ❌ 單獨不可信 |
-| bot 回覆「已收到，會執行完整審查」 | ❌ **不代表跑了**，折疊區可能藏 `⚠️ Action not completed` |
-
-**2026-08-06 的兩個對照案例：**
-
-⚠️ **同一支 PR 的不同輪次結果可能相反，敘述務必標明是哪一輪。**
-
-- **#22（該輪真的沒審）**：改動 12 檔，`Files skipped ... (12)`，且 Walkthrough 描述的是
-  最新 commit **之前**的狀態——新增的 outsider fixture 與 seed 拆分一個字都沒提。
-- **#28（前後兩輪結果相反，我把它們混為一談而誤判）**：改動 2 檔。
-  - **05:14 那輪＝假綠**：`Review completed` + `No actionable comments 🎉`，
-    但 `Files skipped ... (2)`＝兩檔全跳過，Walkthrough 仍是舊版內容。
-  - **08:22 那輪（`full review`）＝真的審了**：Walkthrough 精準描述重建後的內容
-    （0235 從加變移除、2024-0370 從留變刪、區分 lockfile scan 與 dependency-graph scan），
-    且無 skipped。
-  - **我的誤判**：把 05:14 的假綠當成「這支 PR 一直沒被審」，連帶把 08:22 的真審查也否定，
-    對外宣稱「五次都沒審」。成因是舊的 `Review limit reached` 區塊不會被新結果取代，
-    而是與新 Walkthrough **並存於同一則留言**，只掃關鍵字就會看到前者。
-
-→ **教訓：檔數是啟發式，內容才是證據；而且要逐輪判定，不要用某一輪的結論概括整支 PR。**
-
-**「只有最新 commit 才有的特徵」怎麼找**（避免這句被當成主觀判斷）：
-先 `git log -1 --stat` 取最新 commit 的新增識別字（新函式名、新常數、新測試名、新檔名），
-再在 Walkthrough 全文搜那個字串。找得到＝審過；找不到＝該輪未涵蓋最新 commit。
-例：#22 用 `outsider` / `insert_record_triplet`，兩者皆 0 命中 → 判定未審。
-⚠️ 若最新 commit 是 rebase／merge／純格式化而**沒有任何新識別字**，本法不適用——
-此時改以 `Files skipped` 是否為 0 判斷，仍不確定就停下回報，不要反覆觸發。
-
-**額度實測（2026-08-06，OSS 方案）：**
-
-- ⚠️ **假綠也照樣佔用一次額度**——#28 **05:14 那輪**「兩檔全跳過、零實際審查」仍消耗一次。
-  早一步看穿假綠不只是判斷正確，還能省下實際成本。
-- 恢復時間**隨當日累積用量拉長**：實測 15 → 33 → 56 分鐘。訊息會明寫
-  `Your next included review will be available in N minutes`，照它等，不要硬觸發。
-- `This review may still proceed through usage-based billing if eligible`＝付費可繞過，
-  OSS 免費方案只能等。
-
-**Pre-merge checks**：PR 描述未依 `.github/pull_request_template.md` 補齊 8 個區段，
-`Description check` 會列 ❌ Warning。它不擋 merge，但會讓「bot 0 建議」看起來不乾淨——
-**開 PR 當下就照模板寫**，省一輪來回（#28 / #22 都因此多繞了一圈）。
 
 ## 8. 記憶檔併發寫入
 
@@ -253,5 +196,4 @@ echo '{"session_id":"<完整UUID>","tool_input":{"command":"rtk docker compose d
 | `gh pr merge --delete-branch` 刪不掉本地分支 | 該分支仍被別的 worktree checkout 著 | 先移除自己的 worktree 再 merge（§2） |
 | 為了避開別人的 target 而另開工作區，付出全新 411 crate 編譯 | 沒有共用 target 約定 | 共用 `CARGO_TARGET_DIR`（§4） |
 | `docker compose -f docker-compose.test.yml up` 把 prod 容器列為 orphan | test 與 prod 共用 project 名 | 只 `up -d db-test`，永不 `down` / `--remove-orphans`（§5） |
-| PR 的 bot 閘拿到 `Review rate limited` 卻 `state=success` | CodeRabbit 額度被並行 session 吃掉 | 看 description 不看 state；觸發上限見 §7（同一 PR 合計 2 次） |
-| `Review completed` + `No actionable comments` 卻整批 `Files skipped` | 增量審查的相似度判斷把全部檔案跳過 | 讀 Walkthrough 找最新 commit 的識別字，不看檔數（§7.1） |
+| PR 的 bot 閘拿到 `Review rate limited` 卻 `state=success` | CodeRabbit 額度被並行 session 吃掉 | 看 description 不看 state；不重複觸發（§7） |
