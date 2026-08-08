@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { GuestHide } from '@/components/ui/guest-hide'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api, { deleteResource, AnimalWeight } from '@/lib/api'
 import { uiLocale } from '@/lib/utils'
@@ -113,10 +115,12 @@ export const WeightsTab = React.memo(function WeightsTab({
               </label>
             )}
             <GuestHide>
-              <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                新增紀錄
-              </Button>
+              <Can permission={PERMISSIONS.ANIMAL_RECORD_CREATE}>
+                <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  新增紀錄
+                </Button>
+              </Can>
             </GuestHide>
           </div>
         </CardHeader>
@@ -150,17 +154,23 @@ export const WeightsTab = React.memo(function WeightsTab({
                         <TableCell style={{ width: 90 }} className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <GuestHide>
-                              <Button variant="ghost" size="icon" title={`系統號: ${weight.id} - 點擊編輯`}>
-                                <Edit2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setDeleteTarget(weight.id)}
-                                title={`系統號: ${weight.id} - 點擊刪除`}
-                              >
-                                <Trash2 className="h-4 w-4 text-status-error-solid" />
-                              </Button>
+                              {/* ⚠️ 這顆「編輯」沒有 onClick，按了不會有反應（既有問題，非本 PR 引入）。
+                                  先照後端要求上閘；功能本身另案處理。 */}
+                              <Can permission={PERMISSIONS.ANIMAL_RECORD_EDIT}>
+                                <Button variant="ghost" size="icon" title={`系統號: ${weight.id} - 點擊編輯`}>
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              </Can>
+                              <Can permission={PERMISSIONS.ANIMAL_RECORD_DELETE}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteTarget(weight.id)}
+                                  title={`系統號: ${weight.id} - 點擊刪除`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-status-error-solid" />
+                                </Button>
+                              </Can>
                             </GuestHide>
                           </div>
                         </TableCell>
@@ -191,12 +201,17 @@ export const WeightsTab = React.memo(function WeightsTab({
                       <span className="text-xs text-muted-foreground">{weight.created_by_name || '-'}</span>
                       <div className="flex gap-0.5">
                         <GuestHide>
-                          <Button variant="ghost" size="icon" title="編輯">
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(weight.id)} title="刪除">
-                            <Trash2 className="h-4 w-4 text-status-error-solid" />
-                          </Button>
+                          {/* 同上：這顆「編輯」沒有 onClick（既有問題） */}
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_EDIT}>
+                            <Button variant="ghost" size="icon" title="編輯">
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          </Can>
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_DELETE}>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(weight.id)} title="刪除">
+                              <Trash2 className="h-4 w-4 text-status-error-solid" />
+                            </Button>
+                          </Can>
                         </GuestHide>
                       </div>
                     </div>

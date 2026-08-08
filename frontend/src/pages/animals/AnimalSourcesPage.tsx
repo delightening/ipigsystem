@@ -55,6 +55,8 @@ import { useAuthIsGuest } from '@/stores/auth'
 import { useConfirmDialog } from '@/hooks/useConfirmDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { GuestHide } from '@/components/ui/guest-hide'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 
 const defaultFormValues: AnimalSourceFormData = {
   code: '',
@@ -195,10 +197,12 @@ export function AnimalSourcesPage() {
         description="管理動物的來源/供應商資訊"
         actions={
           <GuestHide>
-            <Button size="sm" onClick={() => handleOpenDialog()} className="gap-2 bg-primary hover:bg-primary/90">
-              <Plus className="h-4 w-4" />
-              新增來源
-            </Button>
+            <Can permission={PERMISSIONS.ANIMAL_SOURCE_MANAGE}>
+              <Button size="sm" onClick={() => handleOpenDialog()} className="gap-2 bg-primary hover:bg-primary/90">
+                <Plus className="h-4 w-4" />
+                新增來源
+              </Button>
+            </Can>
           </GuestHide>
         }
       />
@@ -276,25 +280,27 @@ export function AnimalSourcesPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <GuestHide>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(source)}
-                          aria-label="編輯"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(source)}
-                          disabled={deleteMutation.isPending}
-                          aria-label="刪除"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      <Can permission={PERMISSIONS.ANIMAL_SOURCE_MANAGE}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenDialog(source)}
+                            aria-label="編輯"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(source)}
+                            disabled={deleteMutation.isPending}
+                            aria-label="刪除"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </Can>
                     </GuestHide>
                   </TableCell>
                 </TableRow>

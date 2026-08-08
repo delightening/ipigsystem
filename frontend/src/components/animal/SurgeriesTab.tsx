@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { GuestHide } from '@/components/ui/guest-hide'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api, { deleteResource, AnimalSurgery } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -123,10 +125,12 @@ export const SurgeriesTab = React.memo(function SurgeriesTab({ animalId, earTag,
             <CardDescription>記錄手術過程、麻醉資訊與術後照護</CardDescription>
           </div>
           <GuestHide>
-            <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              新增紀錄
-            </Button>
+            <Can permission={PERMISSIONS.ANIMAL_RECORD_CREATE}>
+              <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                新增紀錄
+              </Button>
+            </Can>
           </GuestHide>
         </CardHeader>
         <CardContent>
@@ -195,21 +199,29 @@ export const SurgeriesTab = React.memo(function SurgeriesTab({ animalId, earTag,
                                 <Eye className="h-4 w-4" />
                               </Button>
                               <GuestHide>
-                                <Button variant="ghost" size="icon" onClick={() => { setEditingSurgery(surgery); setShowAddDialog(true) }} title="編輯">
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => { if (confirm('確定要複製此紀錄？將建立一份新紀錄供編輯。')) copyMutation.mutate(surgery.id) }} disabled={copyMutation.isPending} title="複製">
-                                  <Copy className="h-4 w-4" />
-                                </Button>
+                                <Can permission={PERMISSIONS.ANIMAL_RECORD_EDIT}>
+                                  <Button variant="ghost" size="icon" onClick={() => { setEditingSurgery(surgery); setShowAddDialog(true) }} title="編輯">
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                </Can>
+                                <Can permission={PERMISSIONS.ANIMAL_RECORD_COPY}>
+                                  <Button variant="ghost" size="icon" onClick={() => { if (confirm('確定要複製此紀錄？將建立一份新紀錄供編輯。')) copyMutation.mutate(surgery.id) }} disabled={copyMutation.isPending} title="複製">
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                </Can>
                                 <Button variant="ghost" size="icon" onClick={() => { setVersionHistoryRecordId(surgery.id); setShowVersionHistory(true) }} title="版本歷史">
                                   <History className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" onClick={() => downloadSurgeryPdf(surgery.id, surgery.surgery_date)} title="下載 PDF" aria-label="下載 PDF">
-                                  <FileDown className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(surgery.id)} title="刪除" aria-label="刪除">
-                                  <Trash2 className="h-4 w-4 text-status-error-solid" />
-                                </Button>
+                                <Can permission={PERMISSIONS.ANIMAL_EXPORT_SURGERY}>
+                                  <Button variant="ghost" size="icon" onClick={() => downloadSurgeryPdf(surgery.id, surgery.surgery_date)} title="下載 PDF" aria-label="下載 PDF">
+                                    <FileDown className="h-4 w-4" />
+                                  </Button>
+                                </Can>
+                                <Can permission={PERMISSIONS.ANIMAL_RECORD_DELETE}>
+                                  <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(surgery.id)} title="刪除" aria-label="刪除">
+                                    <Trash2 className="h-4 w-4 text-status-error-solid" />
+                                  </Button>
+                                </Can>
                               </GuestHide>
                             </div>
                           </TableCell>
@@ -337,21 +349,29 @@ export const SurgeriesTab = React.memo(function SurgeriesTab({ animalId, earTag,
                           <Eye className="h-4 w-4" />
                         </Button>
                         <GuestHide>
-                          <Button variant="ghost" size="icon" onClick={() => { setEditingSurgery(surgery); setShowAddDialog(true) }} title="編輯">
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => { if (confirm('確定要複製此紀錄？將建立一份新紀錄供編輯。')) copyMutation.mutate(surgery.id) }} disabled={copyMutation.isPending} title="複製">
-                            <Copy className="h-4 w-4" />
-                          </Button>
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_EDIT}>
+                            <Button variant="ghost" size="icon" onClick={() => { setEditingSurgery(surgery); setShowAddDialog(true) }} title="編輯">
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          </Can>
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_COPY}>
+                            <Button variant="ghost" size="icon" onClick={() => { if (confirm('確定要複製此紀錄？將建立一份新紀錄供編輯。')) copyMutation.mutate(surgery.id) }} disabled={copyMutation.isPending} title="複製">
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </Can>
                           <Button variant="ghost" size="icon" onClick={() => { setVersionHistoryRecordId(surgery.id); setShowVersionHistory(true) }} title="版本歷史">
                             <History className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => downloadSurgeryPdf(surgery.id, surgery.surgery_date)} title="下載 PDF" aria-label="下載 PDF">
-                            <FileDown className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(surgery.id)} title="刪除">
-                            <Trash2 className="h-4 w-4 text-status-error-solid" />
-                          </Button>
+                          <Can permission={PERMISSIONS.ANIMAL_EXPORT_SURGERY}>
+                            <Button variant="ghost" size="icon" onClick={() => downloadSurgeryPdf(surgery.id, surgery.surgery_date)} title="下載 PDF" aria-label="下載 PDF">
+                              <FileDown className="h-4 w-4" />
+                            </Button>
+                          </Can>
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_DELETE}>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(surgery.id)} title="刪除">
+                              <Trash2 className="h-4 w-4 text-status-error-solid" />
+                            </Button>
+                          </Can>
                         </GuestHide>
                       </div>
                     </div>
