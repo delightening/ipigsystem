@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { GuestHide } from '@/components/ui/guest-hide'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api, { deleteResource, AnimalVaccination } from '@/lib/api'
 import { uiLocale } from '@/lib/utils'
@@ -122,10 +124,12 @@ export const VaccinationsTab = React.memo(function VaccinationsTab({ animalId, e
             <CardDescription>記錄疫苗接種與驅蟲紀錄</CardDescription>
           </div>
           <GuestHide>
-            <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              新增紀錄
-            </Button>
+            <Can permission={PERMISSIONS.ANIMAL_RECORD_CREATE}>
+              <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowAddDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                新增紀錄
+              </Button>
+            </Can>
           </GuestHide>
         </CardHeader>
         <CardContent>
@@ -158,12 +162,16 @@ export const VaccinationsTab = React.memo(function VaccinationsTab({ animalId, e
                         <TableCell style={{ width: 90 }} className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <GuestHide>
-                              <Button variant="ghost" size="icon" onClick={() => openEdit(vac)} aria-label="編輯">
-                                <Edit2 className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(vac.id)} aria-label="刪除">
-                                <Trash2 className="h-4 w-4 text-status-error-solid" />
-                              </Button>
+                              <Can permission={PERMISSIONS.ANIMAL_RECORD_EDIT}>
+                                <Button variant="ghost" size="icon" onClick={() => openEdit(vac)} aria-label="編輯">
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              </Can>
+                              <Can permission={PERMISSIONS.ANIMAL_RECORD_DELETE}>
+                                <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(vac.id)} aria-label="刪除">
+                                  <Trash2 className="h-4 w-4 text-status-error-solid" />
+                                </Button>
+                              </Can>
                             </GuestHide>
                           </div>
                         </TableCell>
@@ -201,12 +209,16 @@ export const VaccinationsTab = React.memo(function VaccinationsTab({ animalId, e
                       <span className="text-xs text-muted-foreground">{vac.created_by_name || '-'}</span>
                       <div className="flex gap-0.5">
                         <GuestHide>
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(vac)} aria-label="編輯">
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(vac.id)} aria-label="刪除">
-                            <Trash2 className="h-4 w-4 text-status-error-solid" />
-                          </Button>
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_EDIT}>
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(vac)} aria-label="編輯">
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          </Can>
+                          <Can permission={PERMISSIONS.ANIMAL_RECORD_DELETE}>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(vac.id)} aria-label="刪除">
+                              <Trash2 className="h-4 w-4 text-status-error-solid" />
+                            </Button>
+                          </Can>
                         </GuestHide>
                       </div>
                     </div>

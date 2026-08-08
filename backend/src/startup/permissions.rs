@@ -13,6 +13,13 @@ pub async fn ensure_required_permissions(pool: &sqlx::PgPool) -> Result<()> {
         ("animal.animal.delete", "刪除動物", "animal", "可永久刪除（軟刪除）動物紀錄，僅限系統管理員"),
         // 動物來源管理
         ("animal.source.manage", "管理動物來源", "animal", "可管理動物來源資料"),
+        // 動物預約與試驗規劃：檢視 / 操作分離。
+        // 原本讀寫共用 animal.info.assign → SD 與試驗工作人員連頁面都進不來；
+        // 且該權限同時被 batch_assign_animals 使用、由 EXPERIMENT_STAFF / VET 持有，
+        // 沿用就做不到「僅執秘可操作」。故本頁自帶兩個專屬權限。
+        // 見 docs/audit/button-permission-gate-2026-08-07.md §6。
+        ("animal.planning.view", "檢視動物預約與試驗規劃", "animal", "可檢視全場動物按試驗分組的分配清冊與缺口（唯讀）"),
+        ("animal.planning.manage", "管理動物預約與試驗規劃", "animal", "可新增預定試驗、批次預約 / 解除預約、正式分配進實驗、編輯規劃頁備註"),
         // 血檢項目管理（模板、組合、常用組合）
         ("animal.blood_test_template.manage", "血檢項目管理", "animal", "可檢視與編輯血檢項目模板、組合、常用組合"),
         // 版本還原
@@ -123,6 +130,41 @@ pub async fn ensure_required_permissions(pool: &sqlx::PgPool) -> Result<()> {
         // R40-A 站內信
         ("messaging.send", "使用站內信", "messaging", "可寄送、接收站內信（受 access matrix 限制）"),
         ("messaging.admin_view", "管理員查看任意對話", "messaging", "可讀取所有 thread / message 內容（per R40-7 admin 全可看）"),
+        // ────────────────────────────────────────────────────────────────
+        // 死權限碼補齊（2026-08-08，docs/audit/dead-permission-codes-2026-08-08.md）
+        //
+        // 以下 11 個碼被 handler 的 require_permission! / has_permission 檢查，
+        // 卻從來不在 permissions 表裡 —— has_permission 對它們永遠回 false，
+        // 功能只靠 is_admin() 短路才能用。「只有管理員做得到」是意外，不是設計。
+        //
+        // 根因：下方 ensure_all_role_permissions 的授予 SQL 是
+        //   INSERT ... SELECT ... FROM roles CROSS JOIN permissions WHERE p.code = ANY($2)
+        // JOIN 的是 permissions 表；清單裡有不存在的碼時 JOIN 不產生列，
+        // 沒有錯誤也沒有警告。防呆見 tests/permission_codes_exist.rs。
+        //
+        // ⚠️ 補進目錄本身**不改變任何人的權限**（沒有角色被授予，仍只有管理員通得過），
+        // 唯一例外是 aup.review.reply —— 它早已寫在五個角色的授予清單裡，
+        // 補進目錄後那五筆授予才會真的生效（使用者 2026-08-08 裁定：補齊讓它生效）。
+        ("facility.manage", "管理設施", "facility", "可新增 / 編輯 / 刪除建築、區域、欄舍等設施資料"),
+        ("system.admin", "系統管理", "system", "系統層級管理操作（AI / agent 端點）"),
+        ("admin.treatment_drug.view", "查看治療用藥主檔", "admin", "可查看治療用藥主檔"),
+        ("admin.treatment_drug.create", "建立治療用藥", "admin", "可新增治療用藥主檔項目"),
+        ("admin.treatment_drug.edit", "編輯治療用藥", "admin", "可編輯治療用藥主檔項目"),
+        ("admin.treatment_drug.delete", "刪除治療用藥", "admin", "可刪除治療用藥主檔項目"),
+        ("erp.product.delete", "刪除產品", "erp", "可刪除產品主檔"),
+        ("erp.partner.delete", "刪除夥伴", "erp", "可刪除夥伴主檔"),
+        ("hr.attendance.manage", "管理出勤紀錄", "hr", "可代員工新增 / 修改出勤紀錄"),
+        ("animal.euthanasia.create", "開立安樂死單", "animal", "可開立安樂死單據（現行 handler 另接受 ROLE_VET）"),
+        ("aup.review.reply", "回覆審查意見", "aup", "可回覆被指派的審查意見（非計畫擁有者亦可）"),
+        // 同一批漏補：這兩個碼同樣寫在 PI / IACUC_STAFF / EXPERIMENT_STAFF /
+        // INTERN / STUDY_DIRECTOR 五個角色的授予清單裡，也同樣靜默落空。
+        // 差別是目前**沒有任何 handler 檢查它們**（附件上傳/刪除走其他授權路徑），
+        // 所以補上不改變任何行為 —— 但留著不補，防呆測試會一直紅，
+        // 且日後有人真的拿它們來上閘時又會踩同一個坑。
+        // 這兩個是 permission_codes_exist 測試寫完後**當場抓到**的，
+        // 不在 2026-08-08 首次人工掃描的 11 個名單內（那次只掃了被檢查的碼）。
+        ("aup.attachment.upload", "上傳計畫附件", "aup", "可上傳計畫書附件"),
+        ("aup.attachment.delete", "刪除計畫附件", "aup", "可刪除計畫書附件"),
     ];
 
     for (code, name, module, description) in required_permissions {
@@ -402,6 +444,9 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "IACUC_STAFF",
             vec![
+                // 動物預約與試驗規劃：檢視 + 操作（執秘是唯一有操作權的角色）
+                "animal.planning.view",
+                "animal.planning.manage",
                 // AUP 計畫管理：執秘對計畫內容唯讀（不含 edit / submit，對齊原始 spec §4.1
                 // 「編輯草稿 / 提交計畫 ✗」）；保留審查指派 / 核准 / 變更狀態等協調權。
                 "aup.protocol.view_all",
@@ -443,6 +488,9 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "EXPERIMENT_STAFF",
             vec![
+                // 動物預約與試驗規劃：僅檢視（操作限執秘）。SD 由本名單指派而來，
+                // 故全體試驗工作人員都給檢視權。
+                "animal.planning.view",
                 // 計畫管理（僅 Co-Editor 權限，不可獨立建立/提交/刪除計畫）
                 "aup.protocol.view_own",
                 "aup.protocol.edit",
@@ -677,6 +725,8 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "DIRECTOR",
             vec![
+                // 動物預約與試驗規劃：僅檢視（操作限執秘）
+                "animal.planning.view",
                 // 請假：檢視全體待審 + 終審核准（實際審核授權於 services 依角色判定）
                 "hr.leave.view",
                 "hr.leave.view_all",
@@ -755,6 +805,8 @@ pub async fn ensure_all_role_permissions(pool: &sqlx::PgPool) -> Result<()> {
         (
             "STUDY_DIRECTOR",
             vec![
+                // 動物預約與試驗規劃：僅檢視（操作限執秘）
+                "animal.planning.view",
                 // PI 核心權限
                 "aup.protocol.view_own",
                 "aup.protocol.create",

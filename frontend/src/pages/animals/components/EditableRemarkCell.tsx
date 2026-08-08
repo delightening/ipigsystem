@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 
+import { useAuthHasPermission } from '@/stores/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useUpdateRemark } from '../hooks/useReservationPlanning'
 
 interface Props {
@@ -19,6 +21,12 @@ export function EditableRemarkCell({ animalId, remark }: Props) {
   const [draft, setDraft] = useState('')
   const committed = useRef(false)
   const { mutate, isPending, variables } = useUpdateRemark()
+  const hasPermission = useAuthHasPermission()
+  // 備註屬「操作」的一部分（使用者 2026-08-07 裁定），限執行秘書。
+  // 無權者退成**純文字**——不是 disabled 輸入框：後者等於告訴每個人這裡有個他不能用的功能，
+  // 且與本頁其餘按鈕「完全隱藏」的處理不一致。early return 置於所有 hook 之後，
+  // 確保 hook 呼叫順序穩定，同時讓無權者連 editing 狀態都進不去。
+  const canEdit = hasPermission(PERMISSIONS.ANIMAL_PLANNING_MANAGE)
 
   const startEdit = () => {
     committed.current = false
@@ -39,6 +47,10 @@ export function EditableRemarkCell({ animalId, remark }: Props) {
   // pending 中且是這一隻 → 樂觀顯示送出值，避免 refetch 前閃回舊值
   const showPending = isPending && variables?.animalId === animalId
   const display = showPending ? variables?.remark || '—' : remark || '—'
+
+  if (!canEdit) {
+    return <span className="truncate">{display}</span>
+  }
 
   if (editing) {
     return (

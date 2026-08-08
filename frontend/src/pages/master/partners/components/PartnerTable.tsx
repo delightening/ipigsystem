@@ -1,4 +1,6 @@
 import { Partner } from '@/lib/api'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useAuthStore } from '@/stores/auth'
 import { useTableSort } from '@/hooks/useTableSort'
 import { Button } from '@/components/ui/button'
@@ -124,12 +126,20 @@ function PartnerRow({
         )}
       </TableCell>
       <TableCell className="text-right">
-        <Button variant="ghost" size="icon" onClick={() => onEdit(partner)} aria-label="編輯">
-          <Edit className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(partner)} aria-label="刪除">
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <Can permission={PERMISSIONS.ERP_PARTNER_EDIT}>
+          <Button variant="ghost" size="icon" onClick={() => onEdit(partner)} aria-label="編輯">
+            <Edit className="h-4 w-4" />
+          </Button>
+        </Can>
+        {/* 後端 partner.rs:156 要求 erp.partner.delete。該碼原本是死碼（不在 permissions
+            表裡，has_permission 永遠 false、只靠 is_admin() bypass 才過），所以 PR #57
+            刻意留白等它補齊；#58 已把碼補進目錄，這裡才補上閘。
+            目前沒有任何角色被授予此碼 → 實際只有管理員看得到，與後端行為一致。 */}
+        <Can permission={PERMISSIONS.ERP_PARTNER_DELETE}>
+          <Button variant="ghost" size="icon" onClick={() => onDelete(partner)} aria-label="刪除">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </Can>
       </TableCell>
     </TableRow>
   )

@@ -35,6 +35,8 @@ pub mod outbox;
 mod partner;
 pub mod pdf_artifact;
 pub(crate) mod pdf_service_client;
+/// 權限常數 codegen：產生器 bin 與 CI 守衛測試共用，故為 pub。
+pub mod permission_codegen;
 mod planned_experiment;
 mod product;
 pub(crate) mod product_parser;

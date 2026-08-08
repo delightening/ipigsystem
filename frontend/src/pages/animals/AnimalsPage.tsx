@@ -15,6 +15,8 @@ import { ExportDialog } from '@/components/animal/ExportDialog'
 import { VetPatrolReportDialog } from '@/components/animal/VetPatrolReportDialog'
 import { ImportDialog } from '@/components/animal/ImportDialog'
 import { QuickEditAnimalDialog } from '@/components/animal/QuickEditAnimalDialog'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { AnimalPenReport } from '../../components/animal/AnimalPenReport'
 
 import { AnimalFilters } from './components/AnimalFilters'
@@ -224,14 +226,18 @@ export function AnimalsPage() {
                 <Download className="h-4 w-4 shrink-0" />
                 <span className="truncate">{t('animals.generateReport')}</span>
               </Button>
-              <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowImportWeightDialog(true)}>
-                <Upload className="h-4 w-4 shrink-0" />
-                <span className="truncate">{t('animals.importWeight')}</span>
-              </Button>
-              <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowImportBasicDialog(true)}>
-                <Upload className="h-4 w-4 shrink-0" />
-                <span className="truncate">{t('animals.importBasic')}</span>
-              </Button>
+              <Can permission={PERMISSIONS.ANIMAL_ANIMAL_IMPORT}>
+                <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowImportWeightDialog(true)}>
+                  <Upload className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{t('animals.importWeight')}</span>
+                </Button>
+              </Can>
+              <Can permission={PERMISSIONS.ANIMAL_ANIMAL_IMPORT}>
+                <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowImportBasicDialog(true)}>
+                  <Upload className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{t('animals.importBasic')}</span>
+                </Button>
+              </Can>
               {canCreateVetPatrol && (
                 <Button size="sm" variant="outline" className="w-full gap-2 text-status-success-solid border-status-success-solid/30 hover:bg-status-success-solid/10 text-xs md:text-sm" onClick={() => setShowVetPatrolDialog(true)}>
                   <Stethoscope className="h-4 w-4 shrink-0" />
@@ -240,14 +246,18 @@ export function AnimalsPage() {
               )}
               {/* R32-A3b：欄位狀態表 xlsx/PDF 匯出已併入 AnimalPenReport dialog
                   （產生欄位狀態表 → 匯出 Excel / 匯出 PDF），不再單獨外掛按鈕 */}
-              <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowBatchExportDialog(true)}>
-                <FileSpreadsheet className="h-4 w-4 shrink-0" />
-                <span className="truncate">{t('animals.batchExport')}</span>
-              </Button>
-              <Button size="sm" onClick={() => setShowAddDialog(true)} className="w-full gap-2 bg-primary hover:bg-primary/90 text-xs md:text-sm">
-                <Plus className="h-4 w-4 shrink-0" />
-                {t('animals.addAnimal')}
-              </Button>
+              <Can permission={PERMISSIONS.ANIMAL_EXPORT_MEDICAL}>
+                <Button size="sm" variant="outline" className="w-full gap-2 text-xs md:text-sm" onClick={() => setShowBatchExportDialog(true)}>
+                  <FileSpreadsheet className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{t('animals.batchExport')}</span>
+                </Button>
+              </Can>
+              <Can permission={PERMISSIONS.ANIMAL_ANIMAL_CREATE}>
+                <Button size="sm" onClick={() => setShowAddDialog(true)} className="w-full gap-2 bg-primary hover:bg-primary/90 text-xs md:text-sm">
+                  <Plus className="h-4 w-4 shrink-0" />
+                  {t('animals.addAnimal')}
+                </Button>
+              </Can>
             </div>
           </GuestHide>
         }

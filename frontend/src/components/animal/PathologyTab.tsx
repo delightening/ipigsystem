@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { GuestHide } from '@/components/ui/guest-hide'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api, { AnimalPathologyReport } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -84,10 +86,12 @@ export function PathologyTab({ animalId, earTag }: PathologyTabProps) {
             <CardDescription>病理組織報告檔案</CardDescription>
           </div>
           <GuestHide>
-            <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowUploadDialog(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              上傳檔案
-            </Button>
+            <Can permission={PERMISSIONS.ANIMAL_PATHOLOGY_UPLOAD}>
+              <Button className="bg-status-purple-solid hover:bg-status-purple-solid/90" onClick={() => setShowUploadDialog(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                上傳檔案
+              </Button>
+            </Can>
           </GuestHide>
         </CardHeader>
         <CardContent>

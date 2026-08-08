@@ -516,7 +516,9 @@ function App() {
                     {/* 實驗動物管理 */}
                     <Route path="/animals" element={<AnimalsPage />} />
                     <Route path="/animals/available" element={<AvailablePigsPage />} />
-                    <Route path="/animals/reservation-planning" element={<RequirePermission permission="animal.info.assign" fallback="redirect"><ReservationPlanningPage /></RequirePermission>} />
+                    {/* 檢視走 animal.planning.view（執秘 / 試驗工作人員含 SD / 負責人）；
+                        頁內操作另由 <Can permission="animal.planning.manage"> 個別守（僅執秘）。 */}
+                    <Route path="/animals/reservation-planning" element={<RequirePermission permission="animal.planning.view" fallback="redirect"><ReservationPlanningPage /></RequirePermission>} />
                     <Route path="/animals/:id" element={<AnimalDetailPage />} />
                     <Route path="/animals/:id/edit" element={<GuestBlock><AnimalEditPage /></GuestBlock>} />
                     <Route path="/animal-sources" element={<AnimalSourcesPage />} />
