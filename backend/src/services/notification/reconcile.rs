@@ -17,17 +17,31 @@
 // - 一次性修補：`cargo run --bin reconcile_pinned_notifications`
 // - 定期對帳：scheduler（見 `services/scheduler.rs`）
 
-use sqlx::PgPool;
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{error::AppError, models::PRIORITY_NORMAL};
 
 use super::NotificationService;
 
+/// 本模組有能力判定終態的 `related_entity_type`。
+///
+/// 與 [`NotificationService::find_orphan_pinned`] 的 UNION 分支必須一致 ——
+/// 新增待辦類型時，這裡與那邊要同時改。`count_unknown_entity_types` 綁定此常數，
+/// 因此漏改會表現為「該類型被算成 unknown」而非靜默不一致。
+const KNOWN_ENTITY_TYPES: &[&str] = &["vet_patrol_reports", "document"];
+
 /// 一筆待降級的置頂通知（供 dry-run 列印與 log）。
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct OrphanPinnedRow {
     pub id: Uuid,
+    /// ⚠️ **可能含個資，禁止寫進日誌。** 僅供操作者在終端機看的 CLI 輸出使用。
+    ///
+    /// 目前的兩種來源都沒有個資（巡場＝`[巡場報告] {日期} 需您填寫追蹤改善`、
+    /// 單據＝`[iPig] 採購單未入庫提醒 - {單號}`），但設計文件 §5-3 已規劃把請假 /
+    /// 加班 / 代理人確認轉成置頂待辦，而那些 title 帶**員工真實姓名**
+    /// （見 `services/notification/hr.rs`）。屆時只要有人為了日誌好讀把 title 加進
+    /// scheduler 的 `warn!`（結構裡就有，是很自然的一步），姓名就進 Loki。
     pub title: String,
     pub related_entity_type: String,
     pub related_entity_id: Option<Uuid>,
@@ -55,7 +69,25 @@ pub struct ReconcileReport {
     pub still_pending: i64,
     /// 本模組不認得其 entity_type、因此未做判斷的筆數（保守不動）。
     pub unknown_entity_types: Vec<(String, i64)>,
+    /// `related_entity_id IS NULL` 的置頂列筆數（保守不動）。
+    ///
+    /// 這類列沒有可供追溯的業務實體，本模組**無從判斷**它是否還需要使用者動作 ——
+    /// 不是「實體不存在」。必須單獨列出，否則它們會永遠靜靜地留在待處理清單裡
+    /// 而沒有人知道原因。已知來源：2026-03 的舊聚合式採購提醒。
+    pub null_entity_id: i64,
+    /// UPDATE 實際影響的列數。dry-run 時為 0。
+    ///
+    /// 與 `resolved.len()` 可能不同：UPDATE 帶 `priority > 0` 條件，
+    /// 併發下可能有列已被業務路徑先解除。回報時用這個數字，別用候選數。
+    pub resolved_rows_affected: u64,
 }
+
+/// 單次自動對帳允許降級的上限。超過即中止、不寫入，改由人工確認。
+///
+/// 依據：2026-08-07 prod 實查全系統置頂待辦僅 7 筆。正常運作下命中數是個位數；
+/// 一次要動數百列必然是判定條件壞了或資料異常，那種情況下「照做」比「停下」危險得多 ——
+/// 這支作業會靜默改使用者的待辦狀態，而誤降的方向同樣讓使用者無法自救。
+const MAX_AUTO_RESOLVE_BATCH: usize = 200;
 
 impl NotificationService {
     /// 對帳所有置頂待辦，降級「關聯實體已不存在或已在終態」者。
@@ -69,29 +101,65 @@ impl NotificationService {
         &self,
         dry_run: bool,
     ) -> Result<ReconcileReport, AppError> {
-        let candidates = Self::find_orphan_pinned(&self.db).await?;
-        let unknown = Self::count_unknown_entity_types(&self.db).await?;
+        // 三個統計必須看同一個快照，否則期間有列被業務路徑解除時，
+        // `count_pinned` 變小而候選數不變 → still_pending 會算出負數印給維運者。
+        let mut tx = self.db.begin().await?;
+        let candidates = Self::find_orphan_pinned(&mut tx).await?;
+        let unknown = Self::count_unknown_entity_types(&mut tx).await?;
+        let null_entity_id = Self::count_null_entity_id(&mut tx).await?;
+        let total_pinned = Self::count_pinned(&mut tx).await?;
+        tx.commit().await?;
+
         let unknown_total: i64 = unknown.iter().map(|(_, n)| *n).sum();
 
-        let report = ReconcileReport {
-            // 未知 entity_type 的列也計在 count_pinned 內，但它們是「未做判斷」，
-            // 不能算進「已判定仍需動作」。兩者互斥（unknown 的定義就是不在候選類型內），
-            // 直接相減即可。
-            still_pending: Self::count_pinned(&self.db).await?
+        let mut report = ReconcileReport {
+            // 未知 entity_type 與 NULL entity_id 的列都計在 count_pinned 內，
+            // 但它們是「未做判斷」，不能算進「已判定仍需動作」。
+            // 三者互斥：unknown 依定義不在候選類型內；NULL entity 已被候選查詢排除，
+            // 而 count_unknown 只看 entity_type、只會數到「已知類型」以外的列。
+            still_pending: (total_pinned
                 - candidates.len() as i64
-                - unknown_total,
+                - unknown_total
+                - null_entity_id)
+                .max(0),
             unknown_entity_types: unknown,
+            null_entity_id,
             resolved: candidates,
+            resolved_rows_affected: 0,
         };
 
         if !dry_run && !report.resolved.is_empty() {
+            // 安全閘：這支作業每天自動改資料，判定條件一旦有誤就是靜默清掉真實待辦。
+            // 正常情況命中數是個位數（2026-08-07 prod 全系統置頂僅 7 筆）；
+            // 一次要動這麼多列必然是判定邏輯壞了或資料異常 —— 中止並讓它在日誌顯眼，
+            // 由人決定，不要讓排程自己把事情做完。
+            if report.resolved.len() > MAX_AUTO_RESOLVE_BATCH {
+                tracing::error!(
+                    candidates = report.resolved.len(),
+                    limit = MAX_AUTO_RESOLVE_BATCH,
+                    "置頂待辦對帳：命中數超過安全上限，已中止未寫入 —— 請人工確認判定條件是否正確"
+                );
+                return Err(AppError::BusinessRule(format!(
+                    "對帳命中 {} 筆超過安全上限 {}，已中止未寫入。請以 --dry-run 檢視後人工確認。",
+                    report.resolved.len(),
+                    MAX_AUTO_RESOLVE_BATCH
+                )));
+            }
+
             let ids: Vec<Uuid> = report.resolved.iter().map(|r| r.id).collect();
-            sqlx::query(
+            // **只降 priority，不碰 is_read / read_at。**
+            //
+            // 原本一併設 `is_read = true, read_at = COALESCE(read_at, NOW())`，
+            // 那會踩到 cleanup_old_notifications（crud.rs）的 GC 條件
+            // `is_read = true AND read_at < NOW() - INTERVAL '90 days'`，每週日執行。
+            // COALESCE 會保留**舊的** read_at，而 prod 上的置頂列多半早已 is_read=true
+            // （使用者按過「全部已讀」，read_at 是很久以前）—— 於是被對帳降級的列
+            // 下一次 GC 就會被硬刪，誤降時連還原與追查的機會都沒有。
+            // 只降 priority：列從「待處理」清單消失，但仍以一般通知留在鈴鐺與 DB 裡。
+            let result = sqlx::query(
                 r#"
                 UPDATE notifications
-                SET priority = $2,
-                    is_read  = true,
-                    read_at  = COALESCE(read_at, NOW())
+                SET priority = $2
                 WHERE id = ANY($1)
                   AND priority > $2
                 "#,
@@ -100,6 +168,10 @@ impl NotificationService {
             .bind(PRIORITY_NORMAL)
             .execute(&self.db)
             .await?;
+
+            // 回報實際更新列數而非候選數：UPDATE 帶 `priority > $2`，
+            // 併發下可能有列已被業務路徑解除，候選數會高估。
+            report.resolved_rows_affected = result.rows_affected();
 
             for row in &report.resolved {
                 tracing::info!(
@@ -114,35 +186,63 @@ impl NotificationService {
         Ok(report)
     }
 
-    async fn count_pinned(pool: &PgPool) -> Result<i64, AppError> {
+    async fn count_pinned(tx: &mut Transaction<'_, Postgres>) -> Result<i64, AppError> {
         Ok(
             sqlx::query_scalar("SELECT count(*) FROM notifications WHERE priority > 0")
-                .fetch_one(pool)
+                .fetch_one(&mut **tx)
                 .await?,
         )
     }
 
     /// 列出本模組認不得的 entity_type（保守不動，但要讓維運者看見）。
-    async fn count_unknown_entity_types(pool: &PgPool) -> Result<Vec<(String, i64)>, AppError> {
+    ///
+    /// 已知類型清單以 [`KNOWN_ENTITY_TYPES`] 綁參數帶入 —— 與 `find_orphan_pinned`
+    /// 的 UNION 分支共用同一份定義。若兩邊各寫一份，日後新增類型只改一邊時，
+    /// 該類型會同時被算成候選與 unknown，`still_pending` 被重複扣而無人察覺。
+    async fn count_unknown_entity_types(
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<(String, i64)>, AppError> {
         Ok(sqlx::query_as(
             r#"
             SELECT COALESCE(related_entity_type, '(null)'), count(*)
             FROM notifications
             WHERE priority > 0
               AND (related_entity_type IS NULL
-                   OR related_entity_type NOT IN ('vet_patrol_reports', 'document'))
+                   OR related_entity_type <> ALL($1))
             GROUP BY 1
             ORDER BY 2 DESC
             "#,
         )
-        .fetch_all(pool)
+        .bind(KNOWN_ENTITY_TYPES)
+        .fetch_all(&mut **tx)
+        .await?)
+    }
+
+    /// 數「entity_type 已知、但 entity_id 為 NULL」的置頂列 —— 無從判斷，保守不動。
+    ///
+    /// 刻意排除未知 entity_type，讓本桶與 [`Self::count_unknown_entity_types`] 互斥；
+    /// 否則同時符合兩者的列會被重複扣，`still_pending` 失真。
+    async fn count_null_entity_id(tx: &mut Transaction<'_, Postgres>) -> Result<i64, AppError> {
+        Ok(sqlx::query_scalar(
+            r#"
+            SELECT count(*)
+            FROM notifications
+            WHERE priority > 0
+              AND related_entity_id IS NULL
+              AND related_entity_type = ANY($1)
+            "#,
+        )
+        .bind(KNOWN_ENTITY_TYPES)
+        .fetch_one(&mut **tx)
         .await?)
     }
 
     /// 找出所有「置頂中但已不需要使用者動作」的通知。
     ///
     /// 每個 entity_type 的終態判定各自定義，集中在此一處，新增待辦類型時同步補一段。
-    async fn find_orphan_pinned(pool: &PgPool) -> Result<Vec<OrphanPinnedRow>, AppError> {
+    async fn find_orphan_pinned(
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<OrphanPinnedRow>, AppError> {
         Ok(sqlx::query_as::<_, OrphanPinnedRow>(
             r#"
             -- 巡場報告：報告已軟刪 / 已完成 / 已撤回 / row 根本不存在 → 追蹤者已無事可做。
@@ -164,6 +264,9 @@ impl NotificationService {
             LEFT JOIN vet_patrol_reports r ON r.id = n.related_entity_id
             WHERE n.priority > 0
               AND n.related_entity_type = 'vet_patrol_reports'
+              -- entity_id 為 NULL＝無從判斷，不是「實體不存在」。少了這個條件，
+              -- LEFT JOIN 會讓 r.id IS NULL 成立而無條件降級。見下方 NULL 桶。
+              AND n.related_entity_id IS NOT NULL
               AND (r.id IS NULL
                    OR r.deleted_at IS NOT NULL
                    OR r.status = 'completed'
@@ -178,12 +281,18 @@ impl NotificationService {
             FROM notifications n
             WHERE n.priority > 0
               AND n.related_entity_type = 'document'
+              -- 同上：`d.id = NULL` 恆為 NULL → NOT EXISTS 恆為真 → 無條件降級。
+              -- 2026-08-07 prod 實查：7 筆置頂中有 4 筆正是 entity_id IS NULL
+              -- （2026-03 的舊聚合式提醒「N 筆採購單待入庫」，與現行每張 PO 一則的
+              -- 產生器不同，本來就不帶 entity id）。少了這個條件會把它們全清掉，
+              -- 且理由字串是假的 —— 那條規則對「PO 到底收貨了沒」一個字都沒說。
+              AND n.related_entity_id IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = n.related_entity_id)
 
             ORDER BY created_at
             "#,
         )
-        .fetch_all(pool)
+        .fetch_all(&mut **tx)
         .await?)
     }
 }

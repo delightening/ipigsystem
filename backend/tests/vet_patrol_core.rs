@@ -18,6 +18,26 @@ use uuid::Uuid;
 
 const PASSWORD: &str = "TestPassword123!";
 
+/// 數某份巡場報告目前有幾則**未解除的置頂待辦**（`priority > 0`）。
+///
+/// 這支 PR 的主修正是「狀態轉換時在同一個 tx 內解除置頂待辦」。
+/// 那些解除呼叫在 service 層，若只測 reconcile（安全網）而不測這裡，
+/// 把 4 個解除全部 revert 掉整套測試仍會全綠 —— 主修正等於裸奔。
+/// 故在既有的生命週期測試上以本 helper 加端對端斷言。
+async fn pinned_count_for(app: &TestApp, report_id: &str) -> i64 {
+    let id: Uuid = report_id.parse().expect("report id");
+    sqlx::query_scalar(
+        r#"SELECT count(*) FROM notifications
+           WHERE related_entity_type = 'vet_patrol_reports'
+             AND related_entity_id = $1
+             AND priority > 0"#,
+    )
+    .bind(id)
+    .fetch_one(&app.db_pool)
+    .await
+    .expect("count pinned notifications")
+}
+
 /// 建立指定角色（role code，如 "VET" / "PI" / "STUDY_DIRECTOR"）的使用者並登入，回傳 (user_id, token)。
 async fn seed_user_with_role(app: &TestApp, role_code: &str, label: &str) -> (Uuid, String) {
     let id = Uuid::new_v4();
@@ -397,6 +417,15 @@ async fn retract_submitted_report_back_to_draft_and_permission_gate() {
     let submitted: serde_json::Value = submit_res.json().await.expect("parse");
     assert_eq!(submitted["status"], "awaiting_acknowledgement");
 
+    // 送出必須替追蹤者建立置頂待辦（priority=1）。
+    // 這條與下方撤回後的斷言，是「解除 hook 有沒有接上」的唯一端對端保護 ——
+    // 沒有它們的話，把 service 內的 resolve 全部 revert 掉，整套測試仍會全綠。
+    assert_eq!(
+        pinned_count_for(&app, &report_id_str).await,
+        1,
+        "送出後追蹤者應有一則置頂待辦"
+    );
+
     // 非建立者非 admin 的其他獸醫撤回 → 403（service 層 created_by/admin gate）
     let wrong = app
         .auth_post(
@@ -431,6 +460,14 @@ async fn retract_submitted_report_back_to_draft_and_permission_gate() {
         after["follow_up_user_id"].is_null(),
         "撤回後 follow_up_user_id 應清空，實得 {:?}",
         after["follow_up_user_id"]
+    );
+
+    // 撤回＝追蹤者不再被指派 → 置頂待辦必須解除。漏接的話那則通知會綁在一份
+    // 沒有人能再操作的報告上永久卡死，而待辦依設計不可手動已讀（2026-08-07 事故）。
+    assert_eq!(
+        pinned_count_for(&app, &report_id_str).await,
+        0,
+        "撤回後置頂待辦應被解除（priority 降回 0）"
     );
 
     // 已是草稿再撤回 → client error（僅已送出未完成可撤回）
@@ -498,6 +535,13 @@ async fn full_lifecycle_submit_acknowledge_complete_locks_report_and_writes_audi
     let submitted: serde_json::Value = submit_res.json().await.expect("parse");
     assert_eq!(submitted["status"], "awaiting_acknowledgement");
 
+    // 送出 → 追蹤者取得置頂待辦
+    assert_eq!(
+        pinned_count_for(&app, &report_id_str).await,
+        1,
+        "送出後追蹤者應有一則置頂待辦"
+    );
+
     // 非指派追蹤者確認收到 → 403
     let wrong_ack = app
         .auth_post(
@@ -552,6 +596,14 @@ async fn full_lifecycle_submit_acknowledge_complete_locks_report_and_writes_audi
     assert_eq!(complete_res.status(), 200);
     let completed: serde_json::Value = complete_res.json().await.expect("parse");
     assert_eq!(completed["status"], "completed");
+
+    // 確認收到（phase 2）不解除待辦：事情還沒做完，追蹤者仍要填追蹤改善。
+    // 完成（phase 3）才解除。
+    assert_eq!(
+        pinned_count_for(&app, &report_id_str).await,
+        0,
+        "完成追蹤後置頂待辦應被解除"
+    );
 
     // 已完成報告再更新 → 422（GLP 不可變醫療紀錄鎖定）
     let locked_update = app

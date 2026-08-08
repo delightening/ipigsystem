@@ -1137,8 +1137,49 @@ impl VetPatrolReportService {
         )
         .await?;
 
+        // 置頂待辦與狀態轉換同一個 tx。原本由 handler 在 commit 之後 best-effort 建立，
+        // 有兩個問題：
+        // (1) INSERT 失敗時只 warn —— 獸醫看到送出成功、追蹤者卻永遠收不到待辦，
+        //     而本 PR 的對帳只找「殘留」不找「漏建」，這個方向沒有任何兜底。
+        // (2) 與 retract / delete 的 tx 內解除形成競態：送出 commit 後、pin 建立前，
+        //     撤回可能剛好取得列鎖並解除（此時 pin 尚未存在，掃不到），
+        //     隨後 pin 才被建立 → 孤兒。
+        // 放進 tx 後兩者都消失：報告列鎖序列化了狀態轉換，pin 與狀態同生共死。
+        Self::create_followup_pin_tx(&mut tx, &after, follow_up_user_id, actor).await?;
+
         tx.commit().await?;
         Ok(after)
+    }
+
+    /// 在 `submit_for_followup` 的 tx 內建立「需您填寫追蹤改善」置頂待辦。
+    ///
+    /// 與報告狀態轉換 all-or-nothing：送出成功就一定有待辦，rollback 就一定沒有。
+    async fn create_followup_pin_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        report: &VetPatrolReport,
+        follow_up_user_id: Uuid,
+        actor: &ActorContext,
+    ) -> Result<()> {
+        let actor_label = actor
+            .as_user()
+            .map(|u| u.email.clone())
+            .unwrap_or_else(|| "系統".to_string());
+        crate::services::NotificationService::create_pinned_notification_tx(
+            tx,
+            crate::models::CreateNotificationRequest {
+                user_id: follow_up_user_id,
+                notification_type: crate::models::NotificationType::VetRecommendation,
+                title: format!("[巡場報告] {} 需您填寫追蹤改善", report.patrol_date),
+                content: Some(format!(
+                    "{} 已將「{}」巡場報告指派給您追蹤；請填寫各條目的「追蹤改善」欄位後送出完成。",
+                    actor_label, report.patrol_date,
+                )),
+                related_entity_type: Some("vet_patrol_reports".to_string()),
+                related_entity_id: Some(report.id),
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     /// 撤回到草稿：把「已送出但未完成」的報告退回 draft，讓填報獸醫修正後重送。

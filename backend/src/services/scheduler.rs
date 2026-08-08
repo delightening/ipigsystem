@@ -847,7 +847,19 @@ impl SchedulerService {
                                 "[Scheduler] pinned_todo_reconcile 未涵蓋的 entity_type: {ty} — {n} 筆置頂待辦未做判斷，請補進 services/notification/reconcile.rs"
                             );
                         }
+                        // NULL entity_id：無業務實體可追溯，本作業無從判斷，會永遠留在
+                        // 待處理清單。不印出來就沒人知道那幾筆為什麼一直在。
+                        if r.null_entity_id > 0 {
+                            tracing::warn!(
+                                "[Scheduler] pinned_todo_reconcile: {} 筆置頂待辦的 related_entity_id 為 NULL —— 無業務實體可追溯，無從判斷，將永遠留在待處理清單，需人工決定處置",
+                                r.null_entity_id
+                            );
+                        }
                     }
+                    // 這支作業是「待辦卡死」這類 bug 唯一的自動偵測手段；它自己死掉而沒人
+                    // 發現的話，等於偵測層靜默失效。error! 讓它在 Loki 顯眼。
+                    // TODO(ops): 目前 alert_rules.yml 沒有任何 scheduler job 的告警規則，
+                    // 本作業連續失敗不會觸發通知。補 gauge + alert 屬 follow-up。
                     Err(e) => error!("[Scheduler] pinned_todo_reconcile failed: {e}"),
                 }
             })

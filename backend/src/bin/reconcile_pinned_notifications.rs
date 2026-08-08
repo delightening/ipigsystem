@@ -9,13 +9,19 @@
 //! 「待辦只能由系統偵測完成自動消失、使用者不可手動略過」的設計。
 //!
 //! ## Usage
+//!
+//! **預設是唯讀。** 不帶參數＝dry-run，只列出將被降級的列；要真的寫入必須明確加
+//! `--apply`。理由：本 repo 根目錄的 `.env` 指向 **prod**，而 `dotenvy` 會自動載入它 ——
+//! 若沿用「預設寫入、加 `--dry-run` 才預覽」的慣例，在 repo 內隨手跑一次不帶參數的
+//! 指令就會直接改到正式資料。這支工具的誤觸成本高於打字成本。
+//!
 //! ```bash
-//! # 先 dry-run 核對筆數（不寫入）
-//! DATABASE_URL_FILE=../secrets/db_url_host.txt \
-//!   cargo run --bin reconcile_pinned_notifications -- --dry-run
-//! # 筆數確認無誤後正式執行
+//! # 預覽（預設）
 //! DATABASE_URL_FILE=../secrets/db_url_host.txt \
 //!   cargo run --bin reconcile_pinned_notifications
+//! # 核對筆數與目標 DB 無誤後，正式寫入
+//! DATABASE_URL_FILE=../secrets/db_url_host.txt \
+//!   cargo run --bin reconcile_pinned_notifications -- --apply
 //! ```
 
 use anyhow::{Context, Result};
@@ -34,25 +40,36 @@ fn read_database_url() -> Result<String> {
 }
 
 const USAGE: &str = "\
-用法：reconcile_pinned_notifications [--dry-run]
+用法：reconcile_pinned_notifications [--apply]
 
-  --dry-run   只查不寫，列出將被降級的孤兒待辦（上 prod 前用來核對筆數）
-  --help      顯示本說明
+  （不帶參數）  預設 dry-run：只查不寫，列出將被降級的孤兒待辦
+  --apply       實際寫入資料庫
+  --help        顯示本說明
 
 環境變數：DATABASE_URL_FILE 或 DATABASE_URL
+⚠️ repo 根目錄的 .env 指向 prod，且會被 dotenvy 自動載入。執行前請確認下方印出的目標 DB。
 ";
 
-/// 嚴格剖析參數。
+/// 從連線字串取出 host/database 供執行前確認，順便避免把密碼印出來。
+fn describe_target(url: &str) -> String {
+    let after_at = url.rsplit('@').next().unwrap_or(url);
+    let no_query = after_at.split(['?', '#']).next().unwrap_or(after_at);
+    no_query.to_string()
+}
+
+/// 嚴格剖析參數，回傳 `dry_run`。
 ///
-/// **不可用 `args().any(|a| a == "--dry-run")`**：那種寫法下任何拼錯
-/// （`--dryrun`、`--dry_run`、`-dry-run`）都會被靜默忽略，於是「本來想預覽」
-/// 變成「直接對 prod 資料庫寫入」。這支工具會 UPDATE notifications，
-/// 誤觸的代價是真的改到正式資料。
+/// 兩層防護，缺一不可：
+/// 1. **預設 dry-run**，寫入要明確 `--apply`。repo 根目錄的 `.env` 指向 prod
+///    且被 `dotenvy` 自動載入，「預設寫入」等於讓隨手一跑就改到正式資料。
+/// 2. **嚴格拒絕未知參數**。若用 `args().any(|a| a == "--apply")`，
+///    反過來說任何拼錯都會被靜默忽略；這裡兩個方向都要堵住 ——
+///    拼錯 `--aply` 應該報錯，而不是安靜地變成另一種模式。
 fn parse_args() -> Result<bool> {
-    let mut dry_run = false;
+    let mut apply = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
-            "--dry-run" => dry_run = true,
+            "--apply" => apply = true,
             "--help" | "-h" => {
                 print!("{USAGE}");
                 std::process::exit(0);
@@ -60,7 +77,7 @@ fn parse_args() -> Result<bool> {
             other => anyhow::bail!("未知參數 `{other}`\n\n{USAGE}"),
         }
     }
-    Ok(dry_run)
+    Ok(!apply)
 }
 
 #[tokio::main]
@@ -68,9 +85,22 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     let dry_run = parse_args()?;
 
+    let url = read_database_url()?;
+    // 執行前先讓人看見目標是哪個 DB —— 這支工具寫 prod 的路徑太短（.env 自動載入），
+    // 「我以為連到測試庫」是最可能的誤操作。
+    println!(
+        "目標資料庫：{}\n模式：{}\n",
+        describe_target(&url),
+        if dry_run {
+            "dry-run（只查不寫）"
+        } else {
+            "APPLY（將寫入資料庫）"
+        }
+    );
+
     let pool = PgPoolOptions::new()
         .max_connections(2)
-        .connect(&read_database_url()?)
+        .connect(&url)
         .await
         .context("connect db")?;
 
@@ -104,11 +134,26 @@ async fn main() -> Result<()> {
         }
     }
 
-    // still_pending 已扣除未知類型 —— 這裡只算「已判定仍需使用者動作」的，
+    if report.null_entity_id > 0 {
+        println!(
+            "\n⚠️ {} 筆置頂待辦的 related_entity_id 為 NULL —— 沒有業務實體可追溯。",
+            report.null_entity_id
+        );
+        println!("   本作業無從判斷其是否仍需使用者動作，保守未動；這些列會永遠留在待處理清單。");
+        println!("   需人工決定處置（已知來源：2026-03 的舊聚合式採購提醒）。");
+    }
+
+    // still_pending 已扣除「未知類型」與「NULL entity」——這裡只算已判定仍需動作的，
     // 不把「未做判斷」的混進來充數。
+    let affected = if dry_run {
+        report.resolved.len() as u64
+    } else {
+        // 非 dry-run 回報 UPDATE 實際影響列數，而非候選數：
+        // UPDATE 帶 `priority > 0`，併發下可能有列已被業務路徑先解除。
+        report.resolved_rows_affected
+    };
     println!(
-        "\n{tag}完成：{verb} {} 筆；已判定仍需使用者動作 {} 筆",
-        report.resolved.len(),
+        "\n{tag}完成：{verb} {affected} 筆；已判定仍需使用者動作 {} 筆",
         report.still_pending
     );
     Ok(())
