@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Can } from '@/components/auth'
+import { useAuthHasPermission } from '@/stores/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api, { Product, DocumentListItem } from '@/lib/api'
@@ -70,6 +73,10 @@ export function ProductDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { categories: skuCategories, subcategoriesByCategory } = useSkuCategories()
+  // 「更多操作」是原生 <select>，選項不能包成 <Can>（非法子節點），故用 hook 逐項判斷
+  const hasPermission = useAuthHasPermission()
+  const canCreateProduct = hasPermission(PERMISSIONS.ERP_PRODUCT_CREATE)
+  const canEditProduct = hasPermission(PERMISSIONS.ERP_PRODUCT_EDIT)
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [statusAction, setStatusAction] = useState<'activate' | 'deactivate' | 'discontinue'>('activate')
 
@@ -224,10 +231,13 @@ export function ProductDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/products/${id}/edit`)}>
-            <Edit className="mr-2 h-4 w-4" />
-            編輯
-          </Button>
+          <Can permission={PERMISSIONS.ERP_PRODUCT_EDIT}>
+            <Button variant="outline" onClick={() => navigate(`/products/${id}/edit`)}>
+              <Edit className="mr-2 h-4 w-4" />
+              編輯
+            </Button>
+          </Can>
+          {(canCreateProduct || canEditProduct) && (
           <div className="relative">
             <select
               className="appearance-none bg-background border rounded-md px-3 py-2 pr-8 cursor-pointer hover:bg-muted focus:outline-hidden focus:ring-2 focus:ring-ring text-sm"
@@ -256,17 +266,18 @@ export function ProductDetailPage() {
               defaultValue=""
             >
               <option value="" disabled>更多操作...</option>
-              <option value="copy">複製產品</option>
-              <option disabled>───</option>
-              {product.is_active ? (
+              {canCreateProduct && <option value="copy">複製產品</option>}
+              {canCreateProduct && canEditProduct && <option disabled>───</option>}
+              {canEditProduct && (product.is_active ? (
                 <option value="deactivate">停用</option>
               ) : (
                 <option value="activate">啟用</option>
-              )}
-              <option value="discontinue">標記停產</option>
+              ))}
+              {canEditProduct && <option value="discontinue">標記停產</option>}
             </select>
             <MoreHorizontal className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-muted-foreground" />
           </div>
+          )}
         </div>
       </div>
 
