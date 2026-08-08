@@ -7,8 +7,8 @@ use crate::{
     error::AppError,
     models::{
         CreateNotificationRequest, Notification, NotificationItem, NotificationQuery,
-        NotificationSettings, PaginatedResponse, UpdateNotificationSettingsRequest,
-        PRIORITY_NORMAL, PRIORITY_PINNED,
+        NotificationSettings, PaginatedResponse, UpdateNotificationSettingsRequest, KIND_ACTION,
+        KIND_INFO, PRIORITY_NORMAL, PRIORITY_PINNED,
     },
 };
 
@@ -47,7 +47,7 @@ impl NotificationService {
         let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
             r#"
             SELECT id, type::TEXT, title, content, is_read, read_at,
-                   related_entity_type, related_entity_id, created_at, priority
+                   related_entity_type, related_entity_id, created_at, priority, kind
             FROM notifications
             WHERE user_id = "#,
         );
@@ -74,6 +74,13 @@ impl NotificationService {
                 .push_bind(notification_type.clone());
         }
 
+        // kind 篩選：分家後鈴鐺帶 kind=info、驚嘆號帶 kind=action。
+        // 未帶＝不篩選，維持舊前端相容（部署期間新舊前端可能並存）。
+        if let Some(ref kind) = &query.kind {
+            qb.push(" AND kind = ").push_bind(kind.clone());
+            count_qb.push(" AND kind = ").push_bind(kind.clone());
+        }
+
         // 緊急置頂（priority=1）永遠排在最上方，其餘按時間新到舊。
         qb.push(" ORDER BY priority DESC, created_at DESC LIMIT ")
             .push_bind(per_page);
@@ -91,22 +98,53 @@ impl NotificationService {
         ))
     }
 
-    /// 取得未讀通知數量
+    /// 取得未讀**通知**數量（鈴鐺紅點）。
+    ///
+    /// 排除待辦：待辦有自己的入口與計數（[`Self::get_action_required_count`]），
+    /// 兩邊都算會讓同一件事在畫面上被數兩次。
     pub async fn get_unread_count(&self, user_id: Uuid) -> Result<i64, AppError> {
         let result: (i64,) = sqlx::query_as(
             r#"
             SELECT COUNT(*) FROM notifications
-            WHERE user_id = $1 AND is_read = false
+            WHERE user_id = $1
+              AND is_read = false
+              AND NOT (kind = $2 AND priority > $3)
             "#,
         )
         .bind(user_id)
+        .bind(KIND_ACTION)
+        .bind(PRIORITY_NORMAL)
         .fetch_one(&self.db)
         .await?;
 
         Ok(result.0)
     }
 
-    /// 標記通知為已讀
+    /// 取得**待處理**數量（驚嘆號紅點）。
+    ///
+    /// 判準是 `kind='action' AND priority>0`，**不看 `is_read`** ——
+    /// 待辦的存否由業務狀態決定，不由使用者看過與否決定。
+    pub async fn get_action_required_count(&self, user_id: Uuid) -> Result<i64, AppError> {
+        let result: (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*) FROM notifications
+            WHERE user_id = $1 AND kind = $2 AND priority > $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(KIND_ACTION)
+        .bind(PRIORITY_NORMAL)
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(result.0)
+    }
+
+    /// 標記指定通知為已讀。
+    ///
+    /// ⚠️ 同 [`Self::mark_all_as_read`]，**排除未完成的待辦**。
+    /// 前端的待處理清單不提供「標為已讀」按鈕，但 API 是公開端點 ——
+    /// 只靠前端不給按鈕擋不住直接呼叫，規則必須落在後端。
     pub async fn mark_as_read(
         &self,
         user_id: Uuid,
@@ -116,27 +154,44 @@ impl NotificationService {
             r#"
             UPDATE notifications
             SET is_read = true, read_at = NOW()
-            WHERE user_id = $1 AND id = ANY($2)
+            WHERE user_id = $1
+              AND id = ANY($2)
+              AND NOT (kind = $3 AND priority > $4)
             "#,
         )
         .bind(user_id)
         .bind(notification_ids)
+        .bind(KIND_ACTION)
+        .bind(PRIORITY_NORMAL)
         .execute(&self.db)
         .await?;
 
         Ok(())
     }
 
-    /// 標記所有通知為已讀
+    /// 標記所有通知為已讀。
+    ///
+    /// ⚠️ **排除未完成的待辦**（`kind='action' AND priority>0`）。
+    ///
+    /// 使用者裁定「待辦只能由系統偵測動作完成後自動消失，不可手動略過」。
+    /// 若「全部已讀」把待辦也標掉，等於開了一條手動清除的後門。
+    ///
+    /// 這不是理論顧慮：2026-08-07 查 prod 時，既有的置頂待辦 `is_read` **全部是 true**
+    /// —— 使用者早就按過「全部已讀」，只是當時前端用 `priority` 而非 `is_read` 決定
+    /// 是否顯示，才沒被掩蓋掉。分家後「待處理」清單若改看 `is_read`，那一按就全清了。
     pub async fn mark_all_as_read(&self, user_id: Uuid) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE notifications
             SET is_read = true, read_at = NOW()
-            WHERE user_id = $1 AND is_read = false
+            WHERE user_id = $1
+              AND is_read = false
+              AND NOT (kind = $2 AND priority > $3)
             "#,
         )
         .bind(user_id)
+        .bind(KIND_ACTION)
+        .bind(PRIORITY_NORMAL)
         .execute(&self.db)
         .await?;
 
@@ -282,13 +337,21 @@ impl NotificationService {
         priority: i16,
     ) -> Result<Notification, AppError> {
         let notification_type = request.notification_type.as_str();
+        // kind 由 priority 決定：置頂＝待辦，其餘＝一般通知。
+        // 兩者在此唯一的 INSERT 點綁定，避免呼叫端各自決定而漂移
+        // （例如建了 priority=1 卻標成 info，該列就會同時不出現在兩個入口）。
+        let kind = if priority > PRIORITY_NORMAL {
+            KIND_ACTION
+        } else {
+            KIND_INFO
+        };
         let notification: Notification = sqlx::query_as(
             r#"
             INSERT INTO notifications (id, user_id, type, title, content,
-                                       related_entity_type, related_entity_id, priority)
-            VALUES (gen_random_uuid(), $1, $2::notification_type, $3, $4, $5, $6, $7)
+                                       related_entity_type, related_entity_id, priority, kind)
+            VALUES (gen_random_uuid(), $1, $2::notification_type, $3, $4, $5, $6, $7, $8)
             RETURNING id, user_id, type::TEXT, title, content, is_read, read_at,
-                      related_entity_type, related_entity_id, created_at, priority
+                      related_entity_type, related_entity_id, created_at, priority, kind
             "#,
         )
         .bind(request.user_id)
@@ -298,6 +361,7 @@ impl NotificationService {
         .bind(&request.related_entity_type)
         .bind(request.related_entity_id)
         .bind(priority)
+        .bind(kind)
         .fetch_one(&mut **tx)
         .await?;
         Ok(notification)

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>通知／待處理 雙入口 — 版面預覽</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* 取自 index.css 的 design token（HSL），確保預覽色彩與 prod 一致 */
+  :root{
+    --background:0 0% 100%; --foreground:222.2 84% 4.9%;
+    --primary:217.2 91.2% 59.8%; --muted:210 40% 96.1%;
+    --muted-foreground:215.4 16.3% 46.9%; --border:214.3 31.8% 91.4%;
+    --card:0 0% 100%; --accent:210 40% 96.1%;
+    /* status 兩階 */
+    --status-error-solid:0 84.2% 60.2%;
+    --status-warning-solid:38 92% 50%;
+    --status-warning-bg:48 96% 89%; --status-warning-text:26 90% 27%; --status-warning-border:45 93% 74%;
+    --status-info-bg:214 95% 93%; --status-info-text:224 76% 33%;
+  }
+  body{background:hsl(var(--muted));font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif}
+  .tok-bg{background:hsl(var(--background))} .tok-card{background:hsl(var(--card))}
+  .tok-fg{color:hsl(var(--foreground))} .tok-mut{color:hsl(var(--muted-foreground))}
+  .tok-border{border-color:hsl(var(--border))}
+  .badge-error{background:hsl(var(--status-error-solid));color:#fff}
+  .badge-warn{background:hsl(var(--status-warning-solid));color:#fff}
+  .soft-warn{background:hsl(var(--status-warning-bg));color:hsl(var(--status-warning-text));border-color:hsl(var(--status-warning-border))}
+  .soft-info{background:hsl(var(--status-info-bg))}
+  .hover-accent:hover{background:hsl(var(--accent))}
+</style>
+</head>
+<body class="p-6">
+
+<div class="max-w-5xl mx-auto space-y-8">
+
+  <header class="space-y-2">
+    <h1 class="text-2xl font-bold tok-fg">通知／待處理 雙入口 — 版面預覽</h1>
+    <p class="text-sm tok-mut">
+      議題 1 PR B。決策點用 <span class="soft-warn border px-1.5 py-0.5 rounded text-xs font-medium">黃底</span> 標出，
+      請逐項選擇。色彩全部取自 <code class="text-xs">index.css</code> 的 design token，未硬編色。
+    </p>
+  </header>
+
+  <!-- ============ A. 圖示選擇 ============ -->
+  <section class="tok-card rounded-xl border tok-border p-5 space-y-4">
+    <h2 class="font-bold tok-fg">A. 驚嘆號用哪個圖示？<span class="soft-warn border px-1.5 py-0.5 rounded text-xs ml-2">需決策</span></h2>
+    <p class="text-sm tok-mut">三個候選都來自 lucide-react（專案既有圖示庫）。鈴鐺維持不變。</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- A1 -->
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3">
+          <input type="radio" name="icon" checked>
+          <span class="font-semibold tok-fg text-sm">A1　CircleAlert（⚠ 圓框驚嘆）</span>
+        </div>
+        <div class="flex items-center justify-center gap-4 py-4 tok-bg rounded border tok-border">
+          <div class="relative">
+            <svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">3</span>
+          </div>
+          <div class="relative">
+            <svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-warn text-[10px] font-bold">2</span>
+          </div>
+        </div>
+        <p class="text-xs tok-mut mt-3">與鈴鐺同為圓潤線條，視覺重量接近，並排協調。</p>
+      </label>
+
+      <!-- A2 -->
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3">
+          <input type="radio" name="icon">
+          <span class="font-semibold tok-fg text-sm">A2　TriangleAlert（△ 三角警示）</span>
+        </div>
+        <div class="flex items-center justify-center gap-4 py-4 tok-bg rounded border tok-border">
+          <div class="relative">
+            <svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">3</span>
+          </div>
+          <div class="relative">
+            <svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-warn text-[10px] font-bold">2</span>
+          </div>
+        </div>
+        <p class="text-xs tok-mut mt-3">警示感最強。但系統他處已用它表示「錯誤/危險」，可能混淆語意。</p>
+      </label>
+
+      <!-- A3 -->
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3">
+          <input type="radio" name="icon">
+          <span class="font-semibold tok-fg text-sm">A3　ListChecks（☑ 待辦清單）</span>
+        </div>
+        <div class="flex items-center justify-center gap-4 py-4 tok-bg rounded border tok-border">
+          <div class="relative">
+            <svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">3</span>
+          </div>
+          <div class="relative">
+            <svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><line x1="13" y1="6" x2="21" y2="6"/><line x1="13" y1="12" x2="21" y2="12"/><line x1="13" y1="18" x2="21" y2="18"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-warn text-[10px] font-bold">2</span>
+          </div>
+        </div>
+        <p class="text-xs tok-mut mt-3">語意最準（是「待辦」不是「警告」），但少了急迫感。</p>
+      </label>
+    </div>
+  </section>
+
+  <!-- ============ B. Badge 顏色 ============ -->
+  <section class="tok-card rounded-xl border tok-border p-5 space-y-4">
+    <h2 class="font-bold tok-fg">B. 兩個 badge 的顏色關係？<span class="soft-warn border px-1.5 py-0.5 rounded text-xs ml-2">需決策</span></h2>
+    <p class="text-sm tok-mut">
+      DESIGN.md §3.4：計數 badge 用 <b>solid 階</b>。問題是兩個入口該同色還是分色。
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3"><input type="radio" name="badge" checked>
+          <span class="font-semibold tok-fg text-sm">B1　分色：通知紅 / 待處理琥珀</span></div>
+        <div class="flex items-center justify-center gap-5 py-4 tok-bg rounded border tok-border">
+          <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">12</span></div>
+          <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-warn text-[10px] font-bold">2</span></div>
+        </div>
+        <p class="text-xs tok-mut mt-3">兩者一眼可分。但紅色給了「只是未讀」的通知，語意上偏重。</p>
+      </label>
+
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3"><input type="radio" name="badge">
+          <span class="font-semibold tok-fg text-sm">B2　輕重分明：通知灰 / 待處理紅</span></div>
+        <div class="flex items-center justify-center gap-5 py-4 tok-bg rounded border tok-border">
+          <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full text-[10px] font-bold" style="background:hsl(var(--muted-foreground));color:#fff">12</span></div>
+          <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">2</span></div>
+        </div>
+        <p class="text-xs tok-mut mt-3">紅色只留給「真的需要你動作」的。通知變成安靜的背景資訊。</p>
+      </label>
+    </div>
+  </section>
+
+  <!-- ============ C. 待辦為 0 時 ============ -->
+  <section class="tok-card rounded-xl border tok-border p-5 space-y-4">
+    <h2 class="font-bold tok-fg">C. 待處理為 0 時，驚嘆號要不要留？<span class="soft-warn border px-1.5 py-0.5 rounded text-xs ml-2">需決策</span></h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3"><input type="radio" name="zero" checked>
+          <span class="font-semibold tok-fg text-sm">C1　留著，無紅點（版面穩定）</span></div>
+        <div class="flex items-center justify-end gap-3 py-4 px-4 tok-bg rounded border tok-border">
+          <span class="text-sm tok-mut hidden md:inline">2026/8/8</span>
+          <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">5</span></div>
+          <div class="relative opacity-40"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+          <div class="border tok-border rounded px-2 py-1 text-xs tok-mut">🌐 繁體…</div>
+        </div>
+        <p class="text-xs tok-mut mt-3">圖示位置固定，不會因待辦數變化而讓右上角元素跳動。</p>
+      </label>
+
+      <label class="border tok-border rounded-lg p-4 cursor-pointer hover:shadow-md transition block">
+        <div class="flex items-center gap-2 mb-3"><input type="radio" name="zero">
+          <span class="font-semibold tok-fg text-sm">C2　整個隱藏（沒事就不佔位）</span></div>
+        <div class="flex items-center justify-end gap-3 py-4 px-4 tok-bg rounded border tok-border">
+          <span class="text-sm tok-mut hidden md:inline">2026/8/8</span>
+          <div class="relative"><svg class="h-5 w-5 tok-fg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full badge-error text-[10px] font-bold">5</span></div>
+          <div class="border tok-border rounded px-2 py-1 text-xs tok-mut">🌐 繁體…</div>
+        </div>
+        <p class="text-xs tok-mut mt-3">畫面更乾淨。代價：出現／消失時右上角元素會左右位移。</p>
+      </label>
+    </div>
+  </section>
+
+  <!-- ============ D. 下拉內容 ============ -->
+  <section class="tok-card rounded-xl border tok-border p-5 space-y-4">
+    <h2 class="font-bold tok-fg">D. 待處理下拉的長相（示意，非決策項）</h2>
+    <p class="text-sm tok-mut">
+      關鍵差異：<b>沒有「全部已讀」</b>。待辦只能由系統偵測完成後自動消失（你的裁定），
+      提供已讀按鈕會讓使用者以為能手動清掉。
+    </p>
+
+    <div class="flex flex-col md:flex-row gap-5">
+      <!-- 待處理 -->
+      <div class="w-full md:w-96 tok-card rounded-lg shadow-xl border tok-border overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b tok-border" style="background:hsl(var(--muted))">
+          <h3 class="font-semibold tok-fg">待處理</h3>
+          <span class="text-xs tok-mut">2 件需要你的動作</span>
+        </div>
+        <div class="max-h-[300px] overflow-y-auto">
+          <div class="px-4 py-3 border-b tok-border cursor-pointer hover-accent" style="border-left:4px solid hsl(var(--status-warning-solid))">
+            <span class="inline-block mb-1 text-xs font-medium px-1.5 py-0.5 rounded soft-warn border">待處理</span>
+            <p class="text-sm font-semibold tok-fg">[巡場報告] 2026-08-07 需您填寫追蹤改善</p>
+            <p class="text-sm tok-mut mt-0.5 truncate">獸醫已將巡場報告指派給您追蹤…</p>
+            <p class="text-xs tok-mut mt-1">2 小時前</p>
+          </div>
+          <div class="px-4 py-3 cursor-pointer hover-accent" style="border-left:4px solid hsl(var(--status-warning-solid))">
+            <span class="inline-block mb-1 text-xs font-medium px-1.5 py-0.5 rounded soft-warn border">待處理</span>
+            <p class="text-sm font-semibold tok-fg">[iPig] 新請假申請 — 待您審核</p>
+            <p class="text-sm tok-mut mt-0.5 truncate">單位主管審核關卡</p>
+            <p class="text-xs tok-mut mt-1">1 天前</p>
+          </div>
+        </div>
+        <div class="px-4 py-2 border-t tok-border text-center" style="background:hsl(var(--muted))">
+          <span class="text-sm" style="color:hsl(var(--primary))">查看全部</span>
+        </div>
+      </div>
+
+      <!-- 通知 -->
+      <div class="w-full md:w-96 tok-card rounded-lg shadow-xl border tok-border overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b tok-border" style="background:hsl(var(--muted))">
+          <h3 class="font-semibold tok-fg">通知</h3>
+          <span class="text-sm" style="color:hsl(var(--primary))">✓✓ 全部標為已讀</span>
+        </div>
+        <div class="max-h-[300px] overflow-y-auto">
+          <div class="px-4 py-3 border-b tok-border cursor-pointer hover-accent soft-info">
+            <p class="text-sm font-semibold tok-fg">[iPig] 您的請假已核准</p>
+            <p class="text-xs tok-mut mt-1">30 分鐘前</p>
+          </div>
+          <div class="px-4 py-3 border-b tok-border cursor-pointer hover-accent">
+            <p class="text-sm tok-fg">[iPig] 低庫存預警 — 手術縫線</p>
+            <p class="text-xs tok-mut mt-1">3 小時前</p>
+          </div>
+          <div class="px-4 py-3 cursor-pointer hover-accent">
+            <p class="text-sm tok-fg">[巡場報告] 追蹤者已完成回覆 2026-07-20</p>
+            <p class="text-xs tok-mut mt-1">2 天前</p>
+          </div>
+        </div>
+        <div class="px-4 py-2 border-t tok-border text-center" style="background:hsl(var(--muted))">
+          <span class="text-sm" style="color:hsl(var(--primary))">查看全部</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border tok-border p-4 soft-warn">
+      <p class="text-sm font-semibold">為什麼待處理沒有「全部已讀」</p>
+      <p class="text-sm mt-1">
+        你裁定「待辦只能由系統偵測完成自動消失」。查 prod 時發現：現有的置頂待辦
+        <code>is_read</code> <b>全部是 true</b> —— 使用者早就按過「全部已讀」，
+        只是前端用 <code>priority</code> 而非 <code>is_read</code> 決定顯示才沒被蓋掉。
+        所以 PR B 必須讓 <code>read-all</code> 排除待辦，否則一鍵就把待處理清光。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ E. 空狀態 ============ -->
+  <section class="tok-card rounded-xl border tok-border p-5 space-y-3">
+    <h2 class="font-bold tok-fg">E. 待處理為空時的下拉（示意）</h2>
+    <div class="w-full md:w-96 tok-card rounded-lg shadow-xl border tok-border overflow-hidden">
+      <div class="px-4 py-3 border-b tok-border" style="background:hsl(var(--muted))">
+        <h3 class="font-semibold tok-fg">待處理</h3>
+      </div>
+      <div class="px-4 py-10 text-center">
+        <svg class="h-8 w-8 mx-auto mb-2 tok-mut" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <p class="tok-mut">目前沒有待處理事項</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-xs tok-mut pb-8">
+    設計 token 取自 <code>frontend/src/index.css</code>；圖示取自 lucide-react。
+    本預覽為靜態版面示意，互動與資料以實作為準。
+  </footer>
+</div>
+</body>
+</html>

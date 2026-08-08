@@ -69,6 +69,20 @@ pub async fn get_unread_count(
     Ok(Json(UnreadNotificationCount { count }))
 }
 
+/// 取得待處理（待辦）數量 —— 驚嘆號入口的紅點。
+///
+/// 與 [`get_unread_count`] 分開：鈴鐺數「未讀通知」、驚嘆號數「未完成待辦」。
+/// 兩者互斥（`get_unread_count` 已排除待辦），同一件事不會在畫面上被數兩次。
+#[utoipa::path(get, path = "/api/v1/notifications/action-required-count", responses((status = 200)), tag = "通知", security(("bearer" = [])))]
+pub async fn get_action_required_count(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Json<UnreadNotificationCount>, AppError> {
+    let service = NotificationService::new(state.db.clone());
+    let count = service.get_action_required_count(current_user.id).await?;
+    Ok(Json(UnreadNotificationCount { count }))
+}
+
 /// 標記通知為已讀
 pub async fn mark_as_read(
     State(state): State<AppState>,

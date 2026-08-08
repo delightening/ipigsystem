@@ -57,12 +57,30 @@ pub struct Notification {
     pub created_at: DateTime<Utc>,
     /// 0=一般；1=緊急置頂（待辦，完成前排在清單最上方）
     pub priority: i16,
+    /// `'info'` | `'action'`，見 [`KIND_INFO`] / [`KIND_ACTION`]
+    pub kind: String,
 }
 
 /// 通知優先級：一般（隨時間新到舊排序）。
 pub const PRIORITY_NORMAL: i16 = 0;
 /// 通知優先級：緊急置頂（待辦，完成前恆排在清單最上方；完成後由 hook 降級回 [`PRIORITY_NORMAL`]）。
 pub const PRIORITY_PINNED: i16 = 1;
+
+/// 通知性質：一般告知，只需看過（鈴鐺入口）。
+pub const KIND_INFO: &str = "info";
+/// 通知性質：**待辦** —— 指派給本人、需其做出動作、且系統能判定完成（驚嘆號入口）。
+pub const KIND_ACTION: &str = "action";
+
+/// `kind` 與 `priority` 的分工（兩者都要，缺一不可）：
+///
+/// - `kind = 'action'`：這則通知的**性質**是待辦。歷史事實，一旦是就永遠是。
+/// - `priority > 0`：這則待辦**還沒完成**。完成後降回 0。
+///
+/// 「待處理」清單 ＝ `kind='action' AND priority>0`；完成後該列離開待處理清單，
+/// 但仍以一般通知留在鈴鐺歷史裡，使用者可回顧「我當初處理過哪些事」。
+///
+/// 只用 `priority` 的話做不到最後這件事 —— 降級後就與一般通知無從區分。
+pub const fn _kind_priority_doc() {}
 
 /// 通知列表項目（含額外資訊）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -78,6 +96,8 @@ pub struct NotificationItem {
     pub created_at: DateTime<Utc>,
     /// 0=一般；1=緊急置頂（待辦，完成前排在清單最上方）
     pub priority: i16,
+    /// `'info'` | `'action'`，見 [`KIND_INFO`] / [`KIND_ACTION`]
+    pub kind: String,
 }
 
 /// 通知設定
@@ -123,6 +143,8 @@ pub struct CreateNotificationRequest {
 pub struct NotificationQuery {
     pub is_read: Option<bool>,
     pub notification_type: Option<String>,
+    /// `'info'` | `'action'`；未帶＝不篩選（維持舊前端行為，不破壞相容）。
+    pub kind: Option<String>,
 }
 
 /// 未讀通知數量
