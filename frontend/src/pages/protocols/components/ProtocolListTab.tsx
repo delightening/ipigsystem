@@ -46,7 +46,13 @@ export function ProtocolListTab() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { dialogState, confirm } = useConfirmDialog()
-  const canImportApproved = useAuthHasPermission()('aup.protocol.import_approved')
+  const hasPermission = useAuthHasPermission()
+  const canImportApproved = hasPermission('aup.protocol.import_approved')
+  // 後端 create_protocol / copy_protocol 皆為 `aup.protocol.create || ROLE_PI`；
+  // PI 角色本身就持有 aup.protocol.create（seed 已授予），故用 permission 即可涵蓋，
+  // 不需要跟著抄 role 判斷。
+  const canCreateProtocol = hasPermission('aup.protocol.create')
+  const canDeletePermission = hasPermission('aup.protocol.delete')
   const isAdmin = useAuthHasRole()('admin')
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 400)
@@ -93,7 +99,11 @@ export function ProtocolListTab() {
 
   const canEditProtocol = (p: ProtocolListItem) => isEditableStatus(p.status) && p.can_edit === true
 
-  const canDeleteProtocol = (p: ProtocolListItem) => String(p.status).toUpperCase() === 'DRAFT' && p.can_edit === true
+  // 刪除走 POST /protocols/:id/status（to_status=DELETED），後端 change_protocol_status
+  // 對該轉換要求 require_permission!("aup.protocol.delete")。原本只看 p.can_edit＝擁有權，
+  // 導致有編輯權但無刪除權的人看得到一顆必定 403 的垃圾桶。兩層都要：擁有權 + 權限。
+  const canDeleteProtocol = (p: ProtocolListItem) =>
+    String(p.status).toUpperCase() === 'DRAFT' && p.can_edit === true && canDeletePermission
 
   // admin 硬刪除（DELETE /protocols/:id/imported）：匯入計劃 / 已駁回 / 草稿，且無下游資料（後端守衛）。
   const canAdminHardDelete = (p: { imported_at?: string | null; status: ProtocolStatus | string }) =>
@@ -158,9 +168,11 @@ export function ProtocolListTab() {
             <Link to="/protocols/import-approved"><FileInput className="mr-2 h-4 w-4" />匯入已核准計劃</Link>
           </Button>
         )}
-        <Button size="sm" asChild>
-          <Link to="/protocols/new"><Plus className="mr-2 h-4 w-4" />{t('protocols.createNew')}</Link>
-        </Button>
+        {canCreateProtocol && (
+          <Button size="sm" asChild>
+            <Link to="/protocols/new"><Plus className="mr-2 h-4 w-4" />{t('protocols.createNew')}</Link>
+          </Button>
+        )}
       </div>
 
       <FilterBar
@@ -227,9 +239,11 @@ export function ProtocolListTab() {
                             <Link to={`/protocols/${protocol.id}/edit`}><Edit className="h-4 w-4" /></Link>
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" title="複製計畫書" aria-label="複製計畫書" onClick={() => handleCopy(protocol.id, protocol.title)} disabled={copyMutation.isPending}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
+                        {canCreateProtocol && (
+                          <Button variant="ghost" size="icon" title="複製計畫書" aria-label="複製計畫書" onClick={() => handleCopy(protocol.id, protocol.title)} disabled={copyMutation.isPending}>
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        )}
                         {canDeleteProtocol(protocol) && !isAdmin && (
                           <Button variant="ghost" size="icon" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDelete(protocol.id, protocol.title)}>
                             <Trash2 className="h-4 w-4 text-destructive" />

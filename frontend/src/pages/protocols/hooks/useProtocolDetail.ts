@@ -121,16 +121,14 @@ export function useProtocolDetail() {
   }, [protocol?.working_content])
 
   const isVet = user?.roles?.includes('VET')
-  const isReviewer = user?.roles?.some(r => ['REVIEWER', 'VET'].includes(r))
   const isIACUCOrAdmin = user?.roles?.some(r =>
     ['IACUC_CHAIR', 'IACUC_STAFF', 'SYSTEM_ADMIN', 'admin'].includes(r)
   )
-  const canAddComment = isIACUCOrAdmin || (
-    isReviewer && protocol?.status && REVIEWABLE_STATUSES.includes(protocol.status)
-  )
-  const canReply = user?.roles?.some(r =>
-    ['PI', 'EXPERIMENT_STAFF', 'IACUC_STAFF', 'SYSTEM_ADMIN', 'admin'].includes(r)
-  )
+  // 與後端 create_review_comment 的 require_permission!("aup.review.comment") 對齊。
+  // 保留「審查中的狀態」這一層：後端另有計畫關聯檢查，而 REVIEWABLE_STATUSES 是
+  // 流程階段限制、不是授權——兩者是不同的閘，都要留。
+  const canAddComment = hasPermission('aup.review.comment')
+    && (isIACUCOrAdmin || (!!protocol?.status && REVIEWABLE_STATUSES.includes(protocol.status)))
   // 權威 can_edit 來自後端（= can_edit_protocol：admin / PI 含成員 PI / SD / 補登管理者），
   // 避免前端自行重算漏掉 backend 放行情境（成員 PI、import-pending）。後端未提供時（載入中 /
   // 舊後端）退回關係制估算（admin / PI(pi_user_id) / SD）。
@@ -138,9 +136,16 @@ export function useProtocolDetail() {
     ?? (isAdmin
       || (!!user?.id && protocol?.pi_user_id === user.id)
       || (!!user?.id && protocol?.study_director_user_id === user.id))
-  const canAssignReviewer = user?.roles?.some(r =>
-    ['IACUC_STAFF', 'IACUC_CHAIR', 'SYSTEM_ADMIN', 'admin'].includes(r)
-  )
+  // 與後端 reply_review_comment 對齊：`has_permission("aup.review.reply") || 計畫擁有者`。
+  // ⚠️ 不可只看 permission —— 後端有 owner fallback，只看 permission 會把「非該角色
+  // 但是計畫擁有者」的人擋在外面（他們按下去其實會成功）。canEditProtocol 取自後端
+  // 權威 can_edit，正是擁有者判準。
+  const canReply = hasPermission('aup.review.reply') || canEditProtocol
+  // 與後端 assign_reviewer 的 require_permission!("aup.review.assign") 對齊
+  // （原本比對 ['IACUC_STAFF','IACUC_CHAIR','SYSTEM_ADMIN','admin'] 四個 role 字串：
+  //  剛好等於目前持有該權限的角色集合，所以這是等價替換、不改變任何人看得到什麼；
+  //  差別在日後把 aup.review.assign 授予新角色時，前端會自動跟上，不必再改這裡）。
+  const canAssignReviewer = hasPermission('aup.review.assign')
   // R71-8：核准/狀態變更按鈕 gate 統一為 permission token（與後端
   // change_protocol_status 的 require_permission!("aup.protocol.change_status") 對齊），
   // 取代原 role 字串比對。
