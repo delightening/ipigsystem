@@ -65,6 +65,11 @@ pub enum AppError {
         existing_animals: Vec<serde_json::Value>,
     },
 
+    /// 移除角色時對方身上仍有卡住的單據。帶明細清單供前端逐筆顯示，
+    /// 並據以提供「強制移除」選項（僅系統管理員）。
+    #[error("Unsettled items: {message}")]
+    UnsettledItems { message: String, items: Vec<String> },
+
     #[error("Business rule violation: {0}")]
     BusinessRule(String),
 
@@ -107,6 +112,21 @@ impl IntoResponse for AppError {
             return (StatusCode::CONFLICT, body).into_response();
         }
 
+        // UnsettledItems 同樣需要帶明細清單的格式：前端逐筆列出卡住的單據，
+        // 並依 warning_type 判斷要不要提供「強制移除」選項（不靠比對訊息字串）。
+        if let AppError::UnsettledItems { message, items } = &self {
+            let body = Json(json!({
+                "error": {
+                    "message": message,
+                    "code": 409,
+                    "blocking": true,
+                    "warning_type": "unsettled_items",
+                    "items": items
+                }
+            }));
+            return (StatusCode::CONFLICT, body).into_response();
+        }
+
         let (status, error_message) = match &self {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()),
             AppError::InvalidCredentials(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
@@ -118,6 +138,10 @@ impl IntoResponse for AppError {
             }
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::UnsettledItems { .. } => {
+                // 同 DuplicateWarning：已在上方 if let 提前 return，理論上不可達。
+                unreachable!("UnsettledItems 應在 IntoResponse 開頭的 if let 中處理")
+            }
             AppError::DuplicateWarning { .. } => {
                 // LOW-03: 此分支已在上方 if let 提前 return，理論上不可達。
                 // 使用 unreachable! 使迴歸在 debug build 中立即 panic 而非靜默繼續。
@@ -324,6 +348,20 @@ mod tests {
         assert_eq!(json["error"]["blocking"], false);
         assert_eq!(json["error"]["warning_type"], "duplicate_ear_tag");
         assert!(json["error"]["existing_animals"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_unsettled_items_returns_409_with_items() {
+        let (status, json) = extract_response(AppError::UnsettledItems {
+            message: "此使用者身上還有 1 件未結清事項".into(),
+            items: vec!["待他確認的職務代理：陳怡均 2026-07-24".into()],
+        })
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        // blocking=true：與 DuplicateWarning 的警告性質不同，這是真的擋下來了。
+        assert_eq!(json["error"]["blocking"], true);
+        assert_eq!(json["error"]["warning_type"], "unsettled_items");
+        assert_eq!(json["error"]["items"].as_array().map(|a| a.len()), Some(1));
     }
 
     #[tokio::test]

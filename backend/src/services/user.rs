@@ -25,6 +25,15 @@ struct RoleAssignmentSnapshot {
 }
 impl AuditRedact for RoleAssignmentSnapshot {}
 
+/// Audit-only 輔助型別：強制移除角色時，記下被釋出的未結清事項清單
+/// （用於 SECURITY 類 ROLE_REMOVAL_FORCED 事件）。內容為申請人姓名與請假日期，
+/// 與該事件本就可見的層級相同，空 AuditRedact impl 即可。
+#[derive(Serialize)]
+struct UnsettledItemsSnapshot {
+    items: Vec<String>,
+}
+impl AuditRedact for UnsettledItemsSnapshot {}
+
 /// 產生使用者列表搜尋用的 ILIKE pattern（前後加 %、trim），供 list 與單元測試使用。
 pub fn user_search_pattern(keyword: &str) -> String {
     format!("%{}%", keyword.trim())
@@ -378,6 +387,95 @@ impl UserService {
         Ok(UserResponse::from_user(&user, roles, permissions))
     }
 
+    /// 移除角色前的「未結清事項」，逐筆回傳人類可讀描述。
+    ///
+    /// 只查會因失去角色而**卡死**的項目：
+    /// 1. 待他確認的職務代理假單（`PENDING_PROXY`）——只有被指定的代理人本人能確認
+    /// 2. 待他簽核的請假單（`current_approver_id` 指向他）
+    /// 3. 已核准、假期尚未結束、由他擔任代理人的假單——假期到時他已無權接手職務
+    ///
+    /// 加班單不列入：`overtime_records` 沒有 `current_approver_id`，審核人由角色動態
+    /// 判定，換人不會卡在特定某個人身上。
+    async fn find_unsettled_items(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+    ) -> Result<Vec<String>> {
+        let rows: Vec<(String, String, chrono::NaiveDate, chrono::NaiveDate)> = sqlx::query_as(
+            r#"
+            SELECT '待他確認的職務代理' AS kind, u.display_name, l.start_date, l.end_date
+            FROM leave_requests l
+            INNER JOIN users u ON u.id = l.user_id
+            WHERE l.proxy_user_id = $1 AND l.status = 'PENDING_PROXY'::leave_status
+            UNION ALL
+            SELECT '待他簽核的請假單', u.display_name, l.start_date, l.end_date
+            FROM leave_requests l
+            INNER JOIN users u ON u.id = l.user_id
+            WHERE l.current_approver_id = $1
+              AND l.status::text LIKE 'PENDING%'
+              AND l.status <> 'PENDING_PROXY'::leave_status
+            UNION ALL
+            SELECT '假期未結束的代理指定', u.display_name, l.start_date, l.end_date
+            FROM leave_requests l
+            INNER JOIN users u ON u.id = l.user_id
+            WHERE l.proxy_user_id = $1
+              AND l.status = 'APPROVED'::leave_status
+              AND l.end_date >= CURRENT_DATE
+            ORDER BY 1, 3
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(kind, applicant, start, end)| {
+                if start == end {
+                    format!("{kind}：{applicant} {start}")
+                } else {
+                    format!("{kind}：{applicant} {start}~{end}")
+                }
+            })
+            .collect())
+    }
+
+    /// 強制移除角色時，把卡在該使用者身上的待辦釋出，避免單據跟著權限一起凍結。
+    ///
+    /// - 待他確認的代理假單 → 退回 `DRAFT`，申請人可重新指定代理人（保留 `proxy_user_id`
+    ///   供申請人參考，與 `proxy_reject_leave` 的處置一致）
+    /// - 待他簽核的請假單 → 只清 `current_approver_id`，**狀態不變**，交還該關由其他
+    ///   合法審核人接手。刻意不推進關卡：那等於系統代他簽了一關，稽核上無法交代
+    ///
+    /// 第 3 類（已核准、假期未結束的代理指定）不動資料——假單已生效、餘額已扣，
+    /// 改它會牽動餘額與通知；僅列入稽核紀錄供人工追蹤。
+    async fn release_unsettled_items(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"UPDATE leave_requests
+               SET status = 'DRAFT'::leave_status, current_approver_id = NULL,
+                   submitted_at = NULL, updated_at = NOW()
+               WHERE proxy_user_id = $1 AND status = 'PENDING_PROXY'::leave_status"#,
+        )
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            r#"UPDATE leave_requests
+               SET current_approver_id = NULL, updated_at = NOW()
+               WHERE current_approver_id = $1
+                 AND status::text LIKE 'PENDING%'
+                 AND status <> 'PENDING_PROXY'::leave_status"#,
+        )
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
     /// 更新用戶 — Service-driven audit
     ///
     /// 完整流程在同一 tx 內：欄位更新 + 角色重指派 + audit（包括 SECURITY 類
@@ -514,6 +612,61 @@ impl UserService {
             // SEC-PRIV (CSO-r2 #1): 角色指派授權檢查（存在性 + 管理員層級提權防護，
             // 同時涵蓋 SYSTEM_ADMIN 與 legacy `admin`）。
             Self::validate_role_assignment(&mut tx, actor_user_id, role_ids).await?;
+
+            // 角色縮減（有 code 從清單消失）＝ 對方可能帶著卡在他身上的單據離場。
+            // 先確認身上沒有未結清事項；有的話擋下並列出清單，僅系統管理員可帶
+            // force_role_change 強制執行（屆時把待辦釋出，見 release_unsettled_items）。
+            let after_codes: Vec<String> =
+                sqlx::query_scalar("SELECT code FROM roles WHERE id = ANY($1)")
+                    .bind(role_ids)
+                    .fetch_all(&mut *tx)
+                    .await?;
+            let has_role_removal = before_roles.iter().any(|c| !after_codes.contains(c));
+
+            if has_role_removal {
+                let unsettled = Self::find_unsettled_items(&mut tx, id).await?;
+                if !unsettled.is_empty() {
+                    if !req.force_role_change.unwrap_or(false) {
+                        return Err(AppError::UnsettledItems {
+                            message: format!(
+                                "此使用者身上還有 {} 件未結清事項，移除角色後將沒有人能接手。\
+                                 請先請本人處理完，或由系統管理員強制移除（系統會把待他確認的\
+                                 代理假單退回申請人重選代理人、待他簽核的單交還該關）。",
+                                unsettled.len()
+                            ),
+                            items: unsettled,
+                        });
+                    }
+                    let actor_is_admin = match actor {
+                        ActorContext::User(user) => user.is_admin(),
+                        ActorContext::System { .. } => true,
+                        ActorContext::Anonymous => false,
+                    };
+                    if !actor_is_admin {
+                        return Err(AppError::Forbidden(
+                            "僅系統管理員可強制移除仍有未結清事項的角色".into(),
+                        ));
+                    }
+                    Self::release_unsettled_items(&mut tx, id).await?;
+                    let released = UnsettledItemsSnapshot { items: unsettled };
+                    AuditService::log_activity_tx(
+                        &mut tx,
+                        actor,
+                        ActivityLogEntry {
+                            event_category: "SECURITY",
+                            event_type: "ROLE_REMOVAL_FORCED",
+                            entity: Some(AuditEntity::new("user", id, &display)),
+                            // (Some, None) = DELETE 語意：這些待辦已從該使用者身上釋出。
+                            data_diff: Some(DataDiff::compute(
+                                Some(&released),
+                                None::<&UnsettledItemsSnapshot>,
+                            )),
+                            request_context: None,
+                        },
+                    )
+                    .await?;
+                }
+            }
 
             // 刪除現有角色
             sqlx::query("DELETE FROM user_roles WHERE user_id = $1")

@@ -49,6 +49,16 @@ export interface UpdateUserData {
   aup_roles?: string[]
   years_experience?: number
   trainings?: UserTrainingInput[]
+  /** 明知對方仍有未結清事項仍要移除角色（僅系統管理員；後端會把那些待辦釋出） */
+  force_role_change?: boolean
+}
+
+/** 未結清事項衝突的明細；非此類錯誤回 null（依 warning_type 判定，不比對訊息字串）。 */
+function getUnsettledItems(error: unknown): { message: string; items: string[] } | null {
+  if (!isAxiosError(error)) return null
+  const payload = error.response?.data as ApiErrorPayload | undefined
+  if (payload?.error?.warning_type !== 'unsettled_items') return null
+  return { message: payload.error.message, items: payload.error.items ?? [] }
 }
 
 const defaultFormData: CreateUserData = {
@@ -212,6 +222,12 @@ export function useUserManagement() {
     },
   })
 
+  // 移除角色被未結清事項擋下時的明細；非 null 即開啟強制移除確認對話框。
+  const [unsettledConflict, setUnsettledConflict] = useState<{
+    message: string
+    items: string[]
+  } | null>(null)
+
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateUserData }) => {
       const response = await api.put(`/users/${id}`, data)
@@ -230,6 +246,8 @@ export function useUserManagement() {
       toast({ title: '成功', description: '用戶已更新' })
     },
     onError: (error: unknown) => {
+      // 未結清事項衝突改由 handleUpdateRoles 用專屬對話框列出明細，不另外跳 toast
+      if (getUnsettledItems(error)) return
       toast({ title: '錯誤', description: getErrorMessage(error) || '更新失敗', variant: 'destructive' })
     },
   })
@@ -354,9 +372,29 @@ export function useUserManagement() {
     setShowRolesDialog(true)
   }
 
-  const handleUpdateRoles = () => {
+  const handleUpdateRoles = async () => {
     if (!selectedUser) return
-    updateMutation.mutate({ id: selectedUser.id, data: { role_ids: formData.role_ids } })
+    try {
+      await updateMutation.mutateAsync({
+        id: selectedUser.id,
+        data: { role_ids: formData.role_ids },
+      })
+    } catch (error) {
+      // 對方身上還有卡住的單據 → 列出明細讓管理員決定是否強制移除。
+      // 其他錯誤已由 updateMutation.onError 統一 toast，這裡不重複處理。
+      const conflict = getUnsettledItems(error)
+      if (conflict) setUnsettledConflict(conflict)
+    }
+  }
+
+  /** 強制移除角色：後端會把待他確認的代理假單退回草稿、待他簽核的單交還該關，並記稽核。 */
+  const handleForceUpdateRoles = () => {
+    if (!selectedUser) return
+    setUnsettledConflict(null)
+    updateMutation.mutate({
+      id: selectedUser.id,
+      data: { role_ids: formData.role_ids, force_role_change: true },
+    })
   }
 
   const toggleRole = (roleId: string) => {
@@ -504,6 +542,9 @@ export function useUserManagement() {
     setShowEditDialog,
     showRolesDialog,
     setShowRolesDialog,
+    unsettledConflict,
+    setUnsettledConflict,
+    handleForceUpdateRoles,
     showDeleteDialog,
     setShowDeleteDialog,
     showReauthForDelete,

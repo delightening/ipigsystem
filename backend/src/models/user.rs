@@ -180,6 +180,10 @@ pub struct UpdateUserRequest {
     /// 帳號到期日（NULL = 永不過期）
     pub expires_at: Option<DateTime<Utc>>,
     pub version: Option<i32>,
+    /// 移除角色時，若對方身上仍有「未結清事項」（待他確認的職務代理假單、待他簽核的
+    /// 請假單）預設會被擋下。僅系統管理員可帶此旗標強制執行，屆時系統會把那些待辦
+    /// 釋出，避免單據跟著權限一起凍結。詳見 `UserService::find_unsettled_items`。
+    pub force_role_change: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
