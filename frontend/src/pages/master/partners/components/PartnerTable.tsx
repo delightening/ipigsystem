@@ -131,17 +131,15 @@ function PartnerRow({
             <Edit className="h-4 w-4" />
           </Button>
         </Can>
-        {/* ⚠️ 刪除**刻意先不上閘**：後端 partner.rs:156 要求 `erp.partner.delete`，
-            但該碼**不在 permissions 表裡**（2026-08-08 查 prod 確認），
-            has_permission 只靠 is_admin() bypass 才會過 —— 等於「只有 admin 刪得掉」
-            是意外達成的，不是設計。
-            這裡沒有語意正確的碼可用：套 ERP_PARTNER_EDIT 會讓有編輯權的人看到一顆
-            必定 403 的按鈕，比不上閘更糟；改用 role 硬判又違反本系列的原則。
-            正解是把缺的碼補進 seed，屬後端改動 → 併入 PR 5（與 animal.euthanasia.create
-            同一類問題）。補碼後這裡改成 <Can permission={PERMISSIONS.ERP_PARTNER_DELETE}>。 */}
-        <Button variant="ghost" size="icon" onClick={() => onDelete(partner)} aria-label="刪除">
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {/* 後端 partner.rs:156 要求 erp.partner.delete。該碼原本是死碼（不在 permissions
+            表裡，has_permission 永遠 false、只靠 is_admin() bypass 才過），所以 PR #57
+            刻意留白等它補齊；#58 已把碼補進目錄，這裡才補上閘。
+            目前沒有任何角色被授予此碼 → 實際只有管理員看得到，與後端行為一致。 */}
+        <Can permission={PERMISSIONS.ERP_PARTNER_DELETE}>
+          <Button variant="ghost" size="icon" onClick={() => onDelete(partner)} aria-label="刪除">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </Can>
       </TableCell>
     </TableRow>
   )
