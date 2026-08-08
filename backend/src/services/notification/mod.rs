@@ -15,6 +15,7 @@ pub(crate) mod expiry_monthly;
 mod helpers;
 mod hr;
 mod protocol;
+mod reconcile;
 mod report;
 mod resolvers;
 mod routing;
@@ -28,6 +29,8 @@ use sqlx::PgPool;
 pub use dispatch::{DispatchOutcome, StaffEmail};
 // 統一派送層型別：供各 notify_* 與呼叫端建構事件上下文 / 內容用。
 pub use dispatcher::{EventContext, NotificationPayload};
+// 置頂待辦對帳：供一次性修補 bin 與定期排程共用。
+pub use reconcile::{OrphanPinnedRow, ReconcileReport};
 
 /// 程序級全域 app_url，供 dispatch_event 渲染通知 email（與 holiday::global 同風格，
 /// 避免將 config 逐層 thread 進只持有 db 的通知服務）。

@@ -1137,8 +1137,49 @@ impl VetPatrolReportService {
         )
         .await?;
 
+        // 置頂待辦與狀態轉換同一個 tx。原本由 handler 在 commit 之後 best-effort 建立，
+        // 有兩個問題：
+        // (1) INSERT 失敗時只 warn —— 獸醫看到送出成功、追蹤者卻永遠收不到待辦，
+        //     而本 PR 的對帳只找「殘留」不找「漏建」，這個方向沒有任何兜底。
+        // (2) 與 retract / delete 的 tx 內解除形成競態：送出 commit 後、pin 建立前，
+        //     撤回可能剛好取得列鎖並解除（此時 pin 尚未存在，掃不到），
+        //     隨後 pin 才被建立 → 孤兒。
+        // 放進 tx 後兩者都消失：報告列鎖序列化了狀態轉換，pin 與狀態同生共死。
+        Self::create_followup_pin_tx(&mut tx, &after, follow_up_user_id, actor).await?;
+
         tx.commit().await?;
         Ok(after)
+    }
+
+    /// 在 `submit_for_followup` 的 tx 內建立「需您填寫追蹤改善」置頂待辦。
+    ///
+    /// 與報告狀態轉換 all-or-nothing：送出成功就一定有待辦，rollback 就一定沒有。
+    async fn create_followup_pin_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        report: &VetPatrolReport,
+        follow_up_user_id: Uuid,
+        actor: &ActorContext,
+    ) -> Result<()> {
+        let actor_label = actor
+            .as_user()
+            .map(|u| u.email.clone())
+            .unwrap_or_else(|| "系統".to_string());
+        crate::services::NotificationService::create_pinned_notification_tx(
+            tx,
+            crate::models::CreateNotificationRequest {
+                user_id: follow_up_user_id,
+                notification_type: crate::models::NotificationType::VetRecommendation,
+                title: format!("[巡場報告] {} 需您填寫追蹤改善", report.patrol_date),
+                content: Some(format!(
+                    "{} 已將「{}」巡場報告指派給您追蹤；請填寫各條目的「追蹤改善」欄位後送出完成。",
+                    actor_label, report.patrol_date,
+                )),
+                related_entity_type: Some("vet_patrol_reports".to_string()),
+                related_entity_id: Some(report.id),
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     /// 撤回到草稿：把「已送出但未完成」的報告退回 draft，讓填報獸醫修正後重送。
@@ -1223,6 +1264,17 @@ impl VetPatrolReportService {
                 data_diff: Some(DataDiff::create_only(&snapshot)),
                 request_context: None,
             },
+        )
+        .await?;
+
+        // 撤回清空 follow_up_user_id → 原追蹤者不再被指派，解除其置頂待辦。
+        // 必須在**同一個 tx 內**：本 tx 已對報告列 FOR UPDATE，併發的 submit_for_followup
+        // 會被列鎖擋住，因此不可能發生「解除把剛建立的新待辦一起降級」。
+        // 詳見 NotificationService::resolve_pinned_notifications_tx 的說明。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
         )
         .await?;
 
@@ -1436,6 +1488,14 @@ impl VetPatrolReportService {
         )
         .await?;
 
+        // 追蹤改善完成 → 解除追蹤者的置頂待辦（同 tx，理由見 retract_to_draft）。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         tx.commit().await?;
         Ok(after)
     }
@@ -1594,6 +1654,16 @@ impl VetPatrolReportService {
             .execute(&mut *tx)
             .await?;
 
+        // 硬刪除為終態。草稿正常不會有置頂待辦（送出才建立），但「送出 → 撤回 → 棄置」
+        // 這條路徑上若 retract 的解除將來回歸，這裡是最後一道防線——row 一旦硬刪，
+        // 任何指向它的置頂待辦就再也沒有業務路徑能解除它。同 tx，理由見 retract_to_draft。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         // 寫 audit 軌跡（草稿雖被刪，動作仍留痕）
         let snapshot = VetPatrolReportSnapshot {
             report: before.clone(),
@@ -1689,6 +1759,14 @@ impl VetPatrolReportService {
                 data_diff: Some(DataDiff::delete_only(&snapshot)),
                 request_context: None,
             },
+        )
+        .await?;
+
+        // 報告已軟刪 → 追蹤者不可能再操作它，解除置頂待辦（同 tx，理由見 retract_to_draft）。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
         )
         .await?;
 

@@ -18,6 +18,34 @@ use uuid::Uuid;
 
 const PASSWORD: &str = "TestPassword123!";
 
+/// 某份巡場報告的置頂待辦現況：`(通知總列數, 其中仍置頂的列數, 收件人)`。
+///
+/// 這支 PR 的主修正是「狀態轉換時在同一個 tx 內解除置頂待辦」。
+/// 那些解除呼叫在 service 層，若只測 reconcile（安全網）而不測這裡，
+/// 把 4 個解除全部 revert 掉整套測試仍會全綠 —— 主修正等於裸奔。
+///
+/// 回傳三個值而非只回置頂數，是為了讓斷言能區分「**降級**」與「**刪除**」：
+/// 只看 `priority > 0` 的話，把整列 DELETE 掉也會讓計數變 0 而測試照過。
+/// 收件人一併回傳，避免「有建立待辦但發錯人」通過測試。
+async fn pinned_state_for(app: &TestApp, report_id: &str) -> (i64, i64, Option<Uuid>) {
+    let id: Uuid = report_id.parse().expect("report id");
+    // Postgres 沒有 min(uuid)；用 array_agg 取第一個相異收件人。
+    // 搭配 total 一起斷言即可涵蓋「發錯人」與「發給多人」兩種錯誤。
+    sqlx::query_as(
+        r#"SELECT count(*)                              AS total,
+                  count(*) FILTER (WHERE priority > 0)  AS pinned,
+                  (array_agg(DISTINCT user_id))[1]      AS recipient
+           FROM notifications
+           WHERE related_entity_type = 'vet_patrol_reports'
+             AND related_entity_id = $1
+             AND title LIKE '%需您填寫追蹤改善%'"#,
+    )
+    .bind(id)
+    .fetch_one(&app.db_pool)
+    .await
+    .expect("query pinned notification state")
+}
+
 /// 建立指定角色（role code，如 "VET" / "PI" / "STUDY_DIRECTOR"）的使用者並登入，回傳 (user_id, token)。
 async fn seed_user_with_role(app: &TestApp, role_code: &str, label: &str) -> (Uuid, String) {
     let id = Uuid::new_v4();
@@ -397,6 +425,15 @@ async fn retract_submitted_report_back_to_draft_and_permission_gate() {
     let submitted: serde_json::Value = submit_res.json().await.expect("parse");
     assert_eq!(submitted["status"], "awaiting_acknowledgement");
 
+    // 送出必須替**指派的追蹤者**建立置頂待辦（priority=1）。
+    // 這條與下方撤回後的斷言，是「解除 hook 有沒有接上」的唯一端對端保護 ——
+    // 沒有它們的話，把 service 內的 resolve 全部 revert 掉，整套測試仍會全綠。
+    assert_eq!(
+        pinned_state_for(&app, &report_id_str).await,
+        (1, 1, Some(tracker_id)),
+        "送出後應有 1 則待辦、仍置頂、且收件人是指派的追蹤者"
+    );
+
     // 非建立者非 admin 的其他獸醫撤回 → 403（service 層 created_by/admin gate）
     let wrong = app
         .auth_post(
@@ -431,6 +468,17 @@ async fn retract_submitted_report_back_to_draft_and_permission_gate() {
         after["follow_up_user_id"].is_null(),
         "撤回後 follow_up_user_id 應清空，實得 {:?}",
         after["follow_up_user_id"]
+    );
+
+    // 撤回＝追蹤者不再被指派 → 置頂待辦必須解除。漏接的話那則通知會綁在一份
+    // 沒有人能再操作的報告上永久卡死，而待辦依設計不可手動已讀（2026-08-07 事故）。
+    //
+    // total 仍為 1：解除是**降級**不是刪除 —— 通知留在鈴鐺歷史裡，
+    // 只是離開待處理清單。若哪天改成 DELETE，這個斷言會抓到。
+    assert_eq!(
+        pinned_state_for(&app, &report_id_str).await,
+        (1, 0, Some(tracker_id)),
+        "撤回後待辦應降級（priority=0）而非被刪除，且列仍在"
     );
 
     // 已是草稿再撤回 → client error（僅已送出未完成可撤回）
@@ -498,6 +546,13 @@ async fn full_lifecycle_submit_acknowledge_complete_locks_report_and_writes_audi
     let submitted: serde_json::Value = submit_res.json().await.expect("parse");
     assert_eq!(submitted["status"], "awaiting_acknowledgement");
 
+    // 送出 → 指派的追蹤者取得置頂待辦
+    assert_eq!(
+        pinned_state_for(&app, &report_id_str).await,
+        (1, 1, Some(tracker_id)),
+        "送出後應有 1 則待辦、仍置頂、且收件人是指派的追蹤者"
+    );
+
     // 非指派追蹤者確認收到 → 403
     let wrong_ack = app
         .auth_post(
@@ -519,6 +574,15 @@ async fn full_lifecycle_submit_acknowledge_complete_locks_report_and_writes_audi
     assert_eq!(ack_res.status(), 200);
     let acked: serde_json::Value = ack_res.json().await.expect("parse");
     assert_eq!(acked["status"], "awaiting_follow_up");
+
+    // phase 2 **不得**解除待辦：確認收到只代表「我看到了」，追蹤改善還沒填。
+    // 少了這條斷言，acknowledge 若誤解除，後面「完成後為 0」仍會通過 ——
+    // 測試就抓不到 phase 2 的錯誤行為。
+    assert_eq!(
+        pinned_state_for(&app, &report_id_str).await,
+        (1, 1, Some(tracker_id)),
+        "確認收到後待辦必須維持置頂（事情還沒做完）"
+    );
 
     // 追蹤者填寫「追蹤改善」欄位（其他欄位需與原值一致，才能通過待追蹤期限制）
     let update_body = serde_json::json!({
@@ -552,6 +616,13 @@ async fn full_lifecycle_submit_acknowledge_complete_locks_report_and_writes_audi
     assert_eq!(complete_res.status(), 200);
     let completed: serde_json::Value = complete_res.json().await.expect("parse");
     assert_eq!(completed["status"], "completed");
+
+    // phase 3 完成才解除。total 仍為 1：解除是降級不是刪除。
+    assert_eq!(
+        pinned_state_for(&app, &report_id_str).await,
+        (1, 0, Some(tracker_id)),
+        "完成追蹤後待辦應降級（priority=0）而非被刪除"
+    );
 
     // 已完成報告再更新 → 422（GLP 不可變醫療紀錄鎖定）
     let locked_update = app

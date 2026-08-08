@@ -14,6 +14,21 @@ use crate::{
 
 use super::NotificationService;
 
+/// 解除置頂待辦的唯一 SQL 定義，pool 版與 tx 版共用。
+///
+/// 以 `related_entity_type + related_entity_id` 定位（同一業務實體上僅一則置頂待辦），
+/// 不比對標題字串——避免文字微調 / 多語系翻譯導致 `LIKE` 失效而漏解除。
+/// `priority > $3` 保證只動置頂列、不誤降既有一般通知。
+const RESOLVE_PINNED_SQL: &str = r#"
+    UPDATE notifications
+    SET priority = $3,
+        is_read  = true,
+        read_at  = COALESCE(read_at, NOW())
+    WHERE related_entity_type = $1
+      AND related_entity_id   = $2
+      AND priority > $3
+"#;
+
 impl NotificationService {
     /// 取得使用者通知列表
     pub async fn list_notifications(
@@ -184,22 +199,64 @@ impl NotificationService {
         related_entity_type: &str,
         related_entity_id: Uuid,
     ) -> Result<u64, AppError> {
-        let result = sqlx::query(
-            r#"
-            UPDATE notifications
-            SET priority = $3,
-                is_read  = true,
-                read_at  = COALESCE(read_at, NOW())
-            WHERE related_entity_type = $1
-              AND related_entity_id   = $2
-              AND priority > $3
-            "#,
-        )
-        .bind(related_entity_type)
-        .bind(related_entity_id)
-        .bind(PRIORITY_NORMAL)
-        .execute(&self.db)
-        .await?;
+        let result = sqlx::query(RESOLVE_PINNED_SQL)
+            .bind(related_entity_type)
+            .bind(related_entity_id)
+            .bind(PRIORITY_NORMAL)
+            .execute(&self.db)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// tx 內版本的 [`Self::create_pinned_notification`]。
+    ///
+    /// 與 [`Self::resolve_pinned_notifications_tx`] 成對：**建立與解除都應該在
+    /// 業務狀態轉換自己的 tx 內**，兩端才一致。
+    ///
+    /// 只有解除在 tx 內、建立仍是 commit 後 best-effort 的話，會留下兩個洞：
+    /// 建立失敗時使用者永遠收不到待辦（而對帳只找殘留、不找漏建）；
+    /// 以及「送出 commit → 併發的撤回解除（掃不到尚未建立的列）→ 建立」的孤兒時序。
+    pub async fn create_pinned_notification_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        request: CreateNotificationRequest,
+    ) -> Result<Notification, AppError> {
+        Self::create_notification_tx_with_priority(tx, request, PRIORITY_PINNED).await
+    }
+
+    /// tx 內版本的 [`Self::resolve_pinned_notifications`]。
+    ///
+    /// **業務狀態轉換一律用這個，不要用 pool 版**——先 commit 狀態、再另外解除待辦
+    /// 會開一個競態窗口：
+    ///
+    /// 1. 撤回 commit（status → draft，follow_up_user_id → NULL）
+    /// 2. 獸醫立刻重新送出 → 建立**新的**置頂待辦 N2
+    /// 3. 撤回流程這才呼叫解除 → 把 N2 一起降級
+    ///
+    /// 結果是新指派的追蹤者永遠看不到自己的待辦，而待辦不可手動已讀、他無從自救——
+    /// 正好是本 PR 要修的那個失效模式，只是換成競態觸發。
+    ///
+    /// 放進狀態轉換自己的 tx（該 tx 已對報告列 `SELECT ... FOR UPDATE`）後，
+    /// 狀態轉換 rollback 時待辦不會被誤降，且併發的狀態轉換彼此被列鎖序列化。
+    ///
+    /// ⚠️ **窗口縮小但未完全消滅**，取決於「建立」那一端是否也在 tx 內：
+    /// 若某個流程的置頂待辦是在 service tx **commit 之後**才由 handler 建立
+    /// （best-effort 模式），則「送出 commit → 撤回取得列鎖並解除（此時 pin 尚未存在）
+    /// → 送出的 handler 這才 INSERT pin」這條時序仍會留下孤兒。
+    /// 巡場流程已把建立搬進 `submit_for_followup` 的 tx 以關掉這個窗口；
+    /// **其他流程日後接上置頂待辦時務必比照辦理**，否則本函式的保證不成立，
+    /// 只能靠每日對帳事後兜底（最長 24h）。
+    pub async fn resolve_pinned_notifications_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        related_entity_type: &str,
+        related_entity_id: Uuid,
+    ) -> Result<u64, AppError> {
+        let result = sqlx::query(RESOLVE_PINNED_SQL)
+            .bind(related_entity_type)
+            .bind(related_entity_id)
+            .bind(PRIORITY_NORMAL)
+            .execute(&mut **tx)
+            .await?;
 
         Ok(result.rows_affected())
     }

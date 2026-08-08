@@ -38,6 +38,12 @@ const MESSAGING_GC_CRON: &str = "0 40 3 * * *";
 /// 以及 COMPLETED 但 1 小時未被桌機取走的棄單 session，縮短明文 payload at-rest 殘留。
 const SIGNATURE_BRIDGE_GC_CRON: &str = "0 45 3 * * *";
 
+/// 置頂待辦對帳：每日 03:50 UTC（＝台灣 11:50），排在其他 GC 之後。
+/// 降級「置頂中、但關聯業務實體已不存在 / 已刪 / 已在終態」的通知。
+/// 存在理由見 `services/notification/reconcile.rs`：待辦的解除掛在各流程手寫的終態
+/// 路徑上，漏接一條使用者就永久卡住且無法自救（2026-08-07 事故）。本作業是安全網。
+const PINNED_TODO_RECONCILE_CRON: &str = "0 50 3 * * *";
+
 /// R28-5 audit HMAC legacy backfill 監控 cron — 每 10 分鐘更新 gauge
 /// `ipig_audit_hmac_legacy_rows{version="null"}`，目標 → 0。
 const HMAC_LEGACY_GAUGE_CRON: &str = "0 */10 * * * *";
@@ -144,6 +150,7 @@ impl SchedulerService {
         Self::register_vet_patrol_draft_gc_job(&sched, &db, t, &mut job_count).await?;
         Self::register_messaging_gc_job(&sched, &db, t, &mut job_count).await?;
         Self::register_signature_bridge_gc_job(&sched, &db, t, &mut job_count).await?;
+        Self::register_pinned_todo_reconcile_job(&sched, &db, t, &mut job_count).await?;
         Self::register_hmac_legacy_gauge_job(&sched, &db, t, &mut job_count).await?;
         Self::register_backup_admin_reminder_job(&sched, &db, t, &mut job_count).await?;
         Self::register_session_cleanup_job(&sched, &db, t, &mut job_count).await?;
@@ -774,6 +781,91 @@ impl SchedulerService {
         })?;
         sched.add(job).await?;
         info!("[Scheduler] ✓ Job 'vet_patrol_draft_gc' registered (daily 03:35 UTC)");
+        *count += 1;
+        Ok(())
+    }
+
+    /// 置頂待辦對帳（安全網）：每日 03:50 UTC 降級孤兒待辦。
+    ///
+    /// 「待處理」清單的正確性取決於各業務流程有沒有在終態呼叫
+    /// `resolve_pinned_notifications`。那些呼叫是手寫的，每新增一條終態路徑
+    /// （撤回 / 作廢 / 刪除 / 轉單…）就多一次漏接機會；漏接的後果是使用者的待辦
+    /// 永久卡死，且依設計無法手動已讀清除。本作業定期補救。
+    ///
+    /// 不違反「待辦不可手動略過」——降級依據是業務實體的真實狀態，不是使用者意願。
+    async fn register_pinned_todo_reconcile_job(
+        sched: &JobScheduler,
+        db: &PgPool,
+        token: &CancellationToken,
+        count: &mut u32,
+    ) -> SchedulerResult {
+        let db_clone = db.clone();
+        let token_outer = token.clone();
+        let job = Job::new_async(PINNED_TODO_RECONCILE_CRON, move |_uuid, _l| {
+            let db = db_clone.clone();
+            let token = token_outer.clone();
+            Box::pin(async move {
+                if token.is_cancelled() {
+                    info!("[Scheduler] pinned_todo_reconcile skipped during shutdown");
+                    return;
+                }
+                info!("[Scheduler] Running pinned todo reconcile...");
+                let svc = crate::services::NotificationService::new(db);
+                match svc.reconcile_pinned_notifications(false).await {
+                    Ok(r) => {
+                        if r.resolved.is_empty() {
+                            info!(
+                                "[Scheduler] pinned_todo_reconcile: 無孤兒待辦（在途 {} 筆）",
+                                r.still_pending
+                            );
+                        } else {
+                            // 有命中代表某條終態路徑漏接了解除 hook —— 用 warn 讓它在日誌中顯眼。
+                            // 對帳只是止血，真正該修的是漏掉的那條路徑，所以逐筆印出 reason。
+                            tracing::warn!(
+                                "[Scheduler] pinned_todo_reconcile: 降級 {} 筆孤兒待辦（在途 {} 筆）— 表示有終態路徑漏接解除 hook",
+                                r.resolved.len(),
+                                r.still_pending
+                            );
+                            for row in &r.resolved {
+                                // 刻意不記 email：本 warn 會進營運日誌（留存久、存取範圍比 DB 廣），
+                                // email 屬直接識別個人的資料。需要對應到人時用 user_id 查 users 表 ——
+                                // 那是有存取控管的路徑。
+                                tracing::warn!(
+                                    "[Scheduler] pinned_todo_reconcile 降級: notification={} entity={} entity_id={:?} user={} reason={}",
+                                    row.id,
+                                    row.related_entity_type,
+                                    row.related_entity_id,
+                                    row.user_id,
+                                    row.reason
+                                );
+                            }
+                        }
+                        // 認不得的 entity_type 保守未處理 —— 必須讓維運者看見。否則新增待辦
+                        // 類型後對帳會靜靜跳過它，而「沒有 warn」看起來跟「一切正常」一模一樣。
+                        for (ty, n) in &r.unknown_entity_types {
+                            tracing::warn!(
+                                "[Scheduler] pinned_todo_reconcile 未涵蓋的 entity_type: {ty} — {n} 筆置頂待辦未做判斷，請補進 services/notification/reconcile.rs"
+                            );
+                        }
+                        // NULL entity_id：無業務實體可追溯，本作業無從判斷，會永遠留在
+                        // 待處理清單。不印出來就沒人知道那幾筆為什麼一直在。
+                        if r.null_entity_id > 0 {
+                            tracing::warn!(
+                                "[Scheduler] pinned_todo_reconcile: {} 筆置頂待辦的 related_entity_id 為 NULL —— 無業務實體可追溯，無從判斷，將永遠留在待處理清單，需人工決定處置",
+                                r.null_entity_id
+                            );
+                        }
+                    }
+                    // 這支作業是「待辦卡死」這類 bug 唯一的自動偵測手段；它自己死掉而沒人
+                    // 發現的話，等於偵測層靜默失效。error! 讓它在 Loki 顯眼。
+                    // TODO(ops): 目前 alert_rules.yml 沒有任何 scheduler job 的告警規則，
+                    // 本作業連續失敗不會觸發通知。補 gauge + alert 屬 follow-up。
+                    Err(e) => error!("[Scheduler] pinned_todo_reconcile failed: {e}"),
+                }
+            })
+        })?;
+        sched.add(job).await?;
+        info!("[Scheduler] ✓ Job 'pinned_todo_reconcile' registered (daily 03:50 UTC)");
         *count += 1;
         Ok(())
     }

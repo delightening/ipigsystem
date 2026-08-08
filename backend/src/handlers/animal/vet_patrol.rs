@@ -74,34 +74,18 @@ pub async fn submit_for_followup(
         VetPatrolReportService::submit_for_followup(&state.db, &actor, id, req.follow_up_user_id)
             .await?;
 
-    // Phase 3：通知追蹤者（fire-and-forget，失敗 warn 不阻擋送出動作）
-    let notification_title = format!("[巡場報告] {} 需您填寫追蹤改善", report.patrol_date);
+    // 置頂待辦（bell）已由 service 在**同一個 tx 內**建立
+    // （見 VetPatrolReportService::create_followup_pin_tx）——
+    // 與報告狀態轉換 all-or-nothing，不再是這裡的 best-effort。
+    // 理由：原本 commit 後才建立，INSERT 失敗只 warn → 獸醫看到送出成功、
+    // 追蹤者卻永遠收不到待辦；且與 retract/delete 的 tx 內解除形成競態。
     let notification_content = format!(
         "{} 已將「{}」巡場報告指派給您追蹤；請填寫各條目的「追蹤改善」欄位後送出完成。",
         current_user.email, report.patrol_date,
     );
 
-    // (1) Bell notification（NotificationService 內建依使用者偏好走 in_app + email channel）
-    // urgent：置頂顯示直到追蹤者按「確認完成」（由 complete_followup 解除，見下方）
-    let notif_svc = crate::services::NotificationService::new(state.db.clone());
-    if let Err(e) = notif_svc
-        .create_pinned_notification(CreateNotificationRequest {
-            user_id: req.follow_up_user_id,
-            notification_type: NotificationType::VetRecommendation,
-            title: notification_title.clone(),
-            content: Some(notification_content.clone()),
-            related_entity_type: Some("vet_patrol_reports".to_string()),
-            related_entity_id: Some(report.id),
-        })
-        .await
-    {
-        tracing::warn!(
-            "vet_patrol submit_for_followup notification 失敗 user={}: {e}",
-            req.follow_up_user_id
-        );
-    }
-
-    // (2) 站內信（MessagingService 1-1 direct thread）
+    // 站內信（MessagingService 1-1 direct thread）—— 這條維持 best-effort：
+    // 它是輔助通知管道，失敗不該讓已成立的送出動作回滾。
     let thread_req = crate::services::CreateThreadRequest {
         thread_type: "direct".to_string(),
         recipient_ids: vec![req.follow_up_user_id],
@@ -194,16 +178,11 @@ pub async fn complete_followup(
     // 「必須是指派的 follow_up_user_id」由 service 層 complete_followup 強制。
     access::require_vet_patrol_view(&current_user)?;
     let actor = ActorContext::User(current_user.clone());
+    // 置頂待辦的解除在 service 的同一個 tx 內完成（見
+    // VetPatrolReportService::complete_followup），不在此處另外呼叫——
+    // 先 commit 狀態再解除會開競態窗口，詳見
+    // NotificationService::resolve_pinned_notifications_tx。
     let report = VetPatrolReportService::complete_followup(&state.db, &actor, id).await?;
-
-    // 追蹤改善完成 → 解除追蹤者「需您填寫追蹤改善」置頂提醒（best-effort，失敗僅 warn）
-    let notif_svc = crate::services::NotificationService::new(state.db.clone());
-    if let Err(e) = notif_svc
-        .resolve_pinned_notifications("vet_patrol_reports", report.id)
-        .await
-    {
-        tracing::warn!("解除巡場待填追蹤置頂通知失敗 report={}: {e}", report.id);
-    }
 
     notify_vet_followup_stage(
         &state,
@@ -305,6 +284,7 @@ pub async fn delete_vet_patrol_report(
 ) -> Result<Json<()>> {
     require_permission!(current_user, "animal.vet.recommend");
     let actor = ActorContext::User(current_user.clone());
+    // 置頂待辦的解除在 service 的同一個 tx 內完成（見 VetPatrolReportService::delete）。
     VetPatrolReportService::delete(&state.db, &actor, id).await?;
     Ok(Json(()))
 }
@@ -319,6 +299,8 @@ pub async fn retract_vet_patrol_report(
 ) -> Result<Json<()>> {
     require_permission!(current_user, "animal.vet.recommend");
     let actor = ActorContext::User(current_user.clone());
+    // 置頂待辦的解除在 service 的同一個 tx 內完成
+    // （見 VetPatrolReportService::retract_to_draft）。
     VetPatrolReportService::retract_to_draft(&state.db, &actor, id).await?;
     Ok(Json(()))
 }
