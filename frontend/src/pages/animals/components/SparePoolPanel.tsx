@@ -6,6 +6,8 @@ import type { ReservableAnimalRow, ReservableQuery } from '@/lib/api/reservation
 import { animalGenderNames } from '@/types/animal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useAuthHasPermission } from '@/stores/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useReservable, useReservationMutations } from '../hooks/useReservationPlanning'
 import { EditableRemarkCell } from './EditableRemarkCell'
 import { fmtDate, fmtMd } from './planningFormat'
@@ -33,6 +35,10 @@ export function SparePoolPanel({ targets }: { targets: ReserveTarget[] }) {
   const [ageMax, setAgeMax] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [targetKey, setTargetKey] = useState('')
+  const hasPermission = useAuthHasPermission()
+  // 預約屬「操作」，限執行秘書。無權者：不渲染勾選框與批次列 ——
+  // 只留下可讀的備用池清單。若只藏批次列而留勾選框，使用者會選了半天發現沒有下一步。
+  const canReserve = hasPermission(PERMISSIONS.ANIMAL_PLANNING_MANAGE)
 
   const query: ReservableQuery = useMemo(
     () => ({
@@ -208,13 +214,15 @@ export function SparePoolPanel({ targets }: { targets: ReserveTarget[] }) {
                   className="relative flex flex-col gap-1.5 border-b px-4 py-2.5 last:border-b-0 @[600px]:flex-row @[600px]:items-center @[600px]:gap-0 @[600px]:py-1.5"
                 >
                   <div className="flex items-center gap-2 @[600px]:contents">
-                    <input
-                      type="checkbox"
-                      className="@[600px]:w-8"
-                      checked={selected.has(a.id)}
-                      onChange={() => toggle(a.id)}
-                      aria-label={`選取 ${a.ear_tag}`}
-                    />
+                    {canReserve && (
+                      <input
+                        type="checkbox"
+                        className="@[600px]:w-8"
+                        checked={selected.has(a.id)}
+                        onChange={() => toggle(a.id)}
+                        aria-label={`選取 ${a.ear_tag}`}
+                      />
+                    )}
                     <span className="w-16 font-mono font-semibold @[600px]:font-normal">{a.ear_tag}</span>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm @[600px]:contents">
@@ -256,8 +264,8 @@ export function SparePoolPanel({ targets }: { targets: ReserveTarget[] }) {
             </div>
           </div>
 
-          {/* 批次列（選 ≥1 隻才顯示） */}
-          {selected.size > 0 && (
+          {/* 批次列（有操作權且選 ≥1 隻才顯示） */}
+          {canReserve && selected.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-t bg-accent/10 px-4 py-2 text-sm">
               <span className="font-semibold text-accent">已選 {selected.size} 隻 →</span>
               <span>預約到計劃</span>

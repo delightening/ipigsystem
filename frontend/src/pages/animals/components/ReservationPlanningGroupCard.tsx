@@ -5,6 +5,8 @@ import { ExternalLink, MoreHorizontal, Search } from 'lucide-react'
 import type { PlanningAnimalRow, ReservationPlanningGroup } from '@/lib/api/reservationPlanning'
 import { animalGenderNames } from '@/types/animal'
 import { Button } from '@/components/ui/button'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,9 +91,11 @@ export function ReservationPlanningGroupCard({ group }: { group: ReservationPlan
             </span>
           )}
           {!orphan && (
-            <Button size="sm" variant="outline" className="ml-1 h-7" onClick={() => setSearchOpen(true)}>
-              <Search className="mr-1 h-3.5 w-3.5" /> 搜尋配對
-            </Button>
+            <Can permission={PERMISSIONS.ANIMAL_PLANNING_MANAGE}>
+              <Button size="sm" variant="outline" className="ml-1 h-7" onClick={() => setSearchOpen(true)}>
+                <Search className="mr-1 h-3.5 w-3.5" /> 搜尋配對
+              </Button>
+            </Can>
           )}
         </div>
       </div>
@@ -162,17 +166,20 @@ function AnimalRow({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {reserved && (
-          <>
-            {approved && iacucNo ? (
-              <DropdownMenuItem onSelect={onAssign}>正式分配進實驗</DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem disabled>正式分配（試驗核准後）</DropdownMenuItem>
-            )}
-            <DropdownMenuItem onSelect={onUnreserve}>解除預約</DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
+        {/* 分配 / 解除預約限執秘；無權者選單只留「查看動物詳情」（唯讀動作） */}
+        <Can permission={PERMISSIONS.ANIMAL_PLANNING_MANAGE}>
+          {reserved && (
+            <>
+              {approved && iacucNo ? (
+                <DropdownMenuItem onSelect={onAssign}>正式分配進實驗</DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem disabled>正式分配（試驗核准後）</DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={onUnreserve}>解除預約</DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+        </Can>
         <DropdownMenuItem asChild>
           <Link to={`/animals/${a.id}`}>
             <ExternalLink className="h-3.5 w-3.5" /> 查看動物詳情

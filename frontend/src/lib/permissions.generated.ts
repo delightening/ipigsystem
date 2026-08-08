@@ -63,6 +63,8 @@ export const PERMISSIONS = {
     ANIMAL_INFO_EDIT: 'animal.info.edit',
     ANIMAL_PATHOLOGY_UPLOAD: 'animal.pathology.upload',
     ANIMAL_PATHOLOGY_VIEW: 'animal.pathology.view',
+    ANIMAL_PLANNING_MANAGE: 'animal.planning.manage',
+    ANIMAL_PLANNING_VIEW: 'animal.planning.view',
     ANIMAL_RECORD_COPY: 'animal.record.copy',
     ANIMAL_RECORD_CREATE: 'animal.record.create',
     ANIMAL_RECORD_DELETE: 'animal.record.delete',

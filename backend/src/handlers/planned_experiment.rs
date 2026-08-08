@@ -18,14 +18,30 @@ use crate::{
     AppState, Result,
 };
 
-/// 動物預約與試驗規劃：執行秘書（IACUC_STAFF，持 `animal.info.assign`）+ admin（自動 bypass）管理。
-const PERM: &str = "animal.info.assign";
+/// 動物預約與試驗規劃的**檢視**權限（唯讀）。
+///
+/// 授予執行秘書 `IACUC_STAFF`、試驗工作人員 `EXPERIMENT_STAFF`（全體）、
+/// 研究主持人 `STUDY_DIRECTOR`、負責人 `DIRECTOR`；admin 自動 bypass。
+/// 獸醫 `VET` 與計畫主持人 `PI` 不給（使用者 2026-08-07 裁定）。
+///
+/// 拆分理由：本檔原本讀寫共用 [`PERM_MANAGE`]，導致 SD 與試驗工作人員**連頁面都進不來**，
+/// 而不只是看不到操作按鈕。見 `docs/audit/button-permission-gate-2026-08-07.md` §6。
+const PERM_VIEW: &str = "animal.planning.view";
+
+/// 動物預約與試驗規劃的**操作**權限：新增預定試驗 / 批次預約 / 正式分配 /
+/// 解除預約 / 備註編輯。僅執行秘書（`IACUC_STAFF`）+ admin（自動 bypass）。
+///
+/// ⚠️ 刻意**不**沿用 `animal.info.assign`：那個權限同時被
+/// [`crate::handlers::batch_assign_animals`]（動物列表的批次分配到計畫）使用，
+/// 且 prod 上由 EXPERIMENT_STAFF / VET 等角色持有。沿用它就做不到「僅執秘可操作本頁」，
+/// 而從那些角色拔除又會連帶砍掉批次分配功能。故本頁自帶專屬權限。
+const PERM_MANAGE: &str = "animal.planning.manage";
 
 pub async fn list_planned_experiments(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<Vec<PlannedExperimentResponse>>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_VIEW);
     Ok(Json(PlannedExperimentService::list(&state.db).await?))
 }
 
@@ -34,7 +50,7 @@ pub async fn get_planned_experiment(
     Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<PlannedExperiment>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_VIEW);
     Ok(Json(PlannedExperimentService::get(&state.db, id).await?))
 }
 
@@ -43,7 +59,7 @@ pub async fn create_planned_experiment(
     Extension(current_user): Extension<CurrentUser>,
     Json(req): Json<CreatePlannedExperimentRequest>,
 ) -> Result<(StatusCode, Json<PlannedExperiment>)> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_MANAGE);
     req.validate()?;
     let actor = ActorContext::User(current_user);
     let v = PlannedExperimentService::create(&state.db, &actor, &req).await?;
@@ -56,7 +72,7 @@ pub async fn update_planned_experiment(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdatePlannedExperimentRequest>,
 ) -> Result<Json<PlannedExperiment>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_MANAGE);
     req.validate()?;
     let actor = ActorContext::User(current_user);
     let v = PlannedExperimentService::update(&state.db, &actor, id, &req).await?;
@@ -68,7 +84,7 @@ pub async fn delete_planned_experiment(
     Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_MANAGE);
     let actor = ActorContext::User(current_user);
     PlannedExperimentService::delete(&state.db, &actor, id).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -80,7 +96,7 @@ pub async fn reserve_animals(
     Extension(current_user): Extension<CurrentUser>,
     Json(req): Json<ReserveAnimalsRequest>,
 ) -> Result<Json<Vec<Animal>>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_MANAGE);
     req.validate()?;
     let actor = ActorContext::User(current_user);
     Ok(Json(
@@ -94,7 +110,7 @@ pub async fn unreserve_animals(
     Extension(current_user): Extension<CurrentUser>,
     Json(req): Json<UnreserveAnimalsRequest>,
 ) -> Result<Json<Vec<Animal>>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_MANAGE);
     req.validate()?;
     let actor = ActorContext::User(current_user);
     Ok(Json(
@@ -108,21 +124,22 @@ pub async fn list_reservable_animals(
     Extension(current_user): Extension<CurrentUser>,
     Query(query): Query<ReservableQuery>,
 ) -> Result<Json<Vec<ReservableAnimalRow>>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_VIEW);
     Ok(Json(
         PlannedExperimentService::search_reservable(&state.db, &query).await?,
     ))
 }
 
-/// 更新動物備註（Phase 5）：規劃頁整格 inline 編輯。權限沿用規劃頁 `animal.info.assign`
-/// （秘書 / admin 在此管理全場活豬備註）。audit 走 `ANIMAL_REMARK_UPDATE`。
+/// 更新動物備註（Phase 5）：規劃頁整格 inline 編輯。權限同規劃頁其餘操作
+/// （`animal.planning.manage`：執秘 / admin 在此管理全場活豬備註）。
+/// audit 走 `ANIMAL_REMARK_UPDATE`。
 pub async fn update_animal_remark(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateRemarkRequest>,
 ) -> Result<Json<Animal>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_MANAGE);
     req.validate()?;
     let actor = ActorContext::User(current_user);
     Ok(Json(
@@ -135,7 +152,7 @@ pub async fn get_reservation_planning(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<Vec<ReservationPlanningGroup>>> {
-    require_permission!(current_user, PERM);
+    require_permission!(current_user, PERM_VIEW);
     Ok(Json(
         PlannedExperimentService::get_reservation_planning(&state.db).await?,
     ))
