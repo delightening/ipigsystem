@@ -1,4 +1,6 @@
 import { Button } from '@/components/ui/button'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { PageHeader } from '@/components/ui/page-header'
 import { FilterBar } from '@/components/ui/filter-bar'
 import {
@@ -38,18 +40,22 @@ export function PartnerToolbar({
         description="管理系統中的供應商與客戶資料"
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={onImport}>
-              <Upload className="mr-2 h-4 w-4" />
-              匯入
-            </Button>
+            <Can permission={PERMISSIONS.ERP_PARTNER_CREATE}>
+              <Button variant="outline" size="sm" onClick={onImport}>
+                <Upload className="mr-2 h-4 w-4" />
+                匯入
+              </Button>
+            </Can>
             <Button variant="outline" size="sm" onClick={onExport} disabled={!hasPartners}>
               <Download className="mr-2 h-4 w-4" />
               匯出
             </Button>
-            <Button size="sm" onClick={onAdd}>
-              <Plus className="mr-2 h-4 w-4" />
-              新增夥伴
-            </Button>
+            <Can permission={PERMISSIONS.ERP_PARTNER_CREATE}>
+              <Button size="sm" onClick={onAdd}>
+                <Plus className="mr-2 h-4 w-4" />
+                新增夥伴
+              </Button>
+            </Can>
           </>
         }
       />

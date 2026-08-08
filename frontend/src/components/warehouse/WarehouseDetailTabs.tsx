@@ -5,6 +5,8 @@ import api, {
     storageLocationTypeNames,
     UnassignedInventoryItem,
 } from '@/lib/api'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import type { UnassignedSourceDoc } from '@/types/erp'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -87,14 +89,16 @@ export function WarehouseDetailTabs({
                                 : '儲位庫存'}
                         </CardTitle>
                         {selectedLocation && (
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => onEditLocationClick(selectedLocation)}
-                            >
-                                <Edit3 className="h-4 w-4 mr-1" />
-                                編輯儲位
-                            </Button>
+                            <Can permission={PERMISSIONS.ERP_STORAGE_EDIT}>
+                              <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onEditLocationClick(selectedLocation)}
+                              >
+                                  <Edit3 className="h-4 w-4 mr-1" />
+                                  編輯儲位
+                              </Button>
+                            </Can>
                         )}
                     </CardHeader>
                     <CardContent>
@@ -209,17 +213,19 @@ export function WarehouseDetailTabs({
                                                         {loc.capacity ?? '-'}
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                onEditLocationClick(loc)
-                                                            }}
-                                                        >
-                                                            <Edit3 className="h-4 w-4" />
-                                                        </Button>
+                                                        <Can permission={PERMISSIONS.ERP_STORAGE_EDIT}>
+                                                          <Button
+                                                              variant="ghost"
+                                                              size="icon"
+                                                              className="h-8 w-8"
+                                                              onClick={(e) => {
+                                                                  e.stopPropagation()
+                                                                  onEditLocationClick(loc)
+                                                              }}
+                                                          >
+                                                              <Edit3 className="h-4 w-4" />
+                                                          </Button>
+                                                        </Can>
                                                     </TableCell>
                                                 </TableRow>
                                             )
@@ -314,10 +320,12 @@ function UnassignedRow({ item }: { item: UnassignedInventoryItem }) {
                     {unassignedQty.toLocaleString()} {formatUom(item.base_uom)}
                 </TableCell>
                 <TableCell className="text-right">
-                    <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setOpen(true)}>
-                        <PackagePlus className="h-3.5 w-3.5" />
-                        分配
-                    </Button>
+                    <Can permission={PERMISSIONS.ERP_STORAGE_INVENTORY_EDIT}>
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setOpen(true)}>
+                          <PackagePlus className="h-3.5 w-3.5" />
+                          分配
+                      </Button>
+                    </Can>
                 </TableCell>
             </TableRow>
             {sourcesOpen && (

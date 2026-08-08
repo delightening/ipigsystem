@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import {
     StorageLocationWithWarehouse,
     StorageLocationType,
@@ -136,44 +138,48 @@ export function StorageLocationEditor({
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button
-                        size="sm"
-                        onClick={onAddLocationClick}
-                        className="bg-primary hover:bg-primary/90 text-white"
-                    >
-                        <Plus className="h-4 w-4 mr-1" />
-                        新增儲位
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setIsEditMode((v) => !v)}
-                    >
-                        {isEditMode ? (
-                            <>
-                                <Lock className="h-4 w-4 mr-1" />
-                                鎖定佈局
-                            </>
-                        ) : (
-                            <>
-                                <Unlock className="h-4 w-4 mr-1" />
-                                解鎖佈局
-                            </>
-                        )}
-                    </Button>
-                    {isEditMode && hasUnsavedChanges && (
-                        <Button
-                            size="sm"
-                            onClick={onSaveLayout}
-                            disabled={isSavingLayout}
-                        >
-                            {isSavingLayout && (
-                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                            )}
-                            <Save className="h-4 w-4 mr-1" />
-                            儲存佈局
-                        </Button>
-                    )}
+                    <Can permission={PERMISSIONS.ERP_STORAGE_CREATE}>
+                      <Button
+                          size="sm"
+                          onClick={onAddLocationClick}
+                          className="bg-primary hover:bg-primary/90 text-white"
+                      >
+                          <Plus className="h-4 w-4 mr-1" />
+                          新增儲位
+                      </Button>
+                    </Can>
+                    <Can permission={PERMISSIONS.ERP_STORAGE_EDIT}>
+                      <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsEditMode((v) => !v)}
+                      >
+                          {isEditMode ? (
+                              <>
+                                  <Lock className="h-4 w-4 mr-1" />
+                                  鎖定佈局
+                              </>
+                          ) : (
+                              <>
+                                  <Unlock className="h-4 w-4 mr-1" />
+                                  解鎖佈局
+                              </>
+                          )}
+                      </Button>
+                      {isEditMode && hasUnsavedChanges && (
+                          <Button
+                              size="sm"
+                              onClick={onSaveLayout}
+                              disabled={isSavingLayout}
+                          >
+                              {isSavingLayout && (
+                                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              )}
+                              <Save className="h-4 w-4 mr-1" />
+                              儲存佈局
+                          </Button>
+                      )}
+                    </Can>
                 </div>
             </div>
 

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api, {
@@ -215,23 +217,29 @@ export function WarehouseActionHeader({
                     <p className="text-muted-foreground">管理倉庫資料、貨架佈局與儲位庫存</p>
                 </div>
                 <div className="flex flex-wrap gap-2 justify-end">
-                    <Button variant="outline" size="sm" onClick={onImportClick}>
-                        <Upload className="mr-2 h-4 w-4" />
-                        匯入倉庫
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={onExportClick} disabled={activeWarehouses.length === 0}>
-                        <Download className="mr-2 h-4 w-4" />
-                        匯出倉庫
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/inventory/warehouse-report/${selectedWarehouseId}`)}
-                        disabled={!selectedWarehouseId}
-                    >
-                        <Printer className="mr-2 h-4 w-4" />
-                        列印現況
-                    </Button>
+                    <Can permission={PERMISSIONS.ERP_WAREHOUSE_CREATE}>
+                      <Button variant="outline" size="sm" onClick={onImportClick}>
+                          <Upload className="mr-2 h-4 w-4" />
+                          匯入倉庫
+                      </Button>
+                    </Can>
+                    <Can permission={PERMISSIONS.ERP_WAREHOUSE_VIEW}>
+                      <Button variant="outline" size="sm" onClick={onExportClick} disabled={activeWarehouses.length === 0}>
+                          <Download className="mr-2 h-4 w-4" />
+                          匯出倉庫
+                      </Button>
+                    </Can>
+                    <Can permission={PERMISSIONS.ERP_WAREHOUSE_VIEW}>
+                      <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/inventory/warehouse-report/${selectedWarehouseId}`)}
+                          disabled={!selectedWarehouseId}
+                      >
+                          <Printer className="mr-2 h-4 w-4" />
+                          列印現況
+                      </Button>
+                    </Can>
                 </div>
             </div>
 
@@ -242,32 +250,38 @@ export function WarehouseActionHeader({
                         選擇倉庫
                     </CardTitle>
                     <div className="flex gap-2">
-                        {inactiveWarehouses.length > 0 && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setShowInactiveDialog(true)}
-                            >
-                                <Archive className="h-4 w-4 mr-1" />
-                                已停用倉庫
-                                <span className="ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-destructive-foreground">
-                                    {inactiveWarehouses.length}
-                                </span>
-                            </Button>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={handleOpenCreate}>
-                            <Plus className="h-4 w-4 mr-1" />
-                            新增倉庫
-                        </Button>
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={handleOpenEdit}
-                            disabled={!selectedWarehouseId}
-                        >
-                            <Edit3 className="h-4 w-4 mr-1" />
-                            編輯倉庫
-                        </Button>
+                    <Can permission={PERMISSIONS.ERP_WAREHOUSE_EDIT}>
+                          {inactiveWarehouses.length > 0 && (
+                              <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setShowInactiveDialog(true)}
+                              >
+                                  <Archive className="h-4 w-4 mr-1" />
+                                  已停用倉庫
+                                  <span className="ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-destructive-foreground">
+                                      {inactiveWarehouses.length}
+                                  </span>
+                              </Button>
+                          )}
+                    </Can>
+                        <Can permission={PERMISSIONS.ERP_WAREHOUSE_CREATE}>
+                          <Button variant="ghost" size="sm" onClick={handleOpenCreate}>
+                              <Plus className="h-4 w-4 mr-1" />
+                              新增倉庫
+                          </Button>
+                        </Can>
+                        <Can permission={PERMISSIONS.ERP_WAREHOUSE_EDIT}>
+                          <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={handleOpenEdit}
+                              disabled={!selectedWarehouseId}
+                          >
+                              <Edit3 className="h-4 w-4 mr-1" />
+                              編輯倉庫
+                          </Button>
+                        </Can>
                     </div>
                 </CardHeader>
                 <CardContent>
