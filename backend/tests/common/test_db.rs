@@ -15,8 +15,10 @@
 //! 刻意**不做任何名稱判斷**（不看 DSN 是否含 `test`、也不比對資料庫名）。名稱是
 //! 猜測：正式庫改名或多出一個正式庫，靠名字的防線就靜默失效。這裡改看實際狀態：
 //!
-//! 1. 資料庫有[`MARKER_TABLE`]標記表 → 曾被本護欄認定為丟棄用，放行。
-//! 2. 沒有標記，且[`PROBE_TABLES`]任一張已有資料 → **中止**，不連不寫。
+//! 1. 資料庫有[`MARKER_TABLE`]標記表，**且其中記的資料庫身分就是這一顆**
+//!    → 曾被本護欄認定為丟棄用，放行。身分對不上（標記被 dump 還原到別顆庫、
+//!    或有人手動建了一張同名空表）一律視同沒有標記，往下走完整檢查。
+//! 2. 沒有有效標記，且[`PROBE_TABLES`]任一張已有資料 → **中止**，不連不寫。
 //! 3. 沒有標記且探測表全空 → 蓋上標記後放行。
 //! 4. 沒有標記且探測表不齊 → 只有在 public schema **完全沒有使用者資料表**時
 //!    才算「全新空庫」而放行；否則一律**中止**。
@@ -48,7 +50,23 @@ use sqlx::PgPool;
 ///
 /// 命名帶雙下底線前綴，明確表示非業務結構；`sqlx migrate` 只追蹤
 /// `_sqlx_migrations`，多這張表不影響 migration。
-const MARKER_TABLE: &str = "__ipig_disposable_test_db";
+///
+/// # 為什麼帶 `_v2`，以及為什麼標記裡要記身分
+///
+/// v1 只看「這張表存不存在」就放行。那讓標記變成一張**可攜帶、可偽造、且永不
+/// 重驗的通行證**（codeant-ai 於 PR #37 指出，Critical）：
+///
+/// - 把測試庫 `pg_dump` 還原到正式庫，標記表跟著過去，正式庫從此被當成丟棄庫；
+/// - 任何人在某顆庫手動建一張同名空表，就能讓護欄對它永久放行。
+///
+/// v2 在標記裡寫入**蓋章當下那顆資料庫的身分**（名稱 + OID + 叢集識別碼），
+/// 讀取時逐項比對；對不上就當作沒有標記，回到完整的探測表檢查。上述兩種情境
+/// 都會在比對這一關被擋下（還原過去的標記記的是原本那顆庫的名字/OID，手建的
+/// 空表則根本沒有那一列）。
+///
+/// 換表名而不是改欄位：v1 的標記本來就不該再有效力，換名字讓舊標記自動失效，
+/// 也免掉「同一張表要同時支援兩種結構」的升級邏輯。舊表留在測試庫裡無害。
+const MARKER_TABLE: &str = "__ipig_disposable_test_db_v2";
 
 /// 探測表：核心業務表，**任何 migration 都不會 seed**。
 ///
@@ -103,7 +121,7 @@ pub async fn connect_disposable(max_connections: u32) -> PgPool {
 /// 必須在 `sqlx::migrate!` 與任何寫入**之前**呼叫。**在確認之前不對目標資料庫
 /// 做任何寫入**——包含蓋標記表本身。
 async fn assert_disposable(pool: &PgPool) {
-    if has_marker(pool).await {
+    if marker_matches_this_database(pool).await {
         return;
     }
 
@@ -161,13 +179,67 @@ async fn user_table_count(pool: &PgPool) -> i64 {
     .expect("count user tables")
 }
 
-async fn has_marker(pool: &PgPool) -> bool {
-    let oid: Option<String> = sqlx::query_scalar("SELECT to_regclass($1)::text")
-        .bind(format!("public.{MARKER_TABLE}"))
+/// 蓋章當下那顆資料庫的身分。三項都是「跟著資料庫走」而不是「跟著檔案走」的值，
+/// 所以標記表被 dump / 還原到別顆庫時對不上。
+struct DatabaseIdentity {
+    name: String,
+    oid: i64,
+    /// 叢集識別碼（`initdb` 時產生，跨叢集必不同）。
+    ///
+    /// `pg_control_system()` 在部分部署會被 REVOKE，取不到就是 `None`——此時降級
+    /// 成只比對名稱與 OID，不讓護欄因為權限差異整支跑不起來。2026-08-08 在本專案
+    /// 的 postgres:16 測試容器實測：一般角色可讀。
+    cluster: Option<String>,
+}
+
+async fn database_identity(pool: &PgPool) -> DatabaseIdentity {
+    let (name, oid): (String, i64) = sqlx::query_as(
+        "SELECT current_database()::text, \
+                (SELECT oid::bigint FROM pg_catalog.pg_database WHERE datname = current_database())",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("query database identity");
+
+    let cluster = sqlx::query_scalar("SELECT system_identifier::text FROM pg_control_system()")
         .fetch_one(pool)
         .await
-        .expect("probe marker table");
-    oid.is_some()
+        .ok();
+
+    DatabaseIdentity { name, oid, cluster }
+}
+
+/// 標記是否存在**且屬於目前這顆資料庫**。
+///
+/// 對不上就回 `false`——呼叫端會因此走完整的探測表檢查，是 fail-closed 的方向。
+async fn marker_matches_this_database(pool: &PgPool) -> bool {
+    let stamped = match sqlx::query_as::<_, (String, i64, Option<String>)>(
+        "SELECT db_name, db_oid, cluster_id FROM public.__ipig_disposable_test_db_v2 LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(row) => row,
+        // 42P01 = relation 不存在＝還沒蓋過章，正常情形。
+        // 其他讀取錯誤不吞：靜默降級會讓護欄的失效無人察覺。
+        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("42P01") => None,
+        Err(e) => panic!("讀取測試庫標記表 {MARKER_TABLE} 失敗：{e}"),
+    };
+
+    // 表在但沒有那一列（例如有人手動建了一張同名空表）＝不是本護欄蓋的章。
+    let Some((stamped_name, stamped_oid, stamped_cluster)) = stamped else {
+        return false;
+    };
+
+    let here = database_identity(pool).await;
+    if stamped_name != here.name || stamped_oid != here.oid {
+        return false;
+    }
+    match (stamped_cluster.as_deref(), here.cluster.as_deref()) {
+        (Some(stamped), Some(current)) => stamped == current,
+        // 任一端取不到叢集識別碼就無從比對，此時以名稱 + OID 為準。
+        _ => true,
+    }
 }
 
 async fn probe_tables_all_exist(pool: &PgPool) -> bool {
@@ -209,9 +281,10 @@ async fn populated_probe_tables(pool: &PgPool) -> Vec<String> {
 
 /// 蓋上「這是可丟棄的測試資料庫」標記。
 ///
-/// 表存在即代表已蓋章（[`has_marker`] 只看存在性），`stamped_at` 那一列純粹是給人
-/// 除錯用的「這顆庫何時被認定為丟棄庫」。**必須真的寫進去**——只建表不插列會讓欄位
-/// 永遠是空的，看的人得不到任何資訊（2026-08-07 實測抓到）。
+/// 那一列同時是**核准憑證**與除錯資訊：`db_name` / `db_oid` / `cluster_id` 由
+/// [`marker_matches_this_database`] 逐項比對，`stamped_at` 給人看「這顆庫何時被
+/// 認定為丟棄庫」。**必須真的寫進去**——只建表不插列，下次讀不到那一列就等於沒
+/// 蓋章（2026-08-07 實測抓到「只建表」的版本）。
 ///
 /// # `IF NOT EXISTS` 不等於沒有競態
 ///
@@ -224,8 +297,13 @@ async fn populated_probe_tables(pool: &PgPool) -> Vec<String> {
 ///
 /// 這兩個 SQLSTATE 的語意都是「別人剛好先建好了」，結果與我們想要的一致，故視為成功。
 async fn stamp_marker(pool: &PgPool) {
+    let here = database_identity(pool).await;
+
     if let Err(e) = sqlx::query(
-        "CREATE TABLE IF NOT EXISTS public.__ipig_disposable_test_db (\
+        "CREATE TABLE IF NOT EXISTS public.__ipig_disposable_test_db_v2 (\
+             db_name    text        NOT NULL,\
+             db_oid     bigint      NOT NULL,\
+             cluster_id text,\
              stamped_at timestamptz NOT NULL DEFAULT now()\
          )",
     )
@@ -246,10 +324,14 @@ async fn stamp_marker(pool: &PgPool) {
     }
 
     sqlx::query(
-        "INSERT INTO public.__ipig_disposable_test_db (stamped_at) \
-         SELECT now() WHERE NOT EXISTS (SELECT 1 FROM public.__ipig_disposable_test_db)",
+        "INSERT INTO public.__ipig_disposable_test_db_v2 (db_name, db_oid, cluster_id) \
+         SELECT $1, $2, $3 \
+         WHERE NOT EXISTS (SELECT 1 FROM public.__ipig_disposable_test_db_v2)",
     )
+    .bind(&here.name)
+    .bind(here.oid)
+    .bind(here.cluster.as_deref())
     .execute(pool)
     .await
-    .expect("record disposable test db stamp time");
+    .expect("record disposable test db identity");
 }
