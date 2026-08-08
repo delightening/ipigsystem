@@ -850,6 +850,16 @@ impl DocumentService {
             .execute(&mut **tx)
             .await?;
 
+        // 硬刪為終態：row 消失後，任何指向它的置頂待辦（採購單未入庫提醒，
+        // 見 services/notification/erp.rs::notify_po_pending_receipt）就再也沒有
+        // 業務路徑能解除 —— 未核收的已核准 PO 是可以走到這裡的。同 tx 一併解除。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            tx,
+            "document",
+            document.id,
+        )
+        .await?;
+
         Ok(())
     }
 

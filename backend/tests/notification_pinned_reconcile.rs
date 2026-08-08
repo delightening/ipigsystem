@@ -157,8 +157,18 @@ async fn reconcile_downgrades_pin_whose_report_was_soft_deleted() {
     let vet = seed_user(&pool).await;
     let follower = seed_user(&pool).await;
 
-    // 事故重現：報告在待追蹤狀態被撤回並軟刪，置頂通知留了下來
-    let report = seed_patrol_report(&pool, vet, "draft", true).await;
+    // fixture 必須**只**滿足「軟刪」這一個 disjunct，否則測不出軟刪規則：
+    // 若用 draft + follow_up_user_id=NULL，會同時命中「已撤回」那條，
+    // 把 SQL 裡的 `deleted_at IS NOT NULL` 整條拿掉、測試仍然會綠。
+    // 故用「在途狀態 + 有指派追蹤者 + 已軟刪」—— 這也正是 2026-08-07 事故的真實狀態。
+    let report = seed_patrol_report_with_follower(
+        &pool,
+        vet,
+        "awaiting_acknowledgement",
+        true,
+        Some(follower),
+    )
+    .await;
     let notif = seed_pinned_notification(&pool, follower, report).await;
 
     let svc = NotificationService::new(pool.clone());
@@ -185,7 +195,10 @@ async fn reconcile_downgrades_pin_whose_report_is_completed() {
     let vet = seed_user(&pool).await;
     let follower = seed_user(&pool).await;
 
-    let report = seed_patrol_report(&pool, vet, "completed", false).await;
+    // completed 報告必定帶指派的追蹤者（complete_followup 只能由他本人執行）。
+    // fixture 要符合正式流程產得出來的狀態，否則保護的是不可能存在的資料。
+    let report =
+        seed_patrol_report_with_follower(&pool, vet, "completed", false, Some(follower)).await;
     let notif = seed_pinned_notification(&pool, follower, report).await;
 
     let svc = NotificationService::new(pool.clone());
@@ -256,6 +269,53 @@ async fn reconcile_leaves_draft_with_assigned_follower_untouched() {
         "draft 但仍有指派追蹤者 ≠ 撤回，不得降級"
     );
     assert_eq!(priority_of(&pool, notif).await, 1);
+}
+
+/// `related_entity_id IS NULL` ＝ **無從判斷**，不是「實體不存在」。
+///
+/// 初版 SQL 沒有這個條件，於是 `NOT EXISTS (... WHERE d.id = NULL)` 恆為真、
+/// `LEFT JOIN` 的 `r.id IS NULL` 也恆成立 → 這類列被**無條件降級**，
+/// 還印出「關聯的實體已不存在」這個假理由。
+/// 2026-08-07 prod 實查：7 筆置頂中有 4 筆正是這種（舊聚合式採購提醒，本來就不帶 entity id）。
+#[tokio::test]
+#[serial]
+async fn reconcile_leaves_null_entity_id_untouched() {
+    let pool = setup_pool().await;
+    let follower = seed_user(&pool).await;
+
+    let notif = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO notifications
+             (id, user_id, type, title, related_entity_type, related_entity_id, priority)
+           VALUES ($1, $2, 'document_approval'::notification_type,
+                   '[iPig] 採購單未入庫提醒：1 筆採購單待入庫', 'document', NULL, 1)"#,
+    )
+    .bind(notif)
+    .bind(follower)
+    .execute(&pool)
+    .await
+    .expect("seed null-entity pinned notification");
+
+    let svc = NotificationService::new(pool.clone());
+    let report_out = svc
+        .reconcile_pinned_notifications(false)
+        .await
+        .expect("reconcile");
+
+    assert!(
+        !report_out.resolved.iter().any(|r| r.id == notif),
+        "related_entity_id 為 NULL＝無從判斷，不得降級"
+    );
+    assert_eq!(
+        priority_of(&pool, notif).await,
+        1,
+        "NULL entity 的置頂待辦必須保持原狀"
+    );
+    assert!(
+        report_out.null_entity_id >= 1,
+        "NULL entity 的列必須被單獨列出讓維運者看見，實得 {}",
+        report_out.null_entity_id
+    );
 }
 
 #[tokio::test]

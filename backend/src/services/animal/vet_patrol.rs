@@ -1123,6 +1123,17 @@ impl VetPatrolReportService {
             report: after.clone(),
             entries,
         };
+        // 置頂待辦與狀態轉換同一個 tx。原本由 handler 在 commit 之後 best-effort 建立，
+        // 有兩個問題：
+        // (1) INSERT 失敗時只 warn —— 獸醫看到送出成功、追蹤者卻永遠收不到待辦，
+        //     而本 PR 的對帳只找「殘留」不找「漏建」，這個方向沒有任何兜底。
+        // (2) 與 retract / delete 的 tx 內解除形成競態：送出 commit 後、pin 建立前，
+        //     撤回可能剛好取得列鎖並解除（此時 pin 尚未存在，掃不到），
+        //     隨後 pin 才被建立 → 孤兒。
+        // 放進 tx 後兩者都消失：報告列鎖序列化了狀態轉換，pin 與狀態同生共死。
+        // 位置同其餘三條終態路徑，排在 audit 之前（不握全域 audit 鎖再跨表寫入）。
+        Self::create_followup_pin_tx(&mut tx, &after, follow_up_user_id, actor).await?;
+
         let display = format!("巡場報告 {}", after.patrol_date);
         AuditService::log_activity_tx(
             &mut tx,
@@ -1136,16 +1147,6 @@ impl VetPatrolReportService {
             },
         )
         .await?;
-
-        // 置頂待辦與狀態轉換同一個 tx。原本由 handler 在 commit 之後 best-effort 建立，
-        // 有兩個問題：
-        // (1) INSERT 失敗時只 warn —— 獸醫看到送出成功、追蹤者卻永遠收不到待辦，
-        //     而本 PR 的對帳只找「殘留」不找「漏建」，這個方向沒有任何兜底。
-        // (2) 與 retract / delete 的 tx 內解除形成競態：送出 commit 後、pin 建立前，
-        //     撤回可能剛好取得列鎖並解除（此時 pin 尚未存在，掃不到），
-        //     隨後 pin 才被建立 → 孤兒。
-        // 放進 tx 後兩者都消失：報告列鎖序列化了狀態轉換，pin 與狀態同生共死。
-        Self::create_followup_pin_tx(&mut tx, &after, follow_up_user_id, actor).await?;
 
         tx.commit().await?;
         Ok(after)
@@ -1253,6 +1254,20 @@ impl VetPatrolReportService {
             report: after.clone(),
             entries,
         };
+        // 撤回清空 follow_up_user_id → 原追蹤者不再被指派，解除其置頂待辦。同 tx。
+        //
+        // ⚠️ 位置刻意排在 `log_activity_tx` **之前**：後者會取
+        // `pg_advisory_xact_lock(hashtext('audit_log_chain'))` —— 全系統唯一的 audit
+        // 序列化鎖，且持有到 tx 結束。把 notifications 的 UPDATE 排在它後面，等於握著
+        // 全域 audit 鎖再做一次跨表寫入，會拉長所有人的 audit 寫入臨界區。
+        // 本檔四條終態路徑一律採此順序。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         let display = format!("巡場報告 {}", after.patrol_date);
         AuditService::log_activity_tx(
             &mut tx,
@@ -1264,17 +1279,6 @@ impl VetPatrolReportService {
                 data_diff: Some(DataDiff::create_only(&snapshot)),
                 request_context: None,
             },
-        )
-        .await?;
-
-        // 撤回清空 follow_up_user_id → 原追蹤者不再被指派，解除其置頂待辦。
-        // 必須在**同一個 tx 內**：本 tx 已對報告列 FOR UPDATE，併發的 submit_for_followup
-        // 會被列鎖擋住，因此不可能發生「解除把剛建立的新待辦一起降級」。
-        // 詳見 NotificationService::resolve_pinned_notifications_tx 的說明。
-        crate::services::NotificationService::resolve_pinned_notifications_tx(
-            &mut tx,
-            "vet_patrol_reports",
-            id,
         )
         .await?;
 
@@ -1474,6 +1478,15 @@ impl VetPatrolReportService {
             report: after.clone(),
             entries,
         };
+        // 追蹤改善完成 → 解除追蹤者的置頂待辦。同 tx，且排在 audit 之前
+        // （理由見 retract_to_draft：不要握著全域 audit 鎖再跨表寫入）。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         let display = format!("巡場報告 {}", after.patrol_date);
         AuditService::log_activity_tx(
             &mut tx,
@@ -1485,14 +1498,6 @@ impl VetPatrolReportService {
                 data_diff: Some(DataDiff::create_only(&snapshot)),
                 request_context: None,
             },
-        )
-        .await?;
-
-        // 追蹤改善完成 → 解除追蹤者的置頂待辦（同 tx，理由見 retract_to_draft）。
-        crate::services::NotificationService::resolve_pinned_notifications_tx(
-            &mut tx,
-            "vet_patrol_reports",
-            id,
         )
         .await?;
 
@@ -1567,6 +1572,19 @@ impl VetPatrolReportService {
             .bind(&stale_ids)
             .execute(&mut *tx)
             .await?;
+
+            // 硬刪為終態：row 一旦消失，任何指向它的置頂待辦就再也沒有業務路徑能解除。
+            // 草稿正常不帶置頂待辦（送出才建立），但「送出 → 撤回 → 擱置 7 天」這條路徑
+            // 上若 retract 的解除將來回歸，這裡是最後一道防線。同 tx，與刪除同生共死。
+            for id in &stale_ids {
+                crate::services::NotificationService::resolve_pinned_notifications_tx(
+                    &mut tx,
+                    "vet_patrol_reports",
+                    *id,
+                )
+                .await?;
+            }
+
             tx.commit().await?;
             total_deleted += result.rows_affected();
 
@@ -1748,6 +1766,15 @@ impl VetPatrolReportService {
             report: before.clone(),
             entries: before_entries,
         };
+        // 報告已軟刪 → 追蹤者不可能再操作它，解除置頂待辦。同 tx，且排在 audit 之前
+        // （理由見 retract_to_draft：不要握著全域 audit 鎖再跨表寫入）。
+        crate::services::NotificationService::resolve_pinned_notifications_tx(
+            &mut tx,
+            "vet_patrol_reports",
+            id,
+        )
+        .await?;
+
         let display = format!("巡場報告 {}", before.patrol_date);
         AuditService::log_activity_tx(
             &mut tx,
@@ -1759,14 +1786,6 @@ impl VetPatrolReportService {
                 data_diff: Some(DataDiff::delete_only(&snapshot)),
                 request_context: None,
             },
-        )
-        .await?;
-
-        // 報告已軟刪 → 追蹤者不可能再操作它，解除置頂待辦（同 tx，理由見 retract_to_draft）。
-        crate::services::NotificationService::resolve_pinned_notifications_tx(
-            &mut tx,
-            "vet_patrol_reports",
-            id,
         )
         .await?;
 
