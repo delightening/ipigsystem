@@ -101,9 +101,16 @@ impl NotificationService {
         &self,
         dry_run: bool,
     ) -> Result<ReconcileReport, AppError> {
-        // 三個統計必須看同一個快照，否則期間有列被業務路徑解除時，
-        // `count_pinned` 變小而候選數不變 → still_pending 會算出負數印給維運者。
+        // 四個統計必須看同一個快照，否則期間有列被業務路徑解除時，
+        // `count_pinned` 變小而候選數不變 → still_pending 算出來不對應任何真實時點。
+        //
+        // ⚠️ 單純 `BEGIN` **不夠**：PostgreSQL 預設 READ COMMITTED，
+        // 同一個 tx 內每個語句各自取新的 snapshot。必須顯式提升到 REPEATABLE READ，
+        // 該 tx 的第一個查詢才會固定 snapshot 供後續語句共用。
         let mut tx = self.db.begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            .execute(&mut *tx)
+            .await?;
         let candidates = Self::find_orphan_pinned(&mut tx).await?;
         let unknown = Self::count_unknown_entity_types(&mut tx).await?;
         let null_entity_id = Self::count_null_entity_id(&mut tx).await?;

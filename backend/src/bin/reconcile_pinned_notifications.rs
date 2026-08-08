@@ -51,10 +51,14 @@ const USAGE: &str = "\
 ";
 
 /// 從連線字串取出 host/database 供執行前確認，順便避免把密碼印出來。
+///
+/// **順序不可顛倒**：必須先切掉 query / fragment，再以 `@` 取右段。
+/// 反過來的話，若 query 裡含 `@`（例如 `?options=-c%20search_path=a@b`），
+/// `rsplit('@')` 會取到 query 的尾段而不是 host —— 印出來的既不是目標位址，
+/// 又可能把 query 裡的值洩到終端機。
 fn describe_target(url: &str) -> String {
-    let after_at = url.rsplit('@').next().unwrap_or(url);
-    let no_query = after_at.split(['?', '#']).next().unwrap_or(after_at);
-    no_query.to_string()
+    let no_query = url.split(['?', '#']).next().unwrap_or(url);
+    no_query.rsplit('@').next().unwrap_or(no_query).to_string()
 }
 
 /// 嚴格剖析參數，回傳 `dry_run`。
@@ -157,4 +161,26 @@ async fn main() -> Result<()> {
         report.still_pending
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::describe_target;
+
+    #[test]
+    fn strips_credentials_and_query() {
+        assert_eq!(
+            describe_target("postgres://u:pw@localhost:5432/ipig_db"),
+            "localhost:5432/ipig_db"
+        );
+    }
+
+    /// query 內含 `@` 時，先切 query 才不會把 query 尾段當成 host 印出來。
+    #[test]
+    fn query_containing_at_sign_does_not_leak() {
+        assert_eq!(
+            describe_target("postgres://u:pw@localhost:5432/ipig_db?opt=a@secret"),
+            "localhost:5432/ipig_db"
+        );
+    }
 }
