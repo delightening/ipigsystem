@@ -64,7 +64,7 @@ tokio-cron-scheduler = "0.15"
 
 # Hashing for migration resolution and audit integrity
 sha2 = "0.10"
-hmac = "0.12"
+hmac = "0.13"
 hex = "0.4"
 
 # R66-B2/C6: app 層 AEAD at-rest 加密（TOTP secret / 簽章 payload）
