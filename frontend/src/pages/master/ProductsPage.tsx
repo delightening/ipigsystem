@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react'
+import { Can } from '@/components/auth'
+import { PERMISSIONS } from '@/lib/permissions.generated'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -136,23 +138,32 @@ export function ProductsPage() {
         description="管理系統中的產品/品項資料"
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => dialogs.open('editCategories')}>
-              <FolderEdit className="mr-2 h-4 w-4" />
-              編輯分類
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => dialogs.open('import')}>
-              <Upload className="mr-2 h-4 w-4" />
-              匯入
-            </Button>
+            {/* 編輯分類 → create_category、匯入 → import_products、新增 → create_product，
+                三者後端都是 erp.product.create。匯出是前端就地把已載入的清單轉 CSV，
+                資料本身已由路由的 erp.product.view 把關，不另加閘。 */}
+            <Can permission={PERMISSIONS.ERP_PRODUCT_CREATE}>
+              <Button variant="outline" size="sm" onClick={() => dialogs.open('editCategories')}>
+                <FolderEdit className="mr-2 h-4 w-4" />
+                編輯分類
+              </Button>
+            </Can>
+            <Can permission={PERMISSIONS.ERP_PRODUCT_CREATE}>
+              <Button variant="outline" size="sm" onClick={() => dialogs.open('import')}>
+                <Upload className="mr-2 h-4 w-4" />
+                匯入
+              </Button>
+            </Can>
             <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={products.length === 0}>
               <Download className="mr-2 h-4 w-4" />
               匯出
             </Button>
             <GuestHide>
-              <Button size="sm" onClick={() => navigate('/products/new')}>
-                <Plus className="mr-2 h-4 w-4" />
-                新增產品
-              </Button>
+              <Can permission={PERMISSIONS.ERP_PRODUCT_CREATE}>
+                <Button size="sm" onClick={() => navigate('/products/new')}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  新增產品
+                </Button>
+              </Can>
             </GuestHide>
           </>
         }
